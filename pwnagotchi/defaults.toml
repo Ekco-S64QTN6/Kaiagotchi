@@ -157,6 +157,7 @@ api_key = ""
 api_url = "https://wpa-sec.stanev.org"
 download_results = false
 show_pwd = false
+single_files = false
 
 [main.log]
 path = "/etc/pwnagotchi/log/pwnagotchi.log"
