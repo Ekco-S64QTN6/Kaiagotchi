@@ -64,6 +64,9 @@ dependencies = [
     "pydantic>=2.7.4",           # Data validation & settings
     "pydantic-settings>=2.2.1",  # Configuration management
     
+    # === System Monitoring ===
+    "psutil>=5.9.0",             # System and network monitoring
+    
     # === Development & ML (Consider making optional) ===
     "gast",                      # Generic AST (ML framework dependency)
     "shimmy",                    # RL environment compatibility
@@ -135,7 +138,7 @@ known-third-party = [
     "PyYAML", "dbus_python", "file_read_backwards", "flask", 
     "flask_cors", "flask_wtf", "gast", "numpy", "pydrive2", 
     "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", 
-    "websockets"
+    "websockets", "psutil"
 ]
 
 [tool.ruff.mccabe]
