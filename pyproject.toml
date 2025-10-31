@@ -9,7 +9,7 @@ dependencies = [
     "PyYAML", "dbus-python", "file-read-backwards", "flask", "flask-cors",
     "flask-wtf", "gast", "numpy", "pycryptodome", "pydrive2", "python-dateutil",
     "requests", "scapy", "setuptools", "shimmy", 
-    "tomlkit", "toml", "tweepy", "websockets",
+    "tomlkit", "tweepy", "websockets", # <-- The redundant "toml" is removed here
 ]
 
 requires-python = ">=3.11"
@@ -41,4 +41,4 @@ Issues = "https://github.com/Ekco-S64QTN6/kaiagotchi/issues"
 Download = "https://github.com/Ekco-S64QTN6/kaiagotchi/releases/latest"
 
 [project.scripts]
-pwnagotchi = "pwnagotchi.cli:pwnagotchi_cli"
+kaiagotchi = "pwnagotchi:main"
