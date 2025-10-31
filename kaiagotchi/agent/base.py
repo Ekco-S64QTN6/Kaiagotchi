@@ -1,9 +1,11 @@
 import logging
 import json
 import threading
+import time
 from typing import Dict, Any
 
 # We must import from the 'kaiagotchi' namespace as per the project structure
+# Corrected imports for utilities and file I/O:
 from kaiagotchi.utils import get_state_path
 from kaiagotchi.storage.file_io import atomically_save_data, load_data
 
@@ -71,8 +73,16 @@ class KaiagotchiBase:
         """
         Saves the current agent state atomically to disk using kaiagotchi.storage.file_io.
         """
+        # Update last_seen timestamp before saving (necessary for accurate status reporting)
+        self.set('last_seen', int(time.time()))
+        
         # atomically_save_data is imported from kaiagotchi.storage.file_io
-        return atomically_save_data(self.state_file_path, self._state)
+        success = atomically_save_data(self.state_file_path, self._state)
+        if success:
+            agent_logger.debug("Agent state saved successfully.")
+        else:
+            agent_logger.error("Failed to save agent state atomically.")
+        return success
 
     # --- State Accessors ---
     
@@ -108,6 +118,7 @@ class KaiagotchiBase:
             # Placeholder for core agent logic (scanning, decision making, etc.)
             
             # Update uptime and status for demonstration
+            # Increment uptime by the loop pause time (5 seconds)
             self.set('uptime', self.get('uptime', 0) + 5)
             self.set('status', f"Running for {self.get('uptime')} seconds...")
             

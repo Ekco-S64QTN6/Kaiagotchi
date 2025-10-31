@@ -2,9 +2,11 @@ import os
 import json
 import logging
 import tempfile
+import glob # New import for total_unique_handshakes
 from typing import Any, Dict
 
 file_io_logger = logging.getLogger('file_io')
+
 
 def atomically_save_data(filepath: str, data: Dict[str, Any], fmt: str = 'json') -> bool:
     """
@@ -37,39 +39,35 @@ def atomically_save_data(filepath: str, data: Dict[str, Any], fmt: str = 'json')
             file_io_logger.error(f"Could not create directory {dir_path}: {e}")
             return False
 
-    # 2. Write to a temporary file in the same directory
-    # Use tempfile.NamedTemporaryFile for automatic cleanup and unique name
-    tmp_path = None
+    # 2. Use a temporary file in the same directory for atomic rename
+    temp_file_name = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', dir=dir_path, delete=False, encoding='utf-8') as tmp_file:
-            # Dump the JSON data
-            json.dump(data, tmp_file, indent=4)
-            tmp_path = tmp_file.name
-
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, dir=dir_path, encoding='utf-8') as tmp_fp:
+            json.dump(data, tmp_fp, indent=4)
+            temp_file_name = tmp_fp.name
+        
         # 3. Atomically rename the temporary file to the final destination
-        # os.replace provides atomic move/rename operation on POSIX systems
-        os.replace(tmp_path, filepath)
-        file_io_logger.info(f"Successfully saved data to {filepath}")
+        os.rename(temp_file_name, filepath)
+        file_io_logger.info(f"Successfully saved data to {filepath} atomically.")
         return True
     
     except Exception as e:
         file_io_logger.error(f"Error during atomic save to {filepath}: {e}", exc_info=True)
-        
-        # Clean up the temporary file if it still exists after an error
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.remove(tmp_path)
-            except Exception as clean_e:
-                file_io_logger.warning(f"Failed to clean up temporary file {tmp_path}: {clean_e}")
-                
+        # Clean up the temporary file if it was created but rename failed
+        if temp_file_name and os.path.exists(temp_file_name):
+            os.remove(temp_file_name)
         return False
+
 
 def load_data(filepath: str, default: Any = None) -> Any:
     """
-    Loads data (currently JSON) from a file.
+    Loads data from a file assumed to be in JSON format.
+
+    Handles file-not-found, JSON decoding errors, and other I/O errors gracefully.
 
     Args:
-        filepath: The full path to the file to load.
+        filepath: The full path to the file.
         default: The value to return if the file does not exist or is corrupted.
 
     Returns:
@@ -93,9 +91,27 @@ def load_data(filepath: str, default: Any = None) -> Any:
         return default
 
 
+def total_unique_handshakes(path: str) -> int:
+    """
+    Returns the count of unique handshakes (files ending in .pcap) in a directory.
+
+    This function is a file system utility, scanning a path for capture files.
+
+    Args:
+        path: The directory path to scan.
+
+    Returns:
+        The total number of .pcap files found.
+    """
+    expr = os.path.join(path, "*.pcap")
+    return len(glob.glob(expr))
+
+
 # Example usage (for testing the module locally)
 if __name__ == '__main__':
     file_io_logger.setLevel(logging.DEBUG)
+    
+    # 1. Test Save/Load
     test_data = {'status': 'ok', 'count': 5, 'items': [1, 2, 3]}
     test_path = '/tmp/kaiagotchi_test_save.json'
     
@@ -103,10 +119,16 @@ if __name__ == '__main__':
     atomically_save_data(test_path, test_data)
 
     print(f"\n--- Testing Load from {test_path} ---")
-    loaded_data = load_data(test_path, default={})
-    print(f"Loaded Data: {loaded_data}")
-        
-    # Clean up (commented out so the user can verify the file if they wish)
-    # if os.path.exists(test_path):
-    #     os.remove(test_path)
-    #     print("\nClean up successful.")
+    loaded = load_data(test_path, default={})
+    print(f"Loaded Data: {loaded}")
+    
+    # Cleanup
+    if os.path.exists(test_path):
+        os.remove(test_path)
+    
+    # 2. Test Handshake Count
+    print(f"\n--- Testing Handshake Count ---")
+    # Get the directory of the current file for a realistic test path
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # The count should likely be 0 unless tested in a capture directory
+    print(f"Handshakes in current directory ({current_dir}): {total_unique_handshakes(current_dir)}")

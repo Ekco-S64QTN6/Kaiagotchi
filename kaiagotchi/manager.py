@@ -1,186 +1,107 @@
 import logging
+import os
 import sys
 import argparse
-import signal
-import time
-from typing import Dict, Any, Optional
+import threading # Required for the new UI import
+from typing import Dict, Any
 
-# Internal imports from the kaiagotchi package
-from kaiagotchi.utils import load_config
-# We import the agent base class we just created
+# --- Import Core Components ---
+
+# 1. FIX: Import KaiagotchiBase from the correct, final location (agent/base.py)
 from kaiagotchi.agent.base import KaiagotchiBase
 
-# Define the log level mapping for configuration
-LOG_LEVEL_MAP = {
-    'DEBUG': logging.DEBUG,
-    'INFO': logging.INFO,
-    'WARNING': logging.WARNING,
-    'ERROR': logging.ERROR,
-    'CRITICAL': logging.CRITICAL
-}
+# 2. NEW: Import the Server class from your existing UI file.
+from kaiagotchi.ui.web import Server
 
-# --- Manager Logger Configuration ---
+# 3. Import utility functions from your existing utils.py file
+from kaiagotchi.utils import load_config
+
+
+# --- Global Configuration Constants (These were duplicated in your old manager.py and utils.py) ---
+DEFAULT_CONFIG_PATH = '/etc/kaiagotchi/config.toml'
+# ---
+
+# Set up the logger for this specific module
 manager_logger = logging.getLogger('manager')
-# The initial log level is set low so we can see all setup messages before
-# the main configuration takes effect.
-manager_logger.setLevel(logging.DEBUG)
 
 
-class Manager:
+def setup_logging(level_name: str):
     """
-    The main application manager for Kaiagotchi.
+    Sets up basic application-wide logging based on the configured level.
+    """
+    numeric_level = getattr(logging, level_name.upper(), logging.INFO)
     
-    Responsible for loading configuration, setting up logging, initializing
-    the core agent, and managing the main application lifecycle (start/stop).
-    """
+    # Configure the root logger
+    logging.basicConfig(
+        level=numeric_level,
+        format='[%(levelname)s] (%(name)s) %(message)s'
+    )
+    manager_logger.info(f"Logging initialized at level: {level_name.upper()}")
 
-    def __init__(self, config_path: Optional[str] = None):
-        """
-        Loads configuration and prepares the system for startup.
-        """
-        manager_logger.info("Initializing Kaiagotchi Manager...")
-        
-        # 1. Load Configuration
-        # This calls the function we defined in kaiagotchi/utils.py
-        self.config = load_config(config_path)
-        manager_logger.info("Configuration loaded.")
-        
-        # 2. Setup Logging based on loaded configuration
-        self._setup_logging()
-
-        # 3. Initialize Agent
-        # The agent type could be configurable later, but for now we use the base class
-        self.agent: KaiagotchiBase = KaiagotchiBase(self.config)
-        manager_logger.info(f"Agent '{self.agent.name}' initialized.")
-
-        # 4. State Management and Cleanup Handlers
-        # Allows for graceful shutdown on signals (like Ctrl+C)
-        signal.signal(signal.SIGINT, self._handle_signal)
-        signal.signal(signal.SIGTERM, self._handle_signal)
-        
-        manager_logger.info("Manager initialization complete.")
-
-    def _setup_logging(self):
-        """
-        Configures the application's logging infrastructure based on the config.
-        Sets up console and file logging with appropriate formats and levels.
-        """
-        log_config = self.config.get('log', {})
-        log_level_str = log_config.get('level', 'INFO').upper()
-        log_level = LOG_LEVEL_MAP.get(log_level_str, logging.INFO)
-        
-        # 1. Root Logger Setup
-        root_logger = logging.getLogger()
-        root_logger.setLevel(log_level)
-        
-        # Clear existing handlers to prevent duplicate logs (common during re-init)
-        if root_logger.hasHandlers():
-            root_logger.handlers.clear()
-
-        # Define a consistent format
-        log_format = logging.Formatter(
-            '%(asctime)s | %(name)-10s | %(levelname)-8s | %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-
-        # 2. Console Handler (for real-time output)
-        if log_config.get('console', True):
-            console_handler = logging.StreamHandler(sys.stdout)
-            console_handler.setFormatter(log_format)
-            root_logger.addHandler(console_handler)
-            manager_logger.debug("Console logging enabled.")
-
-        # 3. File Handler (for persistent logs)
-        log_filepath = log_config.get('file', '/var/log/kaiagotchi/kaiagotchi.log')
-        if log_filepath:
-            try:
-                # Ensure log directory exists
-                import os
-                log_dir = os.path.dirname(log_filepath)
-                if log_dir and not os.path.exists(log_dir):
-                    os.makedirs(log_dir, exist_ok=True)
-                
-                file_handler = logging.FileHandler(log_filepath, mode='a')
-                file_handler.setFormatter(log_format)
-                root_logger.addHandler(file_handler)
-                manager_logger.debug(f"File logging enabled at: {log_filepath}")
-            except Exception as e:
-                manager_logger.error(f"Failed to set up file logging at {log_filepath}: {e}")
-                # Log to console if file logging fails
-
-    def _handle_signal(self, signum, frame):
-        """
-        Signal handler for clean shutdown.
-        """
-        manager_logger.warning(f"Received signal {signum}. Initiating shutdown...")
-        self.stop()
-        sys.exit(0)
-
-    def start(self):
-        """
-        Starts the core application loop.
-        """
-        manager_logger.info(f"Starting Kaiagotchi agent '{self.agent.name}'...")
-        
-        # 1. Call agent's loaded hook
-        self.agent.on_loaded()
-        
-        # 2. Start the agent's main run loop (this method is blocking)
-        try:
-            self.agent.run()
-        except Exception as e:
-            manager_logger.critical(f"Agent terminated unexpectedly: {e}", exc_info=True)
-        finally:
-            self.stop()
-
-    def stop(self):
-        """
-        Stops the core application and performs cleanup.
-        """
-        manager_logger.info("Manager performing shutdown and cleanup...")
-        self.agent.stop() # Signal the agent to stop its internal loop
-        
-        # Placeholder for other cleanup actions (e.g., stopping UI server, cleaning up interfaces)
-        manager_logger.info("Cleanup complete. Application terminated.")
-
-
-# --- Main Execution Block ---
 
 def main():
     """
-    Parses command-line arguments and starts the Manager.
+    The main execution function for the Kaiagotchi application.
     """
     parser = argparse.ArgumentParser(
-        description="Kaiagotchi - An autonomous technical counterpart for Wi-Fi security research.",
-        formatter_class=argparse.RawTextHelpFormatter
+        description='Kaiagotchi Agent Management Utility.',
+        epilog='Use the "run" command to start the main agent loop.'
     )
     
-    # Optional argument to specify a custom config file
     parser.add_argument(
-        '-c', '--config',
-        help="Specify a custom configuration file path (e.g., /home/user/my-config.toml)",
-        default=None,
-        type=str
+        '-c', '--config-path',
+        type=str,
+        default=DEFAULT_CONFIG_PATH,
+        help=f'Path to the configuration file (default: {DEFAULT_CONFIG_PATH}).'
     )
     
-    # Optional argument to display version (you need to implement a function to get version later)
     parser.add_argument(
-        '-V', '--version',
-        action='store_true',
-        help="Display the version number and exit."
+        'command',
+        nargs='?', 
+        default='run',
+        help='The command to execute (e.g., run, status). Default is "run".'
     )
     
     args = parser.parse_args()
+
+    # 1. Configuration Loading (using imported function)
+    config = load_config(config_path=args.config_path)
+
+    # 2. Logging Setup
+    log_level = config.get('log', {}).get('level', 'INFO')
+    setup_logging(log_level)
     
-    if args.version:
-        # Placeholder for version logic (will be implemented in kaiagotchi.utils later)
-        print("Kaiagotchi Version: 1.0.0 (Alpha)") 
-        sys.exit(0)
-    
-    # Initialize and start the Manager
-    try:
-        manager = Manager(config_path=args.config)
-        manager.start()
-    except Exception as e:
-        manager_logger.critical(f"Fatal error during Manager startup: {e}", exc_info=True)
-        sys.exit(1)
+    # 3. Agent Initialization and Start
+    command = args.command.lower() 
+
+    if command == 'run':
+        manager_logger.info(f"Starting Kaiagotchi agent. Configuration loaded from: {args.config_path}")
+        
+        try:
+            # Instantiate the agent
+            agent = KaiagotchiBase(config=config)
+            
+            # --- Web UI Initialization ---
+            if config.get('ui', {}).get('enabled', False):
+                manager_logger.info("Initializing Web UI Server...")
+                
+                # CORRECTED: Instantiate the Server class from your ui/web.py.
+                # The Server.__init__ method handles the threading internally,
+                # as shown in the code you provided.
+                web_server_instance = Server(agent=agent, config=config)
+                
+            # --- Main Agent Start ---
+            # The agent.run() call is designed to block until it's stopped 
+            agent.run() 
+            
+        except KeyboardInterrupt:
+            # Handle Ctrl+C gracefully
+            manager_logger.info("Termination signal received (Ctrl+C). Stopping agent gracefully.")
+            if 'agent' in locals():
+                agent.stop()
+        except Exception as e:
+            manager_logger.critical(f"A fatal error occurred during agent execution: {e}", exc_info=True)
+            sys.exit(1)
+            
+    else:
+        manager_logger.warning(f"Command '{command}' not yet implemented. Use 'run'.")
