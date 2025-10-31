@@ -1,11 +1,9 @@
-import subprocess
 import logging
 import pathlib
 import os
 import sys
-import tomlkit # Dependency for configuration loading
-import glob
-from typing import List, Tuple, Union, Dict, Any
+import tomlkit
+from typing import Dict, Any
 
 # --- Global Configuration Constants ---
 DEFAULT_CONFIG_PATH = '/etc/kaiagotchi/config.toml'
@@ -52,7 +50,6 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
             loaded_config = tomlkit.parse(config_content)
         
         # Simple update: Overwrite keys in 'config' with values from 'loaded_config'
-        # This handles merging default settings with user-defined settings
         for section, settings in loaded_config.items():
             if section in config and isinstance(config[section], dict):
                 config[section].update(settings)
@@ -91,62 +88,3 @@ def get_state_path(config: Dict[str, Any], filename: str = DEFAULT_STATE_FILENAM
     state_path = str(pathlib.Path(base_dir) / filename)
     utils_logger.debug(f"State path generated: {state_path}")
     return state_path
-
-
-# --- Existing Low-Level Utility Functions ---
-
-def parse_version(version: str) -> Tuple[str, ...]:
-    """
-    Converts a version str to tuple, so that versions can be compared
-    (e.g., '1.4.1' -> ('1', '4', '1')).
-    """
-    return tuple(version.split('.'))
-
-
-def secs_to_hhmmss(secs: Union[int, float]) -> str:
-    """
-    Converts seconds into HH:MM:SS format.
-    """
-    secs = int(secs)
-    mins, secs = divmod(secs, 60)
-    hours, mins = divmod(mins, 60)
-    return '%02d:%02d:%02d' % (hours, mins, secs)
-
-
-def total_unique_handshakes(path: str) -> int:
-    """
-    Returns the count of unique handshakes (files ending in .pcap) in a directory.
-    """
-    expr = os.path.join(path, "*.pcap")
-    return len(glob.glob(expr))
-
-
-def iface_channels(ifname: str) -> List[int]:
-    """
-    Returns a list of available wireless channels for a given interface name,
-    by parsing 'iw' output.
-    
-    NOTE: This uses 'subprocess' to execute OS-level commands, making it a 
-    low-level system utility.
-    """
-    channels = []
-    # Find the physical device name
-    phy = subprocess.getoutput(f"/sbin/iw {ifname} info | grep wiphy | cut -d ' ' -f 2")
-    
-    # Get all non-disabled channels from iw output
-    # This command chain relies heavily on the specific output format of the 'iw' tool.
-    output = subprocess.getoutput(f"/sbin/iw phy {phy} channels | grep -v disabled | grep -v DFS")
-    
-    # Example output line: '* 2412 MHz [1] (20.0 dBm)'
-    for line in output.split('\n'):
-        if '[' in line and ']' in line:
-            try:
-                # Extract the channel number inside the brackets
-                channel = int(line.split('[')[1].split(']')[0].strip())
-                channels.append(channel)
-            except (ValueError, IndexError):
-                utils_logger.debug(f"Could not parse channel line: {line}")
-                continue
-    
-    # Remove duplicates and return sorted list
-    return sorted(list(set(channels)))
