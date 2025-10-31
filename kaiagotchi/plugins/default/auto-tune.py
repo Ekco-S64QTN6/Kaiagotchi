@@ -5,12 +5,12 @@ import html
 import os
 import json
 
-import Kaiagotchi.plugins as plugins
-from Kaiagotchi.ui.components import LabeledValue
-from Kaiagotchi.ui.view import BLACK
-import Kaiagotchi.ui.fonts as fonts
-import Kaiagotchi.utils
-from Kaiagotchi.utils import save_config, merge_config
+import kaiagotchi.plugins as plugins
+from kaiagotchi.ui.components import LabeledValue
+from kaiagotchi.ui.view import BLACK
+import kaiagotchi.ui.fonts as fonts
+import kaiagotchi.utils
+from kaiagotchi.utils import save_config, merge_config
 
 from flask import abort
 from flask import render_template_string
@@ -500,7 +500,7 @@ class auto_tune(plugins.Plugin):
                             success, message = self._load_preset(preset_name)
                             if success:
                                 ret += "<div class='success'>%s</div>" % message
-                                save_config(self._agent._config, "/etc/Kaiagotchi/config.toml")
+                                save_config(self._agent._config, "/etc/kaiagotchi/config.toml")
                             else:
                                 ret += "<div class='error'>%s</div>" % message
                         else:
@@ -547,7 +547,7 @@ class auto_tune(plugins.Plugin):
                                 logging.exception(e)
                     ret += "</ul>"
                     if changed:
-                        save_config(self._agent._config, "/etc/Kaiagotchi/config.toml")
+                        save_config(self._agent._config, "/etc/kaiagotchi/config.toml")
                     ret += self.showEditForm(request)
                     ret += self.showHistogram()
                     ret += self.showChistos()
@@ -631,7 +631,7 @@ class auto_tune(plugins.Plugin):
                     self._unscanned_channels = agent._supported_channels.copy()
                 else:
                     logging.info("Repopulating unscanned list")
-                    self._unscanned_channels = Kaiagotchi.utils.iface_channels(agent._config['main']['iface'])
+                    self._unscanned_channels = kaiagotchi.utils.iface_channels(agent._config['main']['iface'])
 
             for i in range(n):
                 if len(self._unscanned_channels):

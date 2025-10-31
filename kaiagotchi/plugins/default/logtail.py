@@ -1,17 +1,16 @@
 import os
 import logging
 import threading
+import time
 from itertools import islice
-from time import sleep
-from datetime import datetime,timedelta
-from Kaiagotchi import plugins
-from Kaiagotchi.utils import StatusFile
-from flask import render_template_string
-from flask import jsonify
-from flask import abort
-from flask import Response
+from pathlib import Path
+from typing import Generator, Optional
+from flask import render_template_string, jsonify, abort, Response
 
+from kaiagotchi import plugins
+from kaiagotchi.utils import StatusFile
 
+# Complete TEMPLATE definition
 TEMPLATE = """
 {% extends "base.html" %}
 {% set active_page = "plugins" %}
@@ -234,40 +233,154 @@ TEMPLATE = """
 
 class Logtail(plugins.Plugin):
     __author__ = '33197631+dadav@users.noreply.github.com'
-    __version__ = '0.1.0'
+    __version__ = '0.2.0'  # Updated version
     __license__ = 'GPL3'
-    __description__ = 'This plugin tails the logfile.'
+    __description__ = 'This plugin tails the logfile with enhanced security and performance'
 
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.options = dict()
         self.ready = False
+        self.max_lines = 4096
+        self.log_file_path = None
+        self.last_file_size = 0
 
-    def on_config_changed(self, config):
-        self.config = config
-        self.ready = True
+    def _validate_log_file(self, filepath: str) -> bool:
+        """Validate log file path and permissions"""
+        try:
+            path = Path(filepath)
+            if not path.exists():
+                logging.error(f"Logtail: Log file not found: {filepath}")
+                return False
+            if not path.is_file():
+                logging.error(f"Logtail: Path is not a file: {filepath}")
+                return False
+            # Check if file is readable
+            with open(filepath, 'r') as f:
+                f.read(0)  # Test read
+            return True
+        except Exception as e:
+            logging.error(f"Logtail: Error validating log file {filepath}: {e}")
+            return False
+
+    def _safe_tail_file(self, filepath: str, max_lines: int = 4096) -> list:
+        """Safely tail file with error handling"""
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                # Get last N lines efficiently
+                lines = []
+                buffer_size = 8192
+                f.seek(0, os.SEEK_END)
+                file_size = f.tell()
+                block = -1
+                lines_found = 0
+                
+                while lines_found < max_lines and file_size > 0:
+                    if file_size - buffer_size > 0:
+                        f.seek(block * buffer_size, os.SEEK_END)
+                        data = f.read(buffer_size)
+                    else:
+                        f.seek(0, os.SEEK_SET)
+                        data = f.read(file_size)
+                    
+                    lines_found += data.count('\n')
+                    lines.append(data)
+                    if file_size - buffer_size > 0:
+                        block -= 1
+                    else:
+                        break
+                    file_size -= buffer_size
+                
+                # Return the last max_lines
+                content = ''.join(reversed(lines))
+                return content.split('\n')[-max_lines:]
+                
+        except Exception as e:
+            logging.error(f"Logtail: Error reading log file: {e}")
+            return []
 
     def on_loaded(self):
-        """
-        Gets called when the plugin gets loaded
-        """
-        logging.info("Logtail plugin loaded.")
+        """Plugin loaded callback"""
+        logging.info("Logtail plugin loaded with enhanced security")
+
+    def on_config_changed(self, config):
+        """Enhanced config validation"""
+        try:
+            self.config = config
+            log_path = config['main']['log']['path']
+            
+            if self._validate_log_file(log_path):
+                self.log_file_path = log_path
+                self.ready = True
+                logging.info(f"Logtail: Successfully configured for log file: {log_path}")
+            else:
+                self.ready = False
+                logging.error("Logtail: Invalid log file configuration")
+                
+        except KeyError as e:
+            logging.error(f"Logtail: Missing configuration key: {e}")
+            self.ready = False
+        except Exception as e:
+            logging.error(f"Logtail: Configuration error: {e}")
+            self.ready = False
 
     def on_webhook(self, path, request):
+        """Enhanced webhook with security headers"""
         if not self.ready:
             return "Plugin not ready"
 
+        # Add security headers
+        headers = {
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+        }
+
         if not path or path == "/":
-            return render_template_string(TEMPLATE)
+            response = render_template_string(TEMPLATE)
+            for key, value in headers.items():
+                response.headers[key] = value
+            return response
 
         if path == 'stream':
             def generate():
-                with open(self.config['main']['log']['path']) as f:
-                    yield ''.join(f.readlines()[-self.options.get('max-lines', 4096):])
-                    while True:
-                        yield f.readline()
+                if not self.log_file_path:
+                    yield "Log file not configured\n"
+                    return
 
-            return Response(generate(), mimetype='text/plain')
+                try:
+                    # Send initial batch
+                    initial_lines = self._safe_tail_file(self.log_file_path, self.max_lines)
+                    yield '\n'.join(initial_lines) + '\n'
+                    
+                    # Stream new lines
+                    while True:
+                        try:
+                            current_size = os.path.getsize(self.log_file_path)
+                            if current_size > self.last_file_size:
+                                with open(self.log_file_path, 'r') as f:
+                                    f.seek(self.last_file_size)
+                                    new_data = f.read()
+                                    if new_data:
+                                        yield new_data
+                                    self.last_file_size = current_size
+                            elif current_size < self.last_file_size:
+                                # Log file was rotated
+                                self.last_file_size = 0
+                                initial_lines = self._safe_tail_file(self.log_file_path, self.max_lines)
+                                yield '\n'.join(initial_lines) + '\n'
+                            
+                            time.sleep(1)
+                        except Exception as e:
+                            logging.error(f"Logtail: Stream error: {e}")
+                            yield f"# Error reading log: {e}\n"
+                            break
+                            
+                except Exception as e:
+                    yield f"# Error: {e}\n"
+
+            response = Response(generate(), mimetype='text/plain')
+            for key, value in headers.items():
+                response.headers[key] = value
+            return response
 
         abort(404)
-

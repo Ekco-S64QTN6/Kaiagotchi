@@ -4,10 +4,10 @@ import os
 import subprocess
 import threading
 
-import Kaiagotchi.plugins as plugins
-import Kaiagotchi.ui.fonts as fonts
-from Kaiagotchi.ui.components import LabeledValue
-from Kaiagotchi.ui.view import BLACK
+import kaiagotchi.plugins as plugins
+import kaiagotchi.ui.fonts as fonts
+from kaiagotchi.ui.components import LabeledValue
+from kaiagotchi.ui.view import BLACK
 
 """
 # Android
@@ -78,7 +78,7 @@ while true; do
 done
 -----
 
-# Kaiagotchi
+# kaiagotchi
 main.plugins.gps_listener.enabled = true
 
 # packages

@@ -3,434 +3,564 @@ import logging
 import glob
 import re
 import shutil
-import socket  # <-- Added for DNS check
+import socket
+import tempfile
+import subprocess
 from fnmatch import fnmatch
-from Kaiagotchi.utils import download_file, unzip, save_config, parse_version, md5
-from Kaiagotchi.plugins import default_path
+from typing import Dict, List, Optional, Tuple, Any
+from urllib.parse import urlparse
 
+# Safe imports with error handling
+try:
+    from ..utils import download_file, unzip, save_config, parse_version, md5
+    from . import default_path
+except ImportError as e:
+    logging.error("Failed to import required modules: %s", e)
+    raise
 
-SAVE_DIR = '/usr/local/share/Kaiagotchi/available-plugins/'
-DEFAULT_INSTALL_PATH = '/usr/local/share/Kaiagotchi/installed-plugins/'
+SAVE_DIR = '/usr/local/share/kaiagotchi/available-plugins/'
+DEFAULT_INSTALL_PATH = '/usr/local/share/kaiagotchi/installed-plugins/'
 
+class PluginManagerError(Exception):
+    """Base exception for plugin manager errors."""
+    pass
+
+class NetworkError(PluginManagerError):
+    """Raised when network operations fail."""
+    pass
+
+class PluginNotFoundError(PluginManagerError):
+    """Raised when a plugin is not found."""
+    pass
+
+def _ensure_directory(path: str) -> bool:
+    """Ensure directory exists with proper permissions."""
+    try:
+        os.makedirs(path, mode=0o755, exist_ok=True)
+        return True
+    except OSError as e:
+        logging.error("Failed to create directory %s: %s", path, e)
+        return False
+
+def _get_editor() -> str:
+    """Get the system editor with fallbacks."""
+    editor = os.environ.get('EDITOR')
+    if not editor:
+        # Try common editors in order of preference
+        for candidate in ['vim', 'nano', 'vi', 'emacs']:
+            if shutil.which(candidate):
+                editor = candidate
+                break
+        else:
+            editor = 'vi'  # Final fallback
+    return editor
 
 def add_parsers(subparsers):
-    """
-    Adds the plugins subcommand to a given argparse.ArgumentParser
-    """
-    # subparsers = parser.add_subparsers()
-    # Kaiagotchi plugins
-    parser_plugins = subparsers.add_parser('plugins')
-    plugin_subparsers = parser_plugins.add_subparsers(dest='plugincmd')
+    """Add the plugins subcommand to argparse."""
+    parser_plugins = subparsers.add_parser('plugins', 
+                                         help='Manage kaiagotchi plugins')
+    plugin_subparsers = parser_plugins.add_subparsers(dest='plugincmd', 
+                                                    required=True,
+                                                    help='Plugin commands')
 
-    # Kaiagotchi plugins search
-    parser_plugins_search = plugin_subparsers.add_parser('search', help='Search for Kaiagotchi plugins')
-    parser_plugins_search.add_argument('pattern', type=str, help="Search expression (wildcards allowed)")
+    # Search command
+    parser_search = plugin_subparsers.add_parser('search', 
+                                               help='Search for plugins')
+    parser_search.add_argument('pattern', type=str, 
+                             help="Search expression (wildcards allowed)")
 
-    # Kaiagotchi plugins list
-    parser_plugins_list = plugin_subparsers.add_parser('list', help='List available Kaiagotchi plugins')
-    parser_plugins_list.add_argument('-i', '--installed', action='store_true', required=False, help='List also installed plugins')
+    # List command
+    parser_list = plugin_subparsers.add_parser('list', 
+                                             help='List available plugins')
+    parser_list.add_argument('-i', '--installed', action='store_true',
+                           help='List installed plugins')
 
-    # Kaiagotchi plugins update
-    parser_plugins_update = plugin_subparsers.add_parser('update', help='Updates the database')
+    # Update command
+    plugin_subparsers.add_parser('update', 
+                               help='Update plugin database')
 
-    # Kaiagotchi plugins upgrade
-    parser_plugins_upgrade = plugin_subparsers.add_parser('upgrade', help='Upgrades plugins')
-    parser_plugins_upgrade.add_argument('pattern', type=str, nargs='?', default='*', help="Filter expression (wildcards allowed)")
+    # Upgrade command
+    parser_upgrade = plugin_subparsers.add_parser('upgrade',
+                                                help='Upgrade plugins')
+    parser_upgrade.add_argument('pattern', type=str, nargs='?', default='*',
+                              help="Filter expression (wildcards allowed)")
 
-    # Kaiagotchi plugins enable
-    parser_plugins_enable = plugin_subparsers.add_parser('enable', help='Enables a plugin')
-    parser_plugins_enable.add_argument('name', type=str, help='Name of the plugin')
+    # Enable command
+    parser_enable = plugin_subparsers.add_parser('enable',
+                                               help='Enable a plugin')
+    parser_enable.add_argument('name', type=str,
+                             help='Name of the plugin')
 
-    # Kaiagotchi plugins disable
-    parser_plugins_disable = plugin_subparsers.add_parser('disable', help='Disables a plugin')
-    parser_plugins_disable.add_argument('name', type=str, help='Name of the plugin')
+    # Disable command
+    parser_disable = plugin_subparsers.add_parser('disable',
+                                                help='Disable a plugin')
+    parser_disable.add_argument('name', type=str,
+                              help='Name of the plugin')
 
-    # Kaiagotchi plugins install
-    parser_plugins_install = plugin_subparsers.add_parser('install', help='Installs a plugin')
-    parser_plugins_install.add_argument('name', type=str, help='Name of the plugin')
+    # Install command
+    parser_install = plugin_subparsers.add_parser('install',
+                                                help='Install a plugin')
+    parser_install.add_argument('name', type=str,
+                              help='Name of the plugin')
 
-    # Kaiagotchi plugins uninstall
-    parser_plugins_uninstall = plugin_subparsers.add_parser('uninstall', help='Uninstalls a plugin')
-    parser_plugins_uninstall.add_argument('name', type=str, help='Name of the plugin')
+    # Uninstall command
+    parser_uninstall = plugin_subparsers.add_parser('uninstall',
+                                                  help='Uninstall a plugin')
+    parser_uninstall.add_argument('name', type=str,
+                                help='Name of the plugin')
 
-    # Kaiagotchi plugins edit
-    parser_plugins_edit = plugin_subparsers.add_parser('edit', help='Edit the options')
-    parser_plugins_edit.add_argument('name', type=str, help='Name of the plugin')
+    # Edit command
+    parser_edit = plugin_subparsers.add_parser('edit',
+                                             help='Edit plugin options')
+    parser_edit.add_argument('name', type=str,
+                           help='Name of the plugin')
 
     return subparsers
 
+def used_plugin_cmd(args) -> bool:
+    """Check if plugins subcommand was used."""
+    return hasattr(args, 'plugincmd') and args.plugincmd is not None
 
-def used_plugin_cmd(args):
-    """
-    Checks if the plugins subcommand was used
-    """
-    return hasattr(args, 'plugincmd')
-
-
-def handle_cmd(args, config):
-    """
-    Parses the arguments and does the thing the user wants
-    """
-    if args.plugincmd == 'update':
-        return update(config)
-    elif args.plugincmd == 'search':
-        args.installed = True  # also search in installed plugins
-        return list_plugins(args, config, args.pattern)
-    elif args.plugincmd == 'install':
-        return install(args, config)
-    elif args.plugincmd == 'uninstall':
-        return uninstall(args, config)
-    elif args.plugincmd == 'list':
-        return list_plugins(args, config)
-    elif args.plugincmd == 'enable':
-        return enable(args, config)
-    elif args.plugincmd == 'disable':
-        return disable(args, config)
-    elif args.plugincmd == 'upgrade':
-        return upgrade(args, config, args.pattern)
-    elif args.plugincmd == 'edit':
-        return edit(args, config)
-
-    raise NotImplementedError()
-
-
-def edit(args, config):
-    """
-    Edit the config of the plugin
-    """
-    plugin = args.name
-    editor = os.environ.get('EDITOR', 'vim')  # because vim is the best
-
-    if plugin not in config['main']['plugins']:
+def handle_cmd(args, config: Dict[str, Any]) -> int:
+    """Handle plugin commands."""
+    cmd_handlers = {
+        'update': update,
+        'search': lambda a, c: list_plugins(a, c, a.pattern),
+        'install': install,
+        'uninstall': uninstall,
+        'list': list_plugins,
+        'enable': enable,
+        'disable': disable,
+        'upgrade': lambda a, c: upgrade(a, c, a.pattern),
+        'edit': edit,
+    }
+    
+    handler = cmd_handlers.get(args.plugincmd)
+    if not handler:
+        logging.error("Unknown plugin command: %s", args.plugincmd)
+        return 1
+    
+    try:
+        return handler(args, config)
+    except Exception as e:
+        logging.error("Error executing plugin command %s: %s", args.plugincmd, e)
         return 1
 
-    plugin_config = {'main': {'plugins': {plugin: config['main']['plugins'][plugin]}}}
+def edit(args, config: Dict[str, Any]) -> int:
+    """Edit plugin configuration."""
+    plugin = args.name
+    
+    if plugin not in config.get('main', {}).get('plugins', {}):
+        logging.error("Plugin %s not found in configuration", plugin)
+        return 1
 
-    import tomlkit
-    from subprocess import call
-    from tempfile import NamedTemporaryFile
+    editor = _get_editor()
+    
+    # Create temporary configuration file
+    plugin_config = {
+        'main': {
+            'plugins': {
+                plugin: config['main']['plugins'][plugin]
+            }
+        }
+    }
 
-    new_plugin_config = None
-    with NamedTemporaryFile(suffix=".tmp", mode='r+t') as tmp:
-        tmp.write(tomlkit.dumps(plugin_config))
-        tmp.flush()
-        rc = call([editor, tmp.name])
-        if rc != 0:
-            return rc
-        tmp.seek(0)
-        new_plugin_config = tomlkit.load(tmp)
+    try:
+        import tomlkit
+        
+        with tempfile.NamedTemporaryFile(mode='w+', suffix='.toml', 
+                                       prefix=f'kaiagotchi_{plugin}_', delete=False) as tmp:
+            # Write current config
+            tmp.write(tomlkit.dumps(plugin_config))
+            tmp.flush()
+            
+            # Launch editor
+            result = subprocess.run([editor, tmp.name])
+            if result.returncode != 0:
+                logging.error("Editor exited with code %d", result.returncode)
+                os.unlink(tmp.name)  # Clean up temp file
+                return result.returncode
+            
+            # Read back changes
+            tmp.seek(0)
+            try:
+                new_config = tomlkit.load(tmp)
+                config['main']['plugins'][plugin] = new_config['main']['plugins'][plugin]
+            except Exception as e:
+                logging.error("Invalid TOML configuration: %s", e)
+                os.unlink(tmp.name)  # Clean up temp file
+                return 1
+            
+            os.unlink(tmp.name)  # Clean up temp file
+        
+        # Save configuration
+        save_config(config, getattr(args, 'user_config', None))
+        logging.info("Updated configuration for plugin %s", plugin)
+        return 0
+        
+    except ImportError:
+        logging.error("tomlkit required for editing configuration")
+        return 1
+    except Exception as e:
+        logging.error("Failed to edit plugin configuration: %s", e)
+        return 1
 
-    config['main']['plugins'][plugin] = new_plugin_config['main']['plugins'][plugin]
-    save_config(config, args.user_config)
-    return 0
+def enable(args, config: Dict[str, Any]) -> int:
+    """Enable a plugin."""
+    plugin = args.name
+    
+    if 'main' not in config:
+        config['main'] = {}
+    if 'plugins' not in config['main']:
+        config['main']['plugins'] = {}
+    
+    if plugin not in config['main']['plugins']:
+        config['main']['plugins'][plugin] = {}
+    
+    config['main']['plugins'][plugin]['enabled'] = True
+    
+    try:
+        save_config(config, getattr(args, 'user_config', None))
+        logging.info("Enabled plugin: %s", plugin)
+        return 0
+    except Exception as e:
+        logging.error("Failed to enable plugin %s: %s", plugin, e)
+        return 1
 
+def disable(args, config: Dict[str, Any]) -> int:
+    """Disable a plugin."""
+    plugin = args.name
+    
+    if 'main' not in config:
+        config['main'] = {}
+    if 'plugins' not in config['main']:
+        config['main']['plugins'] = {}
+    
+    if plugin not in config['main']['plugins']:
+        config['main']['plugins'][plugin] = {}
+    
+    config['main']['plugins'][plugin]['enabled'] = False
+    
+    try:
+        save_config(config, getattr(args, 'user_config', None))
+        logging.info("Disabled plugin: %s", plugin)
+        return 0
+    except Exception as e:
+        logging.error("Failed to disable plugin %s: %s", plugin, e)
+        return 1
 
-def enable(args, config):
-    """
-    Enables the given plugin and saves the config to disk
-    """
-    if args.name not in config['main']['plugins']:
-        config['main']['plugins'][args.name] = dict()
-    config['main']['plugins'][args.name]['enabled'] = True
-    save_config(config, args.user_config)
-    return 0
+def upgrade(args, config: Dict[str, Any], pattern: str = '*') -> int:
+    """Upgrade plugins matching pattern."""
+    try:
+        available = _get_available()
+        installed = _get_installed(config)
+        
+        upgraded = 0
+        
+        for plugin, filename in installed.items():
+            if not fnmatch(plugin, pattern) or plugin not in available:
+                continue
 
+            available_version = _extract_version(available[plugin])
+            installed_version = _extract_version(filename)
 
-def disable(args, config):
-    """
-    Disables the given plugin and saves the config to disk
-    """
-    if args.name not in config['main']['plugins']:
-        config['main']['plugins'][args.name] = dict()
-    config['main']['plugins'][args.name]['enabled'] = False
-    save_config(config, args.user_config)
-    return 0
-
-
-def upgrade(args, config, pattern='*'):
-    """
-    Upgrades the given plugin
-    """
-    available = _get_available()
-    installed = _get_installed(config)
-
-    for plugin, filename in installed.items():
-        if not fnmatch(plugin, pattern) or plugin not in available:
-            continue
-
-        available_version = _extract_version(available[plugin])
-        installed_version = _extract_version(filename)
-
-        if installed_version and available_version:
+            if not available_version or not installed_version:
+                continue
+                
             if available_version <= installed_version:
                 continue
-        else:
-            continue
 
-        logging.info('Upgrade %s from %s to %s', plugin, '.'.join(installed_version), '.'.join(available_version))
-        shutil.copyfile(available[plugin], installed[plugin])
+            logging.info('Upgrading %s from %s to %s', 
+                        plugin, '.'.join(installed_version), '.'.join(available_version))
+            
+            try:
+                # Backup existing plugin
+                backup_file = f"{filename}.bak"
+                shutil.copy2(filename, backup_file)
+                
+                # Install new version
+                shutil.copy2(available[plugin], filename)
+                
+                # Handle configuration files
+                for conf_src in glob.glob(available[plugin].replace('.py', '.y?ml')):
+                    conf_dst = os.path.join(os.path.dirname(filename), os.path.basename(conf_src))
+                    if os.path.exists(conf_dst) and md5(conf_dst) != md5(conf_src):
+                        shutil.copy2(conf_dst, f"{conf_dst}.bak")
+                    shutil.copy2(conf_src, conf_dst)
+                
+                upgraded += 1
+                logging.info('Successfully upgraded %s', plugin)
+                
+            except Exception as e:
+                logging.error('Failed to upgrade %s: %s', plugin, e)
+                # Restore backup if exists
+                if os.path.exists(backup_file):
+                    shutil.copy2(backup_file, filename)
 
-        # maybe has config
-        for conf in glob.glob(available[plugin].replace('.py', '.y?ml')):
-            dst = os.path.join(os.path.dirname(installed[plugin]), os.path.basename(conf))
-            if os.path.exists(dst) and md5(dst) != md5(conf):
-                # backup
-                logging.info('Backing up config: %s', os.path.basename(conf))
-                shutil.move(dst, dst + '.bak')
-            shutil.copyfile(conf, dst)
-
-    return 0
-
-
-def list_plugins(args, config, pattern='*'):
-    """
-    Lists the available and installed plugins
-    """
-    found = False
-
-    # MODIFIED: Added {author} placeholder
-    line = "|{name:^{width}}|{version:^9}|{enabled:^10}|{status:^15}|{author:^22}|"
-
-    available = _get_available()
-    installed = _get_installed(config)
-
-    available_and_installed = set(list(available.keys()) + list(installed.keys()))
-    available_not_installed = set(available.keys()) - set(installed.keys())
-
-    max_len_list = available_and_installed if args.installed else available_not_installed
-    if not max_len_list:
-        print('Maybe try: sudo Kaiagotchi plugins update')
+        if upgraded == 0:
+            logging.info('No plugins to upgrade')
+        
+        return 0
+    except Exception as e:
+        logging.error("Error during plugin upgrade: %s", e)
         return 1
-    max_len = max(map(len, max_len_list))
-    # MODIFIED: Added author to the header format
-    header = line.format(name='Plugin', width=max_len, version='Version', enabled='Active', status='Status', author='Author')
-    line_length = len(header) - 10 # Adjusted for new column length
 
-    print('-' * line_length)
-    print(header)
-    print('-' * line_length)
-
-    if args.installed:
-        # only installed (maybe update available?)
-        for plugin, filename in sorted(installed.items()):
+def list_plugins(args, config: Dict[str, Any], pattern: str = '*') -> int:
+    """List available and installed plugins."""
+    try:
+        available = _get_available()
+        installed = _get_installed(config)
+        
+        available_and_installed = set(available.keys()) | set(installed.keys())
+        available_not_installed = set(available.keys()) - set(installed.keys())
+        
+        max_len_list = available_and_installed if args.installed else available_not_installed
+        if not max_len_list:
+            print('No plugins found. Try: sudo kaiagotchi plugins update')
+            return 1
+            
+        max_len = max(map(len, max_len_list))
+        
+        # Format string with columns
+        line_fmt = "| {name:<%d} | {version:^8} | {enabled:^8} | {status:<14} | {author:<20} |" % max_len
+        header = line_fmt.format(
+            name="Plugin", version="Version", enabled="Active", 
+            status="Status", author="Author"
+        )
+        separator = '-' * len(header)
+        
+        print(separator)
+        print(header)
+        print(separator)
+        
+        found = False
+        
+        if args.installed:
+            for plugin, filename in sorted(installed.items()):
+                if not fnmatch(plugin, pattern):
+                    continue
+                found = True
+                
+                installed_version = _extract_version(filename)
+                available_version = _extract_version(available.get(plugin))
+                
+                status = "installed"
+                if installed_version and available_version and available_version > installed_version:
+                    status = "update available"
+                
+                enabled = 'yes' if (
+                    plugin in config.get('main', {}).get('plugins', {}) and
+                    config['main']['plugins'][plugin].get('enabled', False)
+                ) else 'no'
+                
+                print(line_fmt.format(
+                    name=plugin,
+                    version='.'.join(installed_version) if installed_version else 'unknown',
+                    enabled=enabled,
+                    status=status,
+                    author=_extract_author(filename)
+                ))
+        
+        for plugin in sorted(available_not_installed):
             if not fnmatch(plugin, pattern):
                 continue
             found = True
-            installed_version = _extract_version(filename)
-            available_version = None
-            if plugin in available:
-                available_version = _extract_version(available[plugin])
-
-            status = "installed"
-            if installed_version and available_version:
-                if available_version > installed_version:
-                    status = "installed (^)"
-
-            enabled = 'enabled' if (plugin in config['main']['plugins'] and
-                                     'enabled' in config['main']['plugins'][plugin] and
-                                     config['main']['plugins'][plugin]['enabled']) else 'disabled'
-
-            # MODIFIED: Added author=_extract_author(filename) to the print format
-            print(line.format(name=plugin, width=max_len, version='.'.join(installed_version), enabled=enabled, status=status, author=_extract_author(filename)))
-
-    for plugin in sorted(available_not_installed):
-        if not fnmatch(plugin, pattern):
-            continue
-        found = True
-        available_version = _extract_version(available[plugin])
-        # MODIFIED: Added author=_extract_author(available[plugin]) to the print format
-        print(line.format(name=plugin, width=max_len, version='.'.join(available_version), enabled='-', status='available', author=_extract_author(available[plugin])))
-
-    print('-' * line_length)
-
-    if not found:
-        print('Maybe try: sudo Kaiagotchi plugins update')
+            
+            available_version = _extract_version(available[plugin])
+            print(line_fmt.format(
+                name=plugin,
+                version='.'.join(available_version) if available_version else 'unknown',
+                enabled='-',
+                status='available',
+                author=_extract_author(available[plugin])
+            ))
+        
+        print(separator)
+        
+        if not found:
+            print('No plugins matching pattern. Try: sudo kaiagotchi plugins update')
+            return 1
+            
+        return 0
+    except Exception as e:
+        logging.error("Error listing plugins: %s", e)
         return 1
-    return 0
 
-
-def _extract_version(filename):
-    """
-    Extracts the version from a python file
-    """
-    plugin_content = open(filename, 'rt').read()
-    m = re.search(r'__version__[\t ]*=[\t ]*[\'\"]([^\"\']+)', plugin_content)
-    if m:
-        return parse_version(m.groups()[0])
+def _extract_version(filename: str) -> Optional[List[str]]:
+    """Extract version from plugin file."""
+    try:
+        with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        
+        match = re.search(r'__version__\s*=\s*[\'"]([^\'"]+)[\'"]', content)
+        if match:
+            return parse_version(match.group(1))
+    except Exception as e:
+        logging.debug("Failed to extract version from %s: %s", filename, e)
+    
     return None
 
-
-# NEW FUNCTION ADDED
-def _extract_author(filename):
-    """
-    Extracts the author from a python file
-    """
+def _extract_author(filename: str) -> str:
+    """Extract author from plugin file."""
     try:
-        with open(filename, 'rt', errors='ignore') as f:
-            plugin_content = f.read()
-        m = re.search(r'__author__[\t ]*=[\t ]*[\'\"]([^\"\']+)', plugin_content)
-        if m:
-            return m.groups()[0]
+        with open(filename, 'r', encoding='utf-8', errors='ignore') as f:
+            content = f.read()
+        
+        match = re.search(r'__author__\s*=\s*[\'"]([^\'"]+)[\'"]', content)
+        if match:
+            return match.group(1)
     except Exception:
         pass
-    return 'n/a'  # Return 'n/a' if author not found
+    
+    return 'unknown'
 
-
-def _get_available():
-    """
-    Get all availaible plugins
-    """
-    available = dict()
-    for filename in glob.glob(os.path.join(SAVE_DIR, "*.py")):
-        plugin_name = os.path.basename(filename.replace(".py", ""))
-        available[plugin_name] = filename
+def _get_available() -> Dict[str, str]:
+    """Get available plugins."""
+    available = {}
+    if os.path.exists(SAVE_DIR):
+        for filename in glob.glob(os.path.join(SAVE_DIR, "*.py")):
+            plugin_name = os.path.basename(filename).replace(".py", "")
+            available[plugin_name] = filename
     return available
 
-
-def _get_installed(config):
-    """
-    Get all installed plugins
-    """
-    installed = dict()
-    search_dirs = [default_path, config['main']['custom_plugins']]
+def _get_installed(config: Dict[str, Any]) -> Dict[str, str]:
+    """Get installed plugins."""
+    installed = {}
+    search_dirs = [
+        default_path,
+        config.get('main', {}).get('custom_plugins')
+    ]
+    
     for search_dir in search_dirs:
-        if search_dir:
+        if search_dir and os.path.exists(search_dir):
             for filename in glob.glob(os.path.join(search_dir, "*.py")):
-                plugin_name = os.path.basename(filename.replace(".py", ""))
+                plugin_name = os.path.basename(filename).replace(".py", "")
                 installed[plugin_name] = filename
+                
     return installed
 
-
-def uninstall(args, config):
-    """
-    Uninstalls a plugin
-    """
-    plugin_name = args.name
-    installed = _get_installed(config)
-    if plugin_name not in installed:
-        logging.error('Plugin %s is not installed.', plugin_name)
-        return 1
-    os.remove(installed[plugin_name])
-    return 0
-
-
-def install(args, config):
-    """
-    Installs the given plugin
-    """
-    global DEFAULT_INSTALL_PATH
-    plugin_name = args.name
-    available = _get_available()
-    installed = _get_installed(config)
-
-    if plugin_name not in available:
-        logging.error('%s not found.', plugin_name)
-        return 1
-
-    if plugin_name in installed:
-        logging.error('%s already installed.', plugin_name)
-
-    # install into custom_plugins path
-    install_path = config['main']['custom_plugins']
-    if not install_path:
-        install_path = DEFAULT_INSTALL_PATH
-        config['main']['custom_plugins'] = install_path
-        save_config(config, args.user_config)
-
-    os.makedirs(install_path, exist_ok=True)
-
-    shutil.copyfile(available[plugin_name], os.path.join(install_path, os.path.basename(available[plugin_name])))
-
-    # maybe has config
-    for conf in glob.glob(available[plugin_name].replace('.py', '.y?ml')):
-        dst = os.path.join(install_path, os.path.basename(conf))
-        if os.path.exists(dst) and md5(dst) != md5(conf):
-            # backup
-            logging.info('Backing up config: %s', os.path.basename(conf))
-            shutil.move(dst, dst + '.bak')
-        shutil.copyfile(conf, dst)
-
-    return 0
-
-
-def _analyse_dir(path):
-    results = dict()
-    path += '*' if path.endswith('/') else '/*'
-    for filename in glob.glob(path, recursive=True):
-        if not os.path.isfile(filename):
-            continue
-        try:
-            results[filename] = md5(filename)
-        except OSError:
-            continue
-    return results
-
-
-def _check_internet():
-    """
-    Simple DNS check to verify that we can resolve a common hostname.
-    Returns True if DNS resolution succeeds, False otherwise.
-    """
+def uninstall(args, config: Dict[str, Any]) -> int:
+    """Uninstall a plugin."""
     try:
+        plugin_name = args.name
+        installed = _get_installed(config)
+        
+        if plugin_name not in installed:
+            logging.error('Plugin %s is not installed.', plugin_name)
+            return 1
+        
+        os.remove(installed[plugin_name])
+        
+        # Remove configuration if exists
+        if plugin_name in config.get('main', {}).get('plugins', {}):
+            del config['main']['plugins'][plugin_name]
+            save_config(config, getattr(args, 'user_config', None))
+        
+        logging.info('Uninstalled plugin: %s', plugin_name)
+        return 0
+    except Exception as e:
+        logging.error('Failed to uninstall %s: %s', plugin_name, e)
+        return 1
+
+def install(args, config: Dict[str, Any]) -> int:
+    """Install a plugin."""
+    try:
+        plugin_name = args.name
+        available = _get_available()
+        installed = _get_installed(config)
+        
+        if plugin_name not in available:
+            logging.error('Plugin %s not found.', plugin_name)
+            return 1
+        
+        if plugin_name in installed:
+            logging.error('Plugin %s already installed.', plugin_name)
+            return 1
+        
+        # Determine install path
+        install_path = config.get('main', {}).get('custom_plugins', DEFAULT_INSTALL_PATH)
+        if not _ensure_directory(install_path):
+            return 1
+        
+        # Install plugin file
+        src_file = available[plugin_name]
+        dst_file = os.path.join(install_path, os.path.basename(src_file))
+        shutil.copy2(src_file, dst_file)
+        
+        # Install configuration files
+        for conf_src in glob.glob(src_file.replace('.py', '.y?ml')):
+            conf_dst = os.path.join(install_path, os.path.basename(conf_src))
+            if os.path.exists(conf_dst):
+                # Backup existing config
+                backup_dst = f"{conf_dst}.bak"
+                shutil.copy2(conf_dst, backup_dst)
+                logging.info('Backed up existing config: %s', os.path.basename(conf_src))
+            
+            shutil.copy2(conf_src, conf_dst)
+        
+        logging.info('Installed plugin: %s', plugin_name)
+        return 0
+        
+    except Exception as e:
+        logging.error('Failed to install %s: %s', plugin_name, e)
+        return 1
+
+def _check_internet() -> bool:
+    """Check internet connectivity."""
+    try:
+        # Try DNS resolution first
         socket.gethostbyname('google.com')
         return True
-    except:
+    except Exception:
         return False
 
-
-def update(config):
-    """
-    Updates the database
-    """
-    global SAVE_DIR
-
-    if not _check_internet():
-        logging.error("No internet connection or DNS not working. Please follow these instructions:")
-        logging.error("https://github.com/jayofelony/Kaiagotchi/wiki/Step-2-Connecting")
-        print("No internet/DNS. Please follow these instructions:")
-        print("https://github.com/jayofelony/Kaiagotchi/wiki/Step-2-Connecting")
+def update(config: Dict[str, Any]) -> int:
+    """Update plugin database."""
+    try:
+        if not _check_internet():
+            logging.error("No internet connection. Please check network connectivity.")
+            print("No internet connection detected.")
+            return 1
+        
+        urls = config.get('main', {}).get('custom_plugin_repos', [])
+        if not urls:
+            logging.error('No plugin repositories configured.')
+            return 1
+        
+        if not _ensure_directory(SAVE_DIR):
+            return 1
+        
+        success_count = 0
+        for idx, repo_url in enumerate(urls):
+            dest_file = os.path.join(SAVE_DIR, f'plugins{idx}.zip')
+            
+            logging.info('Downloading plugins from %s', repo_url)
+            
+            try:
+                # Download plugin archive
+                if not download_file(repo_url, dest_file):
+                    logging.error('Failed to download from %s', repo_url)
+                    continue
+                
+                # Extract plugins
+                if not unzip(dest_file, SAVE_DIR, strip_dirs=1):
+                    logging.error('Failed to extract plugins from %s', dest_file)
+                    continue
+                
+                success_count += 1
+                logging.info('Successfully updated plugins from %s', repo_url)
+                
+            except Exception as e:
+                logging.error('Failed to update from %s: %s', repo_url, e)
+                continue
+        
+        if success_count > 0:
+            logging.info('Plugin database updated successfully from %d repositories', success_count)
+            return 0
+        else:
+            logging.error('Failed to update from any repository')
+            return 1
+            
+    except Exception as e:
+        logging.error("Error during plugin update: %s", e)
         return 1
-    else:
-        logging.info("Internet detected - Please run sudo Kaiagotchi plugins list")
-        print("Internet detected - Please run sudo Kaiagotchi plugins list")
-
-    urls = config['main']['custom_plugin_repos']
-    if not urls:
-        logging.info('No plugin repositories configured.')
-        return 1
-
-    rc = 0
-    for idx, REPO_URL in enumerate(urls):
-        DEST = os.path.join(SAVE_DIR, 'plugins%d.zip' % idx)
-        logging.info('Downloading plugins from %s to %s', REPO_URL, DEST)
-
-        try:
-            os.makedirs(SAVE_DIR, exist_ok=True)
-            before_update = _analyse_dir(SAVE_DIR)
-
-            download_file(REPO_URL, os.path.join(SAVE_DIR, DEST))
-
-            logging.info('Unzipping...')
-            unzip(DEST, SAVE_DIR, strip_dirs=1)
-
-            after_update = _analyse_dir(SAVE_DIR)
-
-            b_len = len(before_update)
-            a_len = len(after_update)
-
-            if a_len > b_len:
-                logging.info('Found %d new file(s).', a_len - b_len)
-
-            changed = 0
-            for filename, filehash in after_update.items():
-                if filename in before_update and filehash != before_update[filename]:
-                    changed += 1
-
-            if changed:
-                logging.info('%d file(s) were changed.', changed)
-
-        except Exception as ex:
-            logging.error('Error while updating plugins: %s', ex)
-            rc = 1
-    return rc
-

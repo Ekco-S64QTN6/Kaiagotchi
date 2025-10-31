@@ -3,10 +3,10 @@ import subprocess
 import re
 import time
 from flask import abort, render_template_string
-import Kaiagotchi.plugins as plugins
-import Kaiagotchi.ui.fonts as fonts
-from Kaiagotchi.ui.components import LabeledValue
-from Kaiagotchi.ui.view import BLACK
+import kaiagotchi.plugins as plugins
+import kaiagotchi.ui.fonts as fonts
+from kaiagotchi.ui.components import LabeledValue
+from kaiagotchi.ui.view import BLACK
 
 TEMPLATE = """
 {% extends "base.html" %}

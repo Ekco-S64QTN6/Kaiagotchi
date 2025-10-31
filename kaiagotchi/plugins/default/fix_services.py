@@ -6,15 +6,15 @@ import random
 from io import TextIOWrapper
 import os
 
-import Kaiagotchi
-from Kaiagotchi import plugins
+import kaiagotchi
+from kaiagotchi import plugins
 
-import Kaiagotchi.ui.faces as faces
-from Kaiagotchi.bettercap import Client
+import kaiagotchi.ui.faces as faces
+from kaiagotchi.bettercap import Client
 
-from Kaiagotchi.ui.components import Text
-from Kaiagotchi.ui.view import BLACK
-import Kaiagotchi.ui.fonts as fonts
+from kaiagotchi.ui.components import Text
+from kaiagotchi.ui.view import BLACK
+import kaiagotchi.ui.fonts as fonts
 
 
 class FixServices(plugins.Plugin):
@@ -154,7 +154,7 @@ class FixServices(plugins.Plugin):
         other_last_lines = ''.join(list(TextIOWrapper(subprocess.Popen(['journalctl', '-n10'],
                                                                        stdout=subprocess.PIPE).stdout))[-10:])
         other_other_last_lines = ''.join(
-            list(TextIOWrapper(subprocess.Popen(['tail', '-n10', '/etc/Kaiagotchi/log/Kaiagotchi.log'],
+            list(TextIOWrapper(subprocess.Popen(['tail', '-n10', '/etc/kaiagotchi/log/kaiagotchi.log'],
                                                 stdout=subprocess.PIPE).stdout))[-10:])
         # don't check if we ran a reset recently
         logging.debug("[Fix_Services]**** epoch")
@@ -168,7 +168,7 @@ class FixServices(plugins.Plugin):
                 subprocess.check_output("monstart", shell=True)
                 display.set('status', 'Wifi channel stuck. Restarting recon.')
                 display.update(force=True)
-                Kaiagotchi.restart("AUTO")
+                kaiagotchi.restart("AUTO")
 
             # Look for pattern 2
             elif len(self.pattern2.findall(other_last_lines)) >= 5:
@@ -223,19 +223,19 @@ class FixServices(plugins.Plugin):
             elif len(self.pattern5.findall(other_other_last_lines)) >= 1:
                 logging.debug("[Fix_Services] Bettercap has crashed!")
                 if hasattr(agent, 'view'):
-                    display.set('status', 'Restarting Kaiagotchi!')
+                    display.set('status', 'Restarting kaiagotchi!')
                     display.update(force=True)
                 os.system("systemctl restart bettercap")
-                Kaiagotchi.restart("AUTO")
+                kaiagotchi.restart("AUTO")
 
             # Look for pattern 6
             elif len(self.pattern6.findall(other_other_last_lines)) >= 1:
                 logging.debug("[Fix_Services] Bettercap has crashed!")
                 if hasattr(agent, 'view'):
-                    display.set('status', 'Restarting Kaiagotchi!')
+                    display.set('status', 'Restarting kaiagotchi!')
                     display.update(force=True)
                 os.system("systemctl restart bettercap")
-                Kaiagotchi.restart("AUTO")
+                kaiagotchi.restart("AUTO")
 
             # Look for pattern 7
             elif len(self.pattern7.findall(other_other_last_lines)) >= 1:
@@ -402,7 +402,7 @@ class FixServices(plugins.Plugin):
                         print(" wlan0mon didn't make it. trying again")
                 else:
                     logging.debug("[Fix_Services] wlan0mon loading failed, no choice but to reboot ..")
-                    Kaiagotchi.reboot()
+                    kaiagotchi.reboot()
 
             # exited the loop, so hopefully it loaded
             if tries < 3:
@@ -437,7 +437,7 @@ class FixServices(plugins.Plugin):
 
             except Exception as err:
                 logging.error("[Fix_Services wifi.recon on] %s" % repr(err))
-                Kaiagotchi.reboot()
+                kaiagotchi.reboot()
 
     # called to setup the ui elements
     def on_ui_setup(self, ui):
@@ -471,7 +471,7 @@ if __name__ == "__main__":
     data = {'Message': "kernel: brcmfmac: brcmf_cfg80211_nexmon_set_channel: Set Channel failed: chspec=1234"}
     event = {'data': data}
 
-    agent = Client('localhost', port=8081, username="Kaiagotchi", password="Kaiagotchi")
+    agent = Client('localhost', port=8081, username="kaiagotchi", password="kaiagotchi")
 
     time.sleep(2)
     print("3 seconds")

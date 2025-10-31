@@ -9,9 +9,9 @@ import glob
 from threading import Lock
 import time
 
-import Kaiagotchi
-import Kaiagotchi.plugins as plugins
-from Kaiagotchi.utils import StatusFile, parse_version as version_to_tuple
+import kaiagotchi
+import kaiagotchi.plugins as plugins
+from kaiagotchi.utils import StatusFile, parse_version as version_to_tuple
 
 
 def check(version, repo, native=True, token=""):
@@ -224,7 +224,7 @@ class AutoUpdate(plugins.Plugin):
                 to_check = [
                     ('jayofelony/bettercap', parse_version('bettercap -version'), True, 'bettercap'),
                     ('jayofelony/pwngrid', parse_version('pwngrid -version'), True, 'pwngrid-peer'),
-                    ('jayofelony/Kaiagotchi', Kaiagotchi.__version__, False, 'Kaiagotchi')
+                    ('jayofelony/kaiagotchi', kaiagotchi.__version__, False, 'kaiagotchi')
                 ]
 
                 for repo, local_version, is_native, svc_name in to_check:
@@ -256,7 +256,7 @@ class AutoUpdate(plugins.Plugin):
                 if num_installed > 0:
                     display.update(force=True, new_data={'status': 'Rebooting ...'})
                     time.sleep(3)
-                    Kaiagotchi.reboot()
+                    kaiagotchi.reboot()
 
             except Exception as e:
                 logging.error("[update] %s" % e)

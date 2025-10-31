@@ -45,6 +45,7 @@ dependencies = [
     # === System Integration ===
     "dbus-python; sys_platform == 'linux'",  # Linux D-Bus integration
     "file-read-backwards",       # Efficient log file reading
+    "python-prctl>=1.8.1; sys_platform == 'linux'",  # Process control for Linux
     
     # === Cryptography & Security ===
     "cryptography>=42.0.8",      # Modern cryptography (replaces pycryptodome)
@@ -70,6 +71,11 @@ dependencies = [
     # === Development & ML (Consider making optional) ===
     "gast",                      # Generic AST (ML framework dependency)
     "shimmy",                    # RL environment compatibility
+    
+    # === NEW: Hardware & Plugin Dependencies ===
+    "RPi.GPIO; sys_platform == 'linux'",           # Raspberry Pi GPIO
+    "smbus2; sys_platform == 'linux'",             # I2C communication (better than smbus)
+    "toml",                                        # TOML parsing for plugins
 ]
 
 [project.optional-dependencies]
@@ -78,10 +84,18 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
+    "mock-GPIO",                  # Mock RPi.GPIO for development
 ]
 ml = [
     "gast",
     "shimmy",
+]
+full = [
+    "RPi.GPIO",
+    "smbus2", 
+    "toml",
+    "bettercap",                  # Packet capture framework
+    "hcxpcapngtool",              # PCAP conversion tool
 ]
 
 [project.urls]
@@ -138,11 +152,8 @@ known-third-party = [
     "PyYAML", "dbus_python", "file_read_backwards", "flask", 
     "flask_cors", "flask_wtf", "gast", "numpy", "pydrive2", 
     "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", 
-    "websockets", "psutil"
+    "websockets", "psutil", "prctl", "RPi", "smbus2", "toml"
 ]
-
-[tool.ruff.mccabe]
-max-complexity = 12
 
 [tool.ruff.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
@@ -167,7 +178,9 @@ strict_equality = true
 module = [
     "flask.*",
     "tweepy.*", 
-    "pydrive2.*"
+    "pydrive2.*",
+    "RPi.*",
+    "smbus2.*"
 ]
 disallow_untyped_defs = false
 
@@ -185,6 +198,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "hardware: marks tests that require hardware",
 ]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

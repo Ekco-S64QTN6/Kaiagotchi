@@ -1,7 +1,7 @@
 import logging
 import RPi.GPIO as GPIO
 import subprocess
-import Kaiagotchi.plugins as plugins
+import kaiagotchi.plugins as plugins
 
 
 class GPIOButtons(plugins.Plugin):

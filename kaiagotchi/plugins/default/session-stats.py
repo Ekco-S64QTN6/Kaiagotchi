@@ -3,8 +3,8 @@ import logging
 import threading
 from time import sleep
 from datetime import datetime,timedelta
-from Kaiagotchi import plugins
-from Kaiagotchi.utils import StatusFile
+from kaiagotchi import plugins
+from kaiagotchi.utils import StatusFile
 from flask import render_template_string
 from flask import jsonify
 
@@ -182,17 +182,17 @@ class SessionStats(plugins.Plugin):
     __description__ = 'This plugin displays stats of the current session.'
 
     def __init__(self):
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # Enhanced: Use RLock for nested operations
         self.options = dict()
         self.stats = dict()
         self.clock = GhettoClock()
+        # Enhanced: Memory management
+        self.max_data_points = 1000  # Prevent memory exhaustion
 
     def on_loaded(self):
         """
         Gets called when the plugin gets loaded
         """
-        # this has to happen in "loaded" because the options are not yet
-        # available in the __init__
         os.makedirs(self.options['save_directory'], exist_ok=True)
         self.session_name = "stats_{}.json".format(self.clock.now().strftime("%Y_%m_%d_%H_%M"))
         self.session = StatusFile(os.path.join(self.options['save_directory'],
@@ -202,20 +202,41 @@ class SessionStats(plugins.Plugin):
 
     def on_epoch(self, agent, epoch, epoch_data):
         """
-        Save the epoch_data to self.stats
+        Enhanced: Save the epoch_data to self.stats with memory management
         """
         with self.lock:
-            self.stats[self.clock.now().strftime("%H:%M:%S")] = epoch_data
+            current_time = self.clock.now().strftime("%H:%M:%S")
+            self.stats[current_time] = epoch_data
+            
+            # Enhanced: Enforce memory limits
+            if len(self.stats) > self.max_data_points:
+                # Remove oldest entries
+                oldest_keys = sorted(self.stats.keys())[:len(self.stats) - self.max_data_points]
+                for key in oldest_keys:
+                    del self.stats[key]
+                    
             self.session.update(data={'data': self.stats})
 
     @staticmethod
     def extract_key_values(data, subkeys):
-        result = dict()
-        result['values'] = list()
-        result['labels'] = subkeys
+        """
+        Enhanced: Extract with data validation
+        """
+        result = {'values': [], 'labels': subkeys}
+        
         for plot_key in subkeys:
-            v = [ [ts,d[plot_key]] for ts, d in data.items()]
-            result['values'].append(v)
+            series_data = []
+            for timestamp, epoch_data in data.items():
+                if plot_key in epoch_data and epoch_data[plot_key] is not None:
+                    try:
+                        # Validate numeric data
+                        value = float(epoch_data[plot_key])
+                        series_data.append([timestamp, value])
+                    except (ValueError, TypeError):
+                        logging.debug(f"Invalid data for {plot_key} at {timestamp}")
+                        continue
+            result['values'].append(series_data)
+        
         return result
 
     def on_webhook(self, path, request):
@@ -253,12 +274,21 @@ class SessionStats(plugins.Plugin):
                 'active_for_epochs',
             ]
         elif path == "session":
-            return jsonify({'files': os.listdir(self.options['save_directory'])})
+            try:
+                files = os.listdir(self.options['save_directory'])
+                return jsonify({'files': files})
+            except OSError as e:
+                logging.error(f"Error listing session files: {e}")
+                return jsonify({'files': []})
 
         with self.lock:
             data = self.stats
             if session_param and session_param != 'Current':
-                file_stats = StatusFile(os.path.join(self.options['save_directory'], session_param), data_format='json')
-                data = file_stats.data_field_or('data', default=dict())
+                try:
+                    file_stats = StatusFile(os.path.join(self.options['save_directory'], session_param), data_format='json')
+                    data = file_stats.data_field_or('data', default=dict())
+                except Exception as e:
+                    logging.error(f"Error loading session data: {e}")
+                    return jsonify({'values': [], 'labels': extract_keys})
+            
             return jsonify(SessionStats.extract_key_values(data, extract_keys))
-

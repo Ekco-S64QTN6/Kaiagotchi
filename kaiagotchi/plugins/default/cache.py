@@ -3,7 +3,7 @@ import json
 import os
 import re
 import pathlib
-import Kaiagotchi.plugins as plugins
+import kaiagotchi.plugins as plugins
 from datetime import datetime, UTC
 from threading import Lock
 

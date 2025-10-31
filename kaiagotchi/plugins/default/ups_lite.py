@@ -1,30 +1,16 @@
 # Based on UPS Lite v1.1 from https://github.com/xenDE
-# Made specifically to address the problems caused by the hardware changes in 1.3.  Oh yeah I also removed the auto-shutdown feature because it's kind of broken.
-#
-# To setup, see page six of this manual to see how to enable i2c:
-# https://github.com/linshuqin329/UPS-Lite/blob/master/UPS-Lite_V1.3_CW2015/Instructions%20for%20UPS-Lite%20V1.3.pdf
-#
-# Follow page seven, install the dependencies (python-smbus) and copy this script over for later use:
-# https://github.com/linshuqin329/UPS-Lite/blob/master/UPS-Lite_V1.3_CW2015/UPS_Lite_V1.3_CW2015.py
-#
-# Now, install this plugin by copying this to the 'available-plugins' folder in your Kaiagotchi, install and enable the plugin with the commands:
-# sudo Kaiagotchi plugins install upslite_plugin_1_3
-# sudo Kaiagotchi plugins enable upslite_plugin_1_3
-#
-# Now restart raspberry pi. Once back up ensure upslite_plugin_1_3 plugin is turned on in the WebUI. If there is still '0%' on your battery meter
-# run the script we saved earlier and ensure that the Kaiagotchi is plugged in both at the battery and the raspberry pi. The script should start trying to
-# read the battery, and should be successful once there's a USB cable running power to the battery supply.
+# Enhanced with better error handling and initialization
 
 import logging
 import struct
-
+import time
 import RPi.GPIO as GPIO
 
-import Kaiagotchi
-import Kaiagotchi.plugins as plugins
-import Kaiagotchi.ui.fonts as fonts
-from Kaiagotchi.ui.components import LabeledValue
-from Kaiagotchi.ui.view import BLACK
+import kaiagotchi
+import kaiagotchi.plugins as plugins
+import kaiagotchi.ui.fonts as fonts
+from kaiagotchi.ui.components import LabeledValue
+from kaiagotchi.ui.view import BLACK
 
 CW2015_ADDRESS = 0X62
 CW2015_REG_VCELL = 0X02
@@ -32,37 +18,79 @@ CW2015_REG_SOC = 0X04
 CW2015_REG_MODE = 0X0A
 
 
-# TODO: add enable switch in config.yml an cleanup all to the best place
 class UPS:
     def __init__(self):
-        # only import when the module is loaded and enabled
-        import smbus
-        # 0 = /dev/i2c-0 (port I2C0), 1 = /dev/i2c-1 (port I2C1)
-        self._bus = smbus.SMBus(1)
+        # Enhanced: Add initialization tracking
+        self._bus = None
+        self._initialized = False
+        self._init_attempts = 0
+        self._max_init_attempts = 3
+        self._gpio_setup = False
+        
+    def _initialize(self):
+        """Enhanced: Lazy initialization with retry logic"""
+        if self._initialized or self._init_attempts >= self._max_init_attempts:
+            return
+            
+        try:
+            import smbus
+            self._bus = smbus.SMBus(1)
+            self._initialized = True
+            logging.info("UPS Lite initialized successfully")
+        except Exception as e:
+            self._init_attempts += 1
+            logging.error(f"UPS Lite initialization failed (attempt {self._init_attempts}): {e}")
+            if self._init_attempts >= self._max_init_attempts:
+                logging.error("UPS Lite: Maximum initialization attempts reached")
+
+    def _setup_gpio(self):
+        """Setup GPIO with error handling"""
+        if self._gpio_setup:
+            return True
+            
+        try:
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(4, GPIO.IN)
+            self._gpio_setup = True
+            return True
+        except Exception as e:
+            logging.error(f"UPS Lite GPIO setup failed: {e}")
+            return False
 
     def voltage(self):
+        if not self._initialized:
+            self._initialize()
+            if not self._initialized:
+                return 0.0
         try:
             read = self._bus.read_word_data(CW2015_ADDRESS, CW2015_REG_VCELL)
             swapped = struct.unpack("<H", struct.pack(">H", read))[0]
             return swapped * 1.25 / 1000 / 16
-        except:
+        except Exception as e:
+            logging.error(f"UPS Lite voltage read failed: {e}")
             return 0.0
 
     def capacity(self):
+        if not self._initialized:
+            self._initialize()
+            if not self._initialized:
+                return 0.0
         try:
             address = 0x36
             read = self._bus.read_word_data(CW2015_ADDRESS, CW2015_REG_SOC)
             swapped = struct.unpack("<H", struct.pack(">H", read))[0]
             return swapped / 256
-        except:
+        except Exception as e:
+            logging.error(f"UPS Lite capacity read failed: {e}")
             return 0.0
 
     def charging(self):
+        if not self._setup_gpio():
+            return '-'
         try:
-            GPIO.setmode(GPIO.BCM)
-            GPIO.setup(4, GPIO.IN)
             return '+' if GPIO.input(4) == GPIO.HIGH else '-'
-        except:
+        except Exception as e:
+            logging.error(f"UPS Lite charging status read failed: {e}")
             return '-'
 
 
@@ -77,6 +105,7 @@ class UPSLite(plugins.Plugin):
 
     def on_loaded(self):
         self.ups = UPS()
+        logging.info("UPS Lite plugin loaded")
 
     def on_ui_setup(self, ui):
         ui.add_element('ups', LabeledValue(color=BLACK, label='UPS', value='0%', position=(ui.width() / 2 + 15, 0),
@@ -85,9 +114,17 @@ class UPSLite(plugins.Plugin):
     def on_unload(self, ui):
         with ui._lock:
             ui.remove_element('ups')
+        # Enhanced: Cleanup GPIO
+        try:
+            GPIO.cleanup()
+        except:
+            pass
 
     def on_ui_update(self, ui):
-        capacity = self.ups.capacity()
-        charging = self.ups.charging()
-        ui.set('ups', "%2i%s" % (capacity, charging))
-
+        try:
+            capacity = self.ups.capacity()
+            charging = self.ups.charging()
+            ui.set('ups', "%2i%s" % (capacity, charging))
+        except Exception as e:
+            logging.error(f"UPS Lite UI update failed: {e}")
+            ui.set('ups', "ERR")

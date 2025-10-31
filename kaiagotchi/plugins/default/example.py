@@ -1,16 +1,16 @@
 import logging
 
-import Kaiagotchi.plugins as plugins
-from Kaiagotchi.ui.components import LabeledValue
-from Kaiagotchi.ui.view import BLACK
-import Kaiagotchi.ui.fonts as fonts
+import kaiagotchi.plugins as plugins
+from kaiagotchi.ui.components import LabeledValue
+from kaiagotchi.ui.view import BLACK
+import kaiagotchi.ui.fonts as fonts
 
 
 class Example(plugins.Plugin):
     __author__ = 'evilsocket@gmail.com'
     __version__ = '1.0.0'
     __license__ = 'GPL3'
-    __description__ = 'An example plugin for Kaiagotchi that implements all the available callbacks.'
+    __description__ = 'An example plugin for kaiagotchi that implements all the available callbacks.'
 
     def __init__(self):
         logging.debug("example plugin created")

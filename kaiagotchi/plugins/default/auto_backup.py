@@ -1,5 +1,5 @@
-import Kaiagotchi.plugins as plugins
-from Kaiagotchi.utils import StatusFile
+import kaiagotchi.plugins as plugins
+from kaiagotchi.utils import StatusFile
 import logging
 import os
 import subprocess
@@ -116,8 +116,8 @@ class AutoBackup(plugins.Plugin):
             global_config = global_config()
         if global_config is None:
             global_config = {}
-        Kaiagotchi_name = global_config.get('main', {}).get('name', socket.gethostname())
-        backup_file = os.path.join(backup_location, f"{Kaiagotchi_name}-backup.tar")
+        kaiagotchi_name = global_config.get('main', {}).get('name', socket.gethostname())
+        backup_file = os.path.join(backup_location, f"{kaiagotchi_name}-backup.tar")
 
         try:
             display = agent.view()
