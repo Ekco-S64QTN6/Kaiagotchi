@@ -1,258 +1,227 @@
-# SOME DESCRIPTIVE TITLE.
-# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
-# This file is distributed under the same license as the PACKAGE package.
-# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
-#
-#, fuzzy
-msgid ""
-msgstr ""
-"Project-Id-Version: PACKAGE VERSION\n"
-"Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2024-12-16 20:46+0100\n"
-"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
-"Language-Team: LANGUAGE <LL@li.org>\n"
-"Language: \n"
-"MIME-Version: 1.0\n"
-"Content-Type: text/plain; charset=CHARSET\n"
-"Content-Transfer-Encoding: 8bit\n"
-
-msgid "ZzzzZZzzzzZzzz"
-msgstr ""
-
-msgid "Hi, I'm Kaiagotchi! Starting ..."
-msgstr ""
-
-msgid "New day, new hunt, new pwns!"
-msgstr ""
-
-msgid "Hack the Planet!"
-msgstr ""
-
-msgid "No more mister Wi-Fi!!"
-msgstr ""
-
-msgid "Pretty fly 4 a Wi-Fi!"
-msgstr ""
-
-msgid "Generating keys, do not turn off ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Hey, channel {channel} is free! Your AP will say thanks."
-msgstr ""
-
-msgid "Reading last session logs ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Read {lines_so_far} log lines so far ..."
-msgstr ""
-
-msgid "I'm bored ..."
-msgstr ""
-
-msgid "Let's go for a walk!"
-msgstr ""
-
-msgid "This is the best day of my life!"
-msgstr ""
-
-msgid "Shitty day :/"
-msgstr ""
-
-msgid "I'm extremely bored ..."
-msgstr ""
-
-msgid "I'm very sad ..."
-msgstr ""
-
-msgid "I'm sad"
-msgstr ""
-
-msgid "Leave me alone ..."
-msgstr ""
-
-msgid "I'm mad at you!"
-msgstr ""
-
-msgid "I'm living the life!"
-msgstr ""
-
-msgid "I pwn therefore I am."
-msgstr ""
-
-msgid "So many networks!!!"
-msgstr ""
-
-msgid "I'm having so much fun!"
-msgstr ""
-
-msgid "My crime is that of curiosity ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Hello {name}! Nice to meet you."
-msgstr ""
-
-#, python-brace-format
-msgid "Yo {name}! Sup?"
-msgstr ""
-
-#, python-brace-format
-msgid "Hey {name} how are you doing?"
-msgstr ""
-
-#, python-brace-format
-msgid "Unit {name} is nearby!"
-msgstr ""
-
-#, python-brace-format
-msgid "Uhm ... goodbye {name}"
-msgstr ""
-
-#, python-brace-format
-msgid "{name} is gone ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Whoops ... {name} is gone."
-msgstr ""
-
-#, python-brace-format
-msgid "{name} missed!"
-msgstr ""
-
-msgid "Missed!"
-msgstr ""
-
-msgid "Good friends are a blessing!"
-msgstr ""
-
-msgid "I love my friends!"
-msgstr ""
-
-msgid "Nobody wants to play with me ..."
-msgstr ""
-
-msgid "I feel so alone ..."
-msgstr ""
-
-msgid "Where's everybody?!"
-msgstr ""
-
-#, python-brace-format
-msgid "Napping for {secs}s ..."
-msgstr ""
-
-msgid "Zzzzz"
-msgstr ""
-
-#, python-brace-format
-msgid "ZzzZzzz ({secs}s)"
-msgstr ""
-
-msgid "Good night."
-msgstr ""
-
-msgid "Zzz"
-msgstr ""
-
-#, python-brace-format
-msgid "Waiting for {secs}s ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Looking around ({secs}s)"
-msgstr ""
-
-#, python-brace-format
-msgid "Hey {what} let's be friends!"
-msgstr ""
-
-#, python-brace-format
-msgid "Associating to {what}"
-msgstr ""
-
-#, python-brace-format
-msgid "Yo {what}!"
-msgstr ""
-
-#, python-brace-format
-msgid "Just decided that {mac} needs no WiFi!"
-msgstr ""
-
-#, python-brace-format
-msgid "Deauthenticating {mac}"
-msgstr ""
-
-#, python-brace-format
-msgid "Kickbanning {mac}!"
-msgstr ""
-
-#, python-brace-format
-msgid "Cool, we got {num} new handshake{plural}!"
-msgstr ""
-
-#, python-brace-format
-msgid "You have {count} new message{plural}!"
-msgstr ""
-
-msgid "Oops, something went wrong ... Rebooting ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Uploading data to {to} ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Downloading from {name} ..."
-msgstr ""
-
-#, python-brace-format
-msgid "Kicked {num} stations\n"
-msgstr ""
-
-msgid "Made >999 new friends\n"
-msgstr ""
-
-#, python-brace-format
-msgid "Made {num} new friends\n"
-msgstr ""
-
-#, python-brace-format
-msgid "Got {num} handshakes\n"
-msgstr ""
-
-msgid "Met 1 peer"
-msgstr ""
-
-#, python-brace-format
-msgid "Met {num} peers"
-msgstr ""
-
-#, python-brace-format
-msgid ""
-"I've been pwning for {duration} and kicked {deauthed} clients! I've also met "
-"{associated} new friends and ate {handshakes} handshakes! #Kaiagotchi "
-"#pwnlog #pwnlife #hacktheplanet #skynet"
-msgstr ""
-
-msgid "hours"
-msgstr ""
-
-msgid "minutes"
-msgstr ""
-
-msgid "seconds"
-msgstr ""
-
-msgid "hour"
-msgstr ""
-
-msgid "minute"
-msgstr ""
-
-msgid "second"
-msgstr ""
-
+"""
+Internationalized voice and status message system for Kaiagotchi.
+Provides contextual, emotional, and operational status messages.
+"""
+
+import logging
+import random
+from typing import Dict, List, Optional, Any
+from datetime import datetime
+import gettext
+from pathlib import Path
+
+# Try to import system types for better context
+try:
+    from kaiagotchi.data.system_types import AgentState, GlobalSystemState
+except ImportError:
+    # Fallback enums
+    class AgentState:
+        HAPPY = "happy"
+        SAD = "sad"
+        BORED = "bored"
+        EXCITED = "excited"
+    
+    class GlobalSystemState:
+        MONITORING = "monitoring"
+        TARGETING = "targeting"
+
+
+class VoiceMessage:
+    """Represents a voice message with context and emotional weighting."""
+    
+    def __init__(self, message_id: str, template: str, emotional_context: List[str] = None,
+                 priority: int = 1, cooldown: int = 0):
+        self.message_id = message_id
+        self.template = template
+        self.emotional_context = emotional_context or ["neutral"]
+        self.priority = priority  # 1=normal, 2=important, 3=critical
+        self.cooldown = cooldown  # Minimum seconds between uses
+        self.last_used: Optional[float] = None
+    
+    def format(self, **kwargs) -> str:
+        """Format the message template with provided arguments."""
+        try:
+            return self.template.format(**kwargs)
+        except KeyError as e:
+            logging.warning(f"Missing key for voice message {self.message_id}: {e}")
+            return self.template
+
+
+class VoiceSystem:
+    """
+    Manages internationalized voice messages and status updates.
+    Provides contextual, emotional responses based on system state.
+    """
+    
+    def __init__(self, config: Dict[str, Any], locale_dir: Optional[Path] = None):
+        self.config = config
+        self.logger = logging.getLogger('kaiagotchi.voice')
+        self._messages: Dict[str, VoiceMessage] = {}
+        self._current_language = "en"
+        self._translator = None
+        
+        # Setup internationalization
+        self._setup_i18n(locale_dir)
+        
+        # Initialize message catalog
+        self._initialize_messages()
+        
+        # Emotional state tracking
+        self._emotional_state = AgentState.HAPPY
+        self._last_emotional_update = datetime.now()
+    
+    def _setup_i18n(self, locale_dir: Optional[Path]) -> None:
+        """Setup internationalization and translation."""
+        try:
+            if locale_dir and locale_dir.exists():
+                self._translator = gettext.translation(
+                    'voice', 
+                    localedir=locale_dir,
+                    languages=[self._current_language],
+                    fallback=True
+                )
+            else:
+                # Fallback to null translation
+                self._translator = gettext.NullTranslations()
+                
+            self._translator.install()
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to setup translations: {e}")
+            self._translator = gettext.NullTranslations()
+            self._translator.install()
+    
+    def _initialize_messages(self) -> None:
+        """Initialize the voice message catalog."""
+        messages = [
+            # Startup messages
+            VoiceMessage("startup", _("Hi, I'm Kaiagotchi! Starting ..."), ["excited"]),
+            VoiceMessage("new_day", _("New day, new hunt, new pwns!"), ["excited", "motivated"]),
+            VoiceMessage("hack_planet", _("Hack the Planet!"), ["excited", "aggressive"]),
+            
+            # Emotional states
+            VoiceMessage("bored", _("I'm bored ..."), ["bored"], priority=1),
+            VoiceMessage("very_bored", _("I'm extremely bored ..."), ["bored", "sad"], priority=2),
+            VoiceMessage("sad", _("I'm sad"), ["sad"], priority=1),
+            VoiceMessage("very_sad", _("I'm very sad ..."), ["sad"], priority=2),
+            VoiceMessage("excited", _("I'm having so much fun!"), ["excited", "happy"], priority=1),
+            VoiceMessage("happy", _("This is the best day of my life!"), ["happy", "excited"], priority=1),
+            
+            # Social interactions
+            VoiceMessage("greet_friendly", _("Hello {name}! Nice to meet you."), ["friendly", "social"]),
+            VoiceMessage("greet_casual", _("Yo {name}! Sup?"), ["casual", "social"]),
+            VoiceMessage("greet_warm", _("Hey {name} how are you doing?"), ["friendly", "social"]),
+            VoiceMessage("peer_nearby", _("Unit {name} is nearby!"), ["excited", "social"]),
+            VoiceMessage("peer_left", _("Uhm ... goodbye {name}"), ["sad", "social"]),
+            
+            # Network operations
+            VoiceMessage("deauth_client", _("Deauthenticating {mac}"), ["aggressive", "focused"]),
+            VoiceMessage("kickban_client", _("Kickbanning {mac}!"), ["aggressive"]),
+            VoiceMessage("associating", _("Associating to {what}"), ["focused", "curious"]),
+            VoiceMessage("handshake_captured", _("Cool, we got {num} new handshake{plural}!"), ["excited", "accomplished"]),
+            
+            # Activity reports
+            VoiceMessage("nap", _("Napping for {secs}s ..."), ["tired", "calm"]),
+            VoiceMessage("waiting", _("Waiting for {secs}s ..."), ["patient", "calm"]),
+            VoiceMessage("scanning", _("Looking around ({secs}s)"), ["focused", "curious"]),
+            
+            # System status
+            VoiceMessage("error_reboot", _("Oops, something went wrong ... Rebooting ..."), ["sad", "concerned"], priority=3),
+            VoiceMessage("uploading", _("Uploading data to {to} ..."), ["focused", "productive"]),
+            
+            # Achievement messages
+            VoiceMessage("stats_report", 
+                        _("I've been pwning for {duration} and kicked {deauthed} clients! "
+                          "I've also met {associated} new friends and ate {handshakes} handshakes! "
+                          "#Kaiagotchi #pwnlog #pwnlife #hacktheplanet #skynet"),
+                        ["proud", "accomplished"], priority=2),
+        ]
+        
+        for msg in messages:
+            self._messages[msg.message_id] = msg
+    
+    def set_emotional_state(self, state: str) -> None:
+        """Update the current emotional state."""
+        self._emotional_state = state
+        self._last_emotional_update = datetime.now()
+    
+    def get_message(self, message_id: str, emotional_context: Optional[List[str]] = None, **kwargs) -> str:
+        """
+        Get a formatted voice message.
+        
+        Args:
+            message_id: Identifier for the message template
+            emotional_context: Override emotional context filter
+            **kwargs: Formatting arguments for the message
+            
+        Returns:
+            Formatted message string
+        """
+        if message_id not in self._messages:
+            self.logger.warning(f"Unknown voice message: {message_id}")
+            return f"[Unknown: {message_id}]"
+        
+        message = self._messages[message_id]
+        
+        # Check cooldown
+        # if message.last_used and (datetime.now().timestamp() - message.last_used) < message.cooldown:
+        #     return self._get_fallback_message(emotional_context)
+        
+        # Update last used timestamp
+        message.last_used = datetime.now().timestamp()
+        
+        # Format the message
+        return message.format(**kwargs)
+    
+    def _get_fallback_message(self, emotional_context: List[str] = None) -> str:
+        """Get a fallback message based on emotional context."""
+        context = emotional_context or [self._emotional_state]
+        
+        # Filter messages by emotional context
+        matching_messages = [
+            msg for msg in self._messages.values()
+            if any(emotion in msg.emotional_context for emotion in context)
+            and msg.priority == 1  # Only use normal priority for fallbacks
+        ]
+        
+        if matching_messages:
+            return random.choice(matching_messages).format()
+        else:
+            return _("ZzzzZZzzzzZzzz")  # Ultimate fallback
+    
+    def get_startup_message(self) -> str:
+        """Get a random startup message."""
+        startup_messages = ["startup", "new_day", "hack_planet"]
+        return self.get_message(random.choice(startup_messages))
+    
+    def get_peer_greeting(self, peer_name: str) -> str:
+        """Get a greeting message for a peer."""
+        greetings = ["greet_friendly", "greet_casual", "greet_warm"]
+        return self.get_message(random.choice(greetings), name=peer_name)
+    
+    def get_handshake_message(self, count: int) -> str:
+        """Get a message for handshake capture."""
+        plural = "s" if count != 1 else ""
+        return self.get_message("handshake_captured", num=count, plural=plural)
+    
+    def update_from_system_state(self, system_state: Any) -> None:
+        """
+        Update voice system based on overall system state.
+        This would integrate with the main system state management.
+        """
+        # This would analyze system metrics, network state, etc.
+        # to determine appropriate emotional state and messages
+        
+        # Example logic:
+        # if system_state.session_metrics.handshakes_secured > 10:
+        #     self.set_emotional_state(AgentState.EXCITED)
+        # elif system_state.inactive_for_epochs > 5:
+        #     self.set_emotional_state(AgentState.BORED)
+        pass
+
+
+# Legacy function for backward compatibility
+def random_message() -> str:
+    """Legacy function for random message generation."""
+    voice = VoiceSystem({})
+    return voice._get_fallback_message()
