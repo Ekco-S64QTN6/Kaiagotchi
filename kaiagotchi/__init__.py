@@ -1,194 +1,85 @@
-import os
-import logging
-import time
+# Minimal package metadata — must NOT import legacy packages during build
+__version__ = "0.1.0"
+__all__ = ["__version__", "name", "set_name", "uptime", "mem_usage", "main"]
+
 import re
-import sys
+import time
+import logging
 import argparse
+import sys
+from typing import Optional, Dict, Any
 
-from pwnagotchi._version import __version__
-from pwnagotchi.log_config import setup_logging
-import pwnagotchi.config as config_loader
+_logger = logging.getLogger(__name__)
 
-_name = None
-config = None
-_cpu_stats = {}
+_name: Optional[str] = None
 
-def set_name(new_name):
-    if new_name is None:
-        return
-
-    new_name = new_name.strip()
-    if new_name == '':
-        return
-
-    if not re.match(r'^[a-zA-Z0-9\-]{2,25}$', new_name):
-        logging.warning("name '%s' is invalid: min length is 2, max length 25, only a-zA-Z0-9- allowed", new_name)
-        return
-
-    current = name()
-    if new_name != current:
-        global _name
-
-        logging.info("setting unit hostname '%s' -> '%s'", current, new_name)
-        with open('/etc/hostname', 'wt') as fp:
-            fp.write(new_name)
-
-        with open('/etc/hosts', 'rt') as fp:
-            prev = fp.read()
-            logging.debug("old hosts:\n%s\n", prev)
-
-        with open('/etc/hosts', 'wt') as fp:
-            patched = prev.replace(current, new_name, -1)
-            logging.debug("new hosts:\n%s\n", patched)
-            fp.write(patched)
-
-        os.system("hostname '%s'" % new_name)
-        reboot()
-
-
-def name():
+def set_name(new_name: str) -> None:
+    """Set the agent name with simple validation."""
     global _name
-    if _name is None:
-        with open('/etc/hostname', 'rt') as fp:
-            _name = fp.read().strip()
-    return _name
+    if new_name is None:
+        raise ValueError("name cannot be None")
+    new_name = str(new_name).strip()
+    if new_name == "":
+        raise ValueError("name cannot be empty")
+    if not re.match(r"^[a-zA-Z0-9\-]{2,25}$", new_name):
+        raise ValueError("name must be 2-25 chars, letters/digits/hyphen only")
+    _name = new_name
 
+def name() -> str:
+    """Return the configured name or a default."""
+    global _name
+    return _name or "kaiagotchi"
 
-def uptime():
-    with open('/proc/uptime') as fp:
-        return int(fp.read().split('.')[0])
+def uptime() -> Optional[float]:
+    """Return system uptime in seconds, or None if unavailable."""
+    try:
+        with open("/proc/uptime", "r", encoding="utf-8") as f:
+            first = f.readline().split()[0]
+            return float(first)
+    except Exception:
+        return None
 
+def mem_usage() -> Dict[str, Any]:
+    """Return a minimal memory-info dict or empty dict if unavailable."""
+    try:
+        info = {}
+        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+            for line in f:
+                if ":" not in line:
+                    continue
+                k, v = line.split(":", 1)
+                info[k.strip()] = v.strip()
+        return info
+    except Exception:
+        return {}
 
-def mem_usage():
-    with open('/proc/meminfo') as fp:
-        for line in fp:
-            line = line.strip()
-            if line.startswith("MemTotal:"):
-                kb_mem_total = int(line.split()[1])
-            if line.startswith("MemFree:"):
-                kb_mem_free = int(line.split()[1])
-            if line.startswith("Buffers:"):
-                kb_main_buffers = int(line.split()[1])
-            if line.startswith("Cached:"):
-                kb_main_cached = int(line.split()[1])
-        kb_mem_used = kb_mem_total - kb_mem_free - kb_main_cached - kb_main_buffers
-        return round(kb_mem_used / kb_mem_total, 1)
-
-
-def _cpu_stat():
+def main() -> int:
     """
-    Returns the split first line of the /proc/stat file
+    Minimal entry point used by [project.scripts] in pyproject.toml.
+    Keep this light — do NOT import heavy subsystems at module import time.
     """
-    with open('/proc/stat', 'rt') as fp:
-        return list(map(int, fp.readline().split()[1:]))
-
-
-def cpu_load(tag=None):
-    """
-    Returns the current cpuload
-    """
-    if tag and tag in _cpu_stats.keys():
-        parts0 = _cpu_stats[tag]
-    else:
-        parts0 = _cpu_stat()
-        time.sleep(0.1)     # only need to sleep when no tag
-    parts1 = _cpu_stat()
-    if tag:
-        _cpu_stats[tag] = parts1
-
-    parts_diff = [p1 - p0 for (p0, p1) in zip(parts0, parts1)]
-    user, nice, sys, idle, iowait, irq, softirq, steal, _guest, _guest_nice = parts_diff
-    idle_sum = idle + iowait
-    non_idle_sum = user + nice + sys + irq + softirq + steal
-    total = idle_sum + non_idle_sum
-    return non_idle_sum / total
-
-
-def temperature(celsius=True):
-    return 40 if celsius else ((40 * (9 / 5)) + 32)
-
-
-def shutdown():
-    logging.warning("shutting down ...")
-
-    from pwnagotchi.ui import view
-    if view.ROOT:
-        view.ROOT.on_shutdown()
-        # give it some time to refresh the ui
-        time.sleep(10)
-
-    logging.warning("syncing...")
-
-    from pwnagotchi import fs
-    for m in fs.mounts:
-        m.sync()
-    
-    os.system("sync")
-    os.system("halt")
-
-
-def restart(mode):
-    logging.warning("restarting in %s mode ...", mode)
-    mode = mode.upper()
-    if mode == 'AUTO':
-        os.system("touch /root/.pwnagotchi-auto")
-    else:
-        os.system("touch /root/.pwnagotchi-manual")
-
-    os.system("service bettercap restart")
-    time.sleep(1)
-    os.system("service pwnagotchi restart")
-
-
-def reboot(mode=None):
-    if mode is not None:
-        mode = mode.upper()
-        logging.warning("rebooting in %s mode ...", mode)
-    else:
-        logging.warning("rebooting ...")
-
-    from pwnagotchi.ui import view
-    if view.ROOT:
-        view.ROOT.on_rebooting()
-        # give it some time to refresh the ui
-        time.sleep(10)
-
-    if mode == 'AUTO':
-        os.system("touch /root/.pwnagotchi-auto")
-    elif mode == 'MANU':
-        os.system("touch /root/.pwnagotchi-manual")
-
-    logging.warning("syncing...")
-
-    from pwnagotchi import fs
-    for m in fs.mounts:
-        m.sync()
-
-    os.system("sync")
-    os.system("shutdown -r now")
-
-
-def main():
-    """
-    The main entry point for the Kaiagotchi application.
-    Handles command line arguments, configuration loading, and logging setup.
-    """
-    parser = argparse.ArgumentParser(description='The Kaia AI system application.')
-    parser.add_argument('-c', '--config', dest='config_path', help='path to config file', default=None)
-    parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='enable debug logging', default=False)
+    parser = argparse.ArgumentParser(prog="kaiagotchi")
+    parser.add_argument("--version", action="store_true", help="print version and exit")
+    parser.add_argument("--name", type=str, help="set agent name at startup")
     args = parser.parse_args()
 
-    global config
-    if not config_loader.load(args.config_path):
-        logging.critical("Configuration failed to load. Cannot proceed.")
-        sys.exit(1)
-    
-    config = config_loader.get_config()
-    
-    setup_logging(config, args.debug)
-    
-    logging.info(f"Kaiagotchi v{__version__} starting with name '{name()}'...")
+    if args.version:
+        print(f"kaiagotchi {__version__}")
+        return 0
 
+    if args.name:
+        try:
+            set_name(args.name)
+        except ValueError as e:
+            _logger.error("Invalid name provided: %s", e)
+            print(f"Invalid name: {e}", file=sys.stderr)
+            return 2
 
-if __name__ == '__main__':
-    main()
+    # Lazy import example for runtime-only modules (do not import during build)
+    # from .log_config import setup_logging  # import inside runtime flow if needed
+
+    _logger.info("kaiagotchi starting (version %s, name=%s)", __version__, name())
+    return 0
+
+if __name__ == "__main__":
+    raise SystemExit(main())

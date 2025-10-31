@@ -1,0 +1,2 @@
+[console_scripts]
+kaiagotchi = kaiagotchi:main

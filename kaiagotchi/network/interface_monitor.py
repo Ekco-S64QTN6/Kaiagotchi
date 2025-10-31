@@ -1,237 +1,193 @@
-import logging
+import threading
+import queue
 import subprocess
-import re
-import os
 import time
-from typing import List, Optional, Tuple, Set
+import logging
+import re # Added for robust text parsing
+from typing import Dict, Any, TYPE_CHECKING
 
-# Assuming 'utils' is available in the kaiagotchi namespace
-from kaiagotchi.utils import iface_channels
+# Type checking import for Queue type hint to avoid circular dependencies
+if TYPE_CHECKING:
+    from queue import Queue as QueueType
+else:
+    QueueType = queue.Queue
 
-# Configure logging for the module
-interface_logger = logging.getLogger('network.iface')
+monitor_logger = logging.getLogger('network.monitor')
 
-# Regex to parse the 'iwconfig' output for mode (managed, monitor, etc.)
-# This is a common utility for checking interface capabilities
-IWCONFIG_MODE_RE = re.compile(r'Mode:(Managed|Monitor|Master|Ad-Hoc|Auto)')
+# --- Regular Expressions for ifconfig/ip command parsing ---
+# 1. Regex to capture the start of a new interface block: (name) and (flags)
+IFACE_HEADER_RE = re.compile(r"^(\w+):\s+flags=\d+<([^>]+)>\s+mtu\s+(\d+)")
+
+# 2. Regex to capture IPv4 address and netmask
+INET_RE = re.compile(r"inet\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+netmask\s+(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+
+# 3. Regex to capture MAC address
+MAC_RE = re.compile(r"ether\s+([0-9a-fA-F:]+)")
+
+# 4. Regex to capture packet statistics
+RX_TX_RE = re.compile(r"(RX|TX)\s+packets\s+(\d+)\s+bytes\s+(\d+)\s+\(([^)]+)\)")
+# -----------------------------------------------------------
 
 
 class InterfaceMonitor:
     """
-    A utility class to manage and monitor a specific wireless network interface.
-
-    Handles checking interface status, switching modes (monitor/managed),
-    and setting channels, providing a robust interface for the Kaiagotchi agent.
+    Runs in a dedicated background thread to periodically execute blocking
+    OS commands (like ifconfig) and report state changes back to the 
+    main agent via a queue.
     """
+    
+    # We will use the 'ifconfig' command for initial state gathering
+    OS_COMMAND = ["/sbin/ifconfig"]
 
-    def __init__(self, ifname: str, channel_timeout_s: int = 1):
+    def __init__(self, stop_event: threading.Event, update_queue: QueueType[Dict[str, Any]], poll_interval: float = 5.0):
         """
-        Initializes the monitor for a specific interface.
-
         Args:
-            ifname: The name of the wireless interface (e.g., 'wlan0').
-            channel_timeout_s: The duration (in seconds) to stay on a single 
-                               channel during scanning.
+            stop_event: The threading.Event shared with the main agent to signal shutdown.
+            update_queue: The queue used to safely hand off data back to the main agent thread.
+            poll_interval: The time in seconds between checks.
         """
-        self.ifname = ifname
-        self.channel_timeout_s = channel_timeout_s
-        self._available_channels: List[int] = []
+        self._stop_event = stop_event
+        self._queue = update_queue
+        self._poll_interval = poll_interval
+        self._thread = threading.Thread(
+            target=self._run, 
+            name="InterfaceMonitor", 
+            daemon=True
+        )
 
-    def _execute_command(self, command: str, ignore_errors: bool = False) -> str:
-        """
-        Executes a shell command and returns its output, logging errors.
+    def start(self) -> None:
+        """Starts the monitoring thread."""
+        monitor_logger.info("Starting InterfaceMonitor thread.")
+        self._thread.start()
 
-        Args:
-            command: The full shell command string.
-            ignore_errors: If True, suppresses exceptions for failed commands.
+    def join(self, timeout: float | None = None) -> None:
+        """Waits for the monitoring thread to terminate gracefully."""
+        monitor_logger.debug("Waiting for InterfaceMonitor thread to join.")
+        self._thread.join(timeout)
 
-        Returns:
-            The stdout output of the command.
-        """
-        interface_logger.debug(f"Executing: {command}")
-        try:
-            result = subprocess.run(
-                command,
-                shell=True,
-                check=not ignore_errors,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            if result.returncode != 0 and not ignore_errors:
-                error_msg = f"Command failed (Code {result.returncode}): {command}\n{result.stderr.strip()}"
-                interface_logger.error(error_msg)
-                raise subprocess.CalledProcessError(result.returncode, command, result.stdout, result.stderr)
-            return result.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            if not ignore_errors:
-                interface_logger.critical(f"OS Command Error: {e}")
-                raise
-            return ""
-        except FileNotFoundError:
-            interface_logger.critical("Required system commands (e.g., 'iwconfig', 'ip') not found. Check PATH.")
-            raise
-
-    def get_interface_mode(self) -> Optional[str]:
-        """
-        Determines the current operating mode of the interface (e.g., 'Monitor').
-
-        Returns:
-            The mode name as a string, or None if the interface is down/not found.
-        """
-        output = self._execute_command(f"iwconfig {self.ifname}", ignore_errors=True)
-        match = IWCONFIG_MODE_RE.search(output)
-        if match:
-            return match.group(1)
-        
-        # Check if the interface is simply not up
-        if "No such device" in output or "Device not found" in output:
-             interface_logger.warning(f"Interface {self.ifname} does not exist.")
-             return None
-             
-        return "Unknown"
-
-    def set_monitor_mode(self) -> bool:
-        """
-        Attempts to set the interface to monitor mode.
-
-        Returns:
-            True if successful, False otherwise.
-        """
-        if self.get_interface_mode() == 'Monitor':
-            interface_logger.info(f"{self.ifname} is already in Monitor mode.")
-            return True
-
-        interface_logger.info(f"Attempting to set {self.ifname} to Monitor mode...")
-        try:
-            # 1. Bring the interface down
-            self._execute_command(f"ip link set {self.ifname} down")
-            # 2. Set the mode (using iw is often more reliable than 'iwconfig')
-            self._execute_command(f"iw dev {self.ifname} set type monitor")
-            # 3. Bring the interface back up
-            self._execute_command(f"ip link set {self.ifname} up")
-            
-            # Verify the change
-            time.sleep(0.5) # Give the system a moment to apply changes
-            if self.get_interface_mode() == 'Monitor':
-                interface_logger.info(f"{self.ifname} successfully set to Monitor mode.")
-                return True
-            else:
-                interface_logger.error(f"Failed to verify Monitor mode for {self.ifname}.")
-                return False
-        except Exception as e:
-            interface_logger.error(f"Failed to set {self.ifname} to Monitor mode: {e}")
-            return False
-
-    def get_available_channels(self) -> List[int]:
-        """
-        Fetches and caches the available channels for the interface.
-
-        Returns:
-            A list of channel numbers (e.g., [1, 2, ..., 13]).
-        """
-        if not self._available_channels:
+    def _run(self) -> None:
+        """The main loop for the monitoring thread."""
+        while not self._stop_event.is_set():
             try:
-                self._available_channels = iface_channels(self.ifname)
-                interface_logger.info(f"Found {len(self._available_channels)} available channels for {self.ifname}.")
-            except Exception as e:
-                interface_logger.error(f"Could not determine available channels: {e}")
-                self._available_channels = [] # Ensure it's empty on failure
+                # --- 1. Execute Blocking OS Command ---
+                proc = subprocess.run(
+                    self.OS_COMMAND, 
+                    capture_output=True, 
+                    text=True, 
+                    timeout=5,
+                    check=False # Check is handled manually as ifconfig may fail if interfaces are down
+                )
                 
-        return self._available_channels
+                # If command execution fails
+                if proc.returncode != 0:
+                     monitor_logger.error(f"OS command failed with code {proc.returncode}: {proc.stderr.strip()}")
+                     # Skip parsing and wait for next poll
+                     self._stop_event.wait(self._poll_interval)
+                     continue
 
-    def set_channel(self, channel: int) -> bool:
+                # --- 2. Parse Data and Prepare Update ---
+                parsed_data = self._parse_output(proc.stdout)
+                
+                # --- 3. Publish to Queue ---
+                try:
+                    # Key the update under a unique monitor namespace
+                    update = {"network": parsed_data}
+                    self._queue.put_nowait(update)
+                    monitor_logger.debug(f"Published network state update to queue with {len(parsed_data['interfaces'])} interfaces.")
+                except queue.Full:
+                    monitor_logger.warning("Agent update queue is full. Dropping network status update.")
+            
+            # --- 4. Handle Errors ---
+            except subprocess.TimeoutExpired:
+                monitor_logger.warning(f"OS command '{self.OS_COMMAND[0]}' timed out after 5s.")
+            except Exception as e:
+                monitor_logger.critical(f"Unhandled exception in monitor loop: {e}", exc_info=True)
+
+            # --- 5. Controlled Sleep ---
+            self._stop_event.wait(self._poll_interval)
+        
+        monitor_logger.info("InterfaceMonitor stopped gracefully.")
+
+    def _parse_output(self, output: str) -> Dict[str, Any]:
         """
-        Sets the interface to a specific channel.
-
+        Parses the multi-line output of the ifconfig command into a structured dictionary.
+        
+        The returned dictionary is namespaced and ready to be merged into the
+        main agent's state.
+        
         Args:
-            channel: The Wi-Fi channel number to set.
-
+            output: The raw stdout string from the ifconfig subprocess call.
+            
         Returns:
-            True if successful, False otherwise.
+            A dictionary containing the parsed interface data.
         """
-        if channel not in self.get_available_channels():
-            interface_logger.warning(f"Channel {channel} is not available for {self.ifname}.")
-            return False
-
-        interface_logger.debug(f"Setting {self.ifname} to channel {channel}")
-        try:
-            # Note: This command requires the interface to be in a mode that supports channel hopping (like Monitor).
-            self._execute_command(f"iw dev {self.ifname} set channel {channel}")
-            return True
-        except Exception as e:
-            interface_logger.error(f"Failed to set channel {channel} on {self.ifname}: {e}")
-            return False
-
-    def channel_hop(self, callback) -> None:
-        """
-        Cycles through all available channels, calling a callback function 
-        after dwelling on each channel for the specified timeout.
+        interfaces: Dict[str, Dict[str, Any]] = {}
+        current_iface_name: str | None = None
         
-        This loop is intended to be called from a separate thread, which is why 
-        it does not return a value but executes the scan.
+        for line in output.split('\n'):
+            line = line.strip()
 
-        Args:
-            callback: A function to call after setting the channel, typically 
-                      used to process packets captured on that channel.
-        """
-        channels = self.get_available_channels()
-        if not channels:
-            interface_logger.error(f"Cannot perform channel hop: No available channels for {self.ifname}.")
-            return
+            # 1. Look for the start of a new interface block (Interface Header)
+            header_match = IFACE_HEADER_RE.match(line)
+            if header_match:
+                current_iface_name = header_match.group(1)
+                flags = header_match.group(2).split(',')
+                mtu = int(header_match.group(3))
+                
+                # Initialize the new interface entry
+                interfaces[current_iface_name] = {
+                    "name": current_iface_name,
+                    "flags": flags,
+                    "mtu": mtu,
+                    "status": "UP" if "UP" in flags else "DOWN",
+                    "mac_address": None,
+                    "ipv4_address": None,
+                    "rx_packets": 0,
+                    "tx_packets": 0,
+                }
+                continue # Move to the next line
 
-        interface_logger.info(f"Starting channel hop across {len(channels)} channels.")
+            # Must be inside an interface block to continue parsing
+            if not current_iface_name or current_iface_name not in interfaces:
+                continue
+
+            # Reference the current interface dictionary
+            current_iface = interfaces[current_iface_name]
+
+            # 2. Look for IPv4 and Netmask
+            inet_match = INET_RE.search(line)
+            if inet_match:
+                current_iface["ipv4_address"] = inet_match.group(1)
+                current_iface["netmask"] = inet_match.group(2)
+                continue
+
+            # 3. Look for MAC Address
+            mac_match = MAC_RE.search(line)
+            if mac_match:
+                current_iface["mac_address"] = mac_match.group(1)
+                continue
+            
+            # 4. Look for RX/TX Statistics
+            rx_tx_match = RX_TX_RE.search(line)
+            if rx_tx_match:
+                direction = rx_tx_match.group(1)
+                packets = int(rx_tx_match.group(2))
+                
+                if direction == "RX":
+                    current_iface["rx_packets"] = packets
+                elif direction == "TX":
+                    current_iface["tx_packets"] = packets
+                continue
+
+
+        # Compile the final result structure for the 'network' state key
+        overall_status = "READY" if any(i.get('ipv4_address') for i in interfaces.values()) else "NET_DOWN"
         
-        for channel in channels:
-            if not self.set_channel(channel):
-                continue # Skip to next channel if setting failed
-            
-            # Execute the callback function (e.g., the packet sniffer/parser)
-            callback(channel)
-            
-            # Wait for the dwell time
-            time.sleep(self.channel_timeout_s)
-
-        interface_logger.info("Channel hop cycle complete.")
-
-# Example usage stub (for local testing only)
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
-    
-    # Replace 'wlan0' with a suitable interface name for testing
-    TEST_IFACE = "wlan0" 
-    
-    # Simple callback function for the channel hop demonstration
-    def dummy_sniffer_callback(channel: int):
-        interface_logger.info(f"Callback executed on Channel {channel}. Simulating packet capture...")
-    
-    try:
-        monitor = InterfaceMonitor(TEST_IFACE, channel_timeout_s=0.5)
-        
-        # NOTE: The actual OS commands used will require root/sudo privileges 
-        # and a compatible wireless card/driver in the host environment.
-        interface_logger.info("--- Testing Interface Monitor ---")
-
-        # 1. Check current mode
-        current_mode = monitor.get_interface_mode()
-        interface_logger.info(f"Current mode of {TEST_IFACE}: {current_mode}")
-        
-        # 2. Attempt to set monitor mode (will likely fail without root)
-        # success = monitor.set_monitor_mode()
-        # interface_logger.info(f"Set Monitor Mode success: {success}")
-        
-        # 3. Get channels
-        available_channels = monitor.get_available_channels()
-        if available_channels:
-            interface_logger.info(f"Channels available: {available_channels}")
-            
-            # 4. Attempt to set a channel (will likely fail without root/monitor mode)
-            # if monitor.set_channel(available_channels[0]):
-            #    interface_logger.info(f"Set channel to {available_channels[0]} successfully.")
-            
-            # 5. Simulate channel hop (without actual command execution)
-            interface_logger.info("\n--- Simulating Channel Hop (No actual system calls) ---")
-            monitor.channel_hop(dummy_sniffer_callback)
-            
-    except Exception as e:
-        interface_logger.critical(f"Test failed due to an exception: {e}")
+        return {
+            "overall_status": overall_status,
+            "interface_count": len(interfaces),
+            "timestamp": time.time(),
+            # Convert dictionary of interfaces to a list for easier iteration if needed, 
+            # or keep as a dict keyed by interface name (preferred for direct access)
+            "interfaces": interfaces 
+        }

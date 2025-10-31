@@ -4,12 +4,26 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaiagotchi"
-dynamic = ["version"]
+version = "0.1.0"
 dependencies = [
-    "PyYAML", "dbus-python", "file-read-backwards", "flask", "flask-cors",
-    "flask-wtf", "gast", "numpy", "pycryptodome", "pydrive2", "python-dateutil",
-    "requests", "scapy", "setuptools", "shimmy", 
-    "tomlkit", "tweepy", "websockets", # <-- The redundant "toml" is removed here
+    "PyYAML",
+    "dbus-python; sys_platform == 'linux'",
+    "file-read-backwards",
+    "flask",
+    "flask-cors",
+    "flask-wtf",
+    "gast",
+    "numpy",
+    "pycryptodome",
+    "pydrive2",
+    "python-dateutil",
+    "requests",
+    "scapy",
+    "setuptools",
+    "shimmy",
+    "tomlkit",
+    "tweepy",
+    "websockets",
 ]
 
 requires-python = ">=3.11"
@@ -24,14 +38,11 @@ description = "(⌐■_■) - An autonomous technical counterpart"
 readme = "README.md"
 license = {file = "LICENSE.md"}
 classifiers = [
-    'Programming Language :: Python :: 3.11',
-    'Development Status :: 5 - Production/Stable',
-    'License :: OSI Approved :: GNU General Public License (GPL)',
-    'Environment :: Console',
+    "Programming Language :: Python :: 3.11",
+    "Development Status :: 5 - Production/Stable",
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Environment :: Console",
 ]
-
-[tool.setuptools.dynamic]
-version = {attr = "pwnagotchi.__version__"}
 
 [project.urls]
 Homepage = "https://github.com/Ekco-S64QTN6/kaiagotchi"
@@ -41,4 +52,4 @@ Issues = "https://github.com/Ekco-S64QTN6/kaiagotchi/issues"
 Download = "https://github.com/Ekco-S64QTN6/kaiagotchi/releases/latest"
 
 [project.scripts]
-kaiagotchi = "pwnagotchi:main"
+kaiagotchi = "kaiagotchi:main"
