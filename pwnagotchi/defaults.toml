@@ -1,5 +1,5 @@
 [main]
-name = "pwnagotchi"
+name = "kaiagotchi"
 lang = "en"
 iface = "wlan0mon"
 mon_start_cmd = "/usr/bin/monstart"
@@ -17,52 +17,46 @@ custom_plugin_repos = [
     "https://github.com/jayofelony/pwnagotchi-torch-plugins/archive/master.zip",
     "https://github.com/Sniffleupagus/pwnagotchi_plugins/archive/master.zip",
     "https://github.com/NeonLightning/pwny/archive/master.zip",
-    "https://github.com/marbasec/UPSLite_Plugin_1_3/archive/master.zip",
     "https://github.com/wpa-2/Pwnagotchi-Plugins/archive/master.zip",
     "https://github.com/cyberartemio/wardriver-pwnagotchi-plugin/archive/main.zip"
 ]
-custom_plugins = "/usr/local/share/pwnagotchi/custom-plugins/"
+custom_plugins = "/usr/local/share/kaiagotchi/custom-plugins/" # Corrected path
 
 [main.plugins.auto-tune]
 enabled = true
 
 [main.plugins.auto_backup]
 enabled = false
-interval = "daily"    # or "hourly", or a number (minutes)
+interval = "daily"  
 max_tries = 0
-backup_location = "/home/pi/"
+backup_location = "/home/kaia/" # Changed from /home/pi/
 files = [
-  "/root/settings.yaml",
-  "/root/client_secrets.json",
-  "/root/.api-report.json",
-  "/root/.ssh",
-  "/root/.bashrc",
-  "/root/.profile",
-  "/home/pi/handshakes",
-  "/root/peers",
-  "/etc/pwnagotchi/",
-  "/usr/local/share/pwnagotchi/custom-plugins",
-  "/etc/ssh/",
-  "/home/pi/.bashrc",
-  "/home/pi/.profile",
-  "/home/pi/.wpa_sec_uploads"
+    "/root/settings.yaml",
+    "/root/client_secrets.json",
+    "/root/.api-report.json",
+    "/root/.ssh",
+    "/root/.bashrc",
+    "/root/.profile",
+    "/home/kaia/handshakes", # Changed from /home/pi/
+    "/root/peers",
+    "/etc/kaiagotchi/", # Changed path
+    "/usr/local/share/kaiagotchi/custom-plugins", # Changed path
+    "/etc/ssh/",
+    "/home/kaia/.bashrc", # Changed from /home/pi/
+    "/home/kaia/.profile", # Changed from /home/pi/
+    "/home/kaia/.wpa_sec_uploads" # Changed from /home/pi/
 ]
-exclude = [ "/etc/pwnagotchi/logs/*"]
+exclude = [ "/etc/kaiagotchi/logs/*"] # Changed path
 commands = [ "tar cf {backup_file} {files}"]
 
 [main.plugins.auto-update]
 enabled = true
 install = true
 interval = 1
-token = "" # Create a personal access token (classic) with scope set to public_repo to use the GitHub API
+token = "" 
 
 [main.plugins.bt-tether]
-enabled = false
-phone-name = "" # name as shown on the phone i.e. "Pwnagotchi's Phone"
-mac = ""
-phone = "" # android or ios
-ip = "" # optional, default : 192.168.44.2 if android or 172.20.10.2 if ios
-dns = "8.8.8.8 1.1.1.1" # optional, default (google): "8.8.8.8 1.1.1.1". Consider using anonymous DNS like OpenNic :-)
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.fix_services]
 enabled = true
@@ -73,19 +67,19 @@ enabled = true
 [main.plugins.gdrivesync]
 enabled = false
 backupfiles = [""]
-backup_folder = "PwnagotchiBackups"
+backup_folder = "KaiagotchiBackups" # Naming consistency
 interval = 1
 
 [main.plugins.gpio_buttons]
-enabled = false
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.gps]
-enabled = false
+enabled = false # DISABLED: Hardware-dependent
 speed = 19200
-device = "/dev/ttyUSB0" # for GPSD: "localhost:2947"
+device = "/dev/null" # Nullified hardware path
 
 [main.plugins.gps_listener]
-enabled = false
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.grid]
 enabled = true
@@ -96,27 +90,16 @@ enabled = false
 max-lines = 10000
 
 [main.plugins.memtemp]
-enabled = false
-scale = "celsius"
-orientation = "horizontal"
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.ohcapi]
 enabled = false
-api_key = "sk_your_api_key_here"
-receive_email = "yes"
 
 [main.plugins.pwndroid]
 enabled = false
-display = false # show coords on display
-display_altitude = false # show altitude on display
 
 [main.plugins.pisugarx]
-enabled = false
-rotation = false
-default_display = "percentage"
-lowpower_shutdown = true
-lowpower_shutdown_level = 10 # battery percent at which the device will turn off
-max_charge_voltage_protection = false #It will limit the battery voltage to about 80% to extend battery life
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.pwncrack]
 enabled = false
@@ -124,18 +107,13 @@ key = ""
 
 [main.plugins.session-stats]
 enabled = false
-save_directory = "/var/tmp/pwnagotchi/sessions/"
+save_directory = "/var/tmp/kaiagotchi/sessions/" # Changed path
 
 [main.plugins.ups_hat_c]
-enabled = false
-label_on = true  # show BAT label or just percentage
-shutdown = 5  # battery percent at which the device will turn off
-bat_x_coord = 140
-bat_y_coord = 0
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.ups_lite]
-enabled = false
-shutdown = 2
+enabled = false # DISABLED: Hardware-dependent
 
 [main.plugins.webcfg]
 enabled = true
@@ -145,11 +123,6 @@ enabled = false
 
 [main.plugins.wigle]
 enabled = false
-api_key = "" # mandatory
-cvs_dir = "/tmp" # optionnal, is set, the CVS is written to this directory
-donate = false # default: off
-timeout = 30 # default: 30
-position = [7, 85] # optionnal
 
 [main.plugins.wpa-sec]
 enabled = false
@@ -160,8 +133,8 @@ show_pwd = false
 single_files = false
 
 [main.log]
-path = "/etc/pwnagotchi/log/pwnagotchi.log"
-path-debug = "/etc/pwnagotchi/log/pwnagotchi-debug.log"
+path = "/etc/kaiagotchi/log/kaiagotchi.log" # Changed path
+path-debug = "/etc/kaiagotchi/log/kaiagotchi-debug.log" # Changed path
 
 [main.log.rotation]
 enabled = true
@@ -190,13 +163,13 @@ throttle_a = 0.4
 throttle_d = 0.9
 
 [ui]
-invert = false # false = black background, true = white background
+invert = false
 cursor = true
 fps = 0.0
 
 [ui.font]
-name = "DejaVuSansMono" # for japanese: fonts-japanese-gothic
-size_offset = 0 # will be added to the font size
+name = "DejaVuSansMono"
+size_offset = 0
 
 [ui.faces]
 look_r = "( ⚆_⚆)"
@@ -230,21 +203,21 @@ position_y = 34
 
 [ui.web]
 enabled = true
-address = "::" # listening on both ipv4 and ipv6 - switch to 0.0.0.0 to listen on just ipv4
+address = "::"
 auth = false
-username = "changeme" # if auth is true
-password = "changeme" # if auth is true
+username = "changeme"
+password = "changeme"
 origin = ""
 port = 8080
 on_frame = ""
 
 [ui.display]
-enabled = false
-rotation = 180
-type = "waveshare_4"
+enabled = false # FORCED HEADLESS MODE
+rotation = 0 # No rotation needed for headless
+type = "dummydisplay" # FORCED DUMMY DISPLAY
 
 [bettercap]
-handshakes = "/home/pi/handshakes"
+handshakes = "/home/kaia/handshakes" # Changed path
 silence = [
     "ble.device.new",
     "ble.device.lost",
@@ -266,7 +239,7 @@ enabled = true
 
 [fs.memory.mounts.log]
 enabled = true
-mount = "/etc/pwnagotchi/log/"
+mount = "/etc/kaiagotchi/log/" # Changed path
 size = "50M"
 sync = 60
 zram = true
@@ -274,7 +247,7 @@ rsync = true
 
 [fs.memory.mounts.data]
 enabled = true
-mount = "/var/tmp/pwnagotchi"
+mount = "/var/tmp/kaiagotchi" # Changed path
 size = "10M"
 sync = 3600
 zram = true
