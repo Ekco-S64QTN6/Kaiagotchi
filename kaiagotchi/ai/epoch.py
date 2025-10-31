@@ -1,16 +1,15 @@
 import time
 import threading
 import logging
+from typing import Dict, Any, List, Optional
 
-import Kaiagotchi
-import Kaiagotchi.utils as utils
-import Kaiagotchi.mesh.wifi as wifi
-
-from Kaiagotchi.ai.reward import RewardFunction
+from kaiagotchi import utils, cpu_load, mem_usage, temperature
+from kaiagotchi.mesh import wifi
+from kaiagotchi.ai.reward import RewardFunction
 
 
-class Epoch(object):
-    def __init__(self, config):
+class Epoch:
+    def __init__(self, config: Dict[str, Any]):
         self.epoch = 0
         self.config = config
         # how many consecutive epochs with no activity
@@ -62,11 +61,13 @@ class Epoch(object):
             'peers_histogram': [0.0] * wifi.NumChannels
         }
         self._observation_ready = threading.Event()
-        self._epoch_data = {}
+        self._epoch_data: Dict[str, Any] = {}
         self._epoch_data_ready = threading.Event()
         self._reward = RewardFunction()
+        self._lock = threading.Lock()  # Add thread safety
 
-    def wait_for_epoch_data(self, with_observation=True, timeout=None):
+    def wait_for_epoch_data(self, with_observation: bool = True, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """Wait for epoch data to be ready and return it."""
         # if with_observation:
         #    self._observation_ready.wait(timeout)
         #    self._observation_ready.clear()
@@ -74,177 +75,190 @@ class Epoch(object):
         self._epoch_data_ready.clear()
         return self._epoch_data if with_observation is False else {**self._observation, **self._epoch_data}
 
-    def data(self):
+    def data(self) -> Dict[str, Any]:
+        """Get the current epoch data."""
         return self._epoch_data
 
-    def observe(self, aps, peers):
-        num_aps = len(aps)
-        if num_aps == 0:
-            self.blind_for += 1
-        else:
-            self.blind_for = 0
+    def observe(self, aps: List, peers: List) -> None:
+        """Update observation vectors with current network state."""
+        if not isinstance(aps, list) or not isinstance(peers, list):
+            logging.error("observe() requires list inputs for aps and peers")
+            return
 
-        bond_unit_scale = self.config['personality']['bond_encounters_factor']
+        with self._lock:  # Thread safety
+            num_aps = len(aps)
+            if num_aps == 0:
+                self.blind_for += 1
+            else:
+                self.blind_for = 0
 
-        self.num_peers = len(peers)
-        num_peers = self.num_peers + 1e-10  # avoid division by 0
+            bond_unit_scale = self.config['personality']['bond_encounters_factor']
 
-        self.tot_bond_factor = sum((peer.encounters for peer in peers)) / bond_unit_scale
-        self.avg_bond_factor = self.tot_bond_factor / num_peers
+            self.num_peers = len(peers)
+            num_peers = self.num_peers + 1e-10  # avoid division by 0
 
-        num_aps = len(aps) + 1e-10
-        num_sta = sum(len(ap['clients']) for ap in aps) + 1e-10
-        aps_per_chan = [0.0] * wifi.NumChannels
-        sta_per_chan = [0.0] * wifi.NumChannels
-        peers_per_chan = [0.0] * wifi.NumChannels
+            self.tot_bond_factor = sum((peer.encounters for peer in peers)) / bond_unit_scale
+            self.avg_bond_factor = self.tot_bond_factor / num_peers
 
-        for ap in aps:
-            ch_idx = ap['channel'] - 1
-            try:
-                aps_per_chan[ch_idx] += 1.0
-                sta_per_chan[ch_idx] += len(ap['clients'])
-            except IndexError:
-                logging.error("got data on channel %d, we can store %d channels" % (ap['channel'], wifi.NumChannels))
+            num_aps = len(aps) + 1e-10
+            num_sta = sum(len(ap['clients']) for ap in aps) + 1e-10
+            aps_per_chan = [0.0] * wifi.NumChannels
+            sta_per_chan = [0.0] * wifi.NumChannels
+            peers_per_chan = [0.0] * wifi.NumChannels
 
-        for peer in peers:
-            try:
-                peers_per_chan[peer.last_channel - 1] += 1.0
-            except IndexError:
-                logging.error(
-                    "got peer data on channel %d, we can store %d channels" % (peer.last_channel, wifi.NumChannels))
+            for ap in aps:
+                ch_idx = ap['channel'] - 1
+                try:
+                    aps_per_chan[ch_idx] += 1.0
+                    sta_per_chan[ch_idx] += len(ap['clients'])
+                except IndexError:
+                    logging.error("got data on channel %d, we can store %d channels" % (ap['channel'], wifi.NumChannels))
 
-        # normalize
-        aps_per_chan = [e / num_aps for e in aps_per_chan]
-        sta_per_chan = [e / num_sta for e in sta_per_chan]
-        peers_per_chan = [e / num_peers for e in peers_per_chan]
+            for peer in peers:
+                try:
+                    peers_per_chan[peer.last_channel - 1] += 1.0
+                except IndexError:
+                    logging.error(
+                        "got peer data on channel %d, we can store %d channels" % (peer.last_channel, wifi.NumChannels))
 
-        self._observation = {
-            'aps_histogram': aps_per_chan,
-            'sta_histogram': sta_per_chan,
-            'peers_histogram': peers_per_chan
-        }
-        self._observation_ready.set()
+            # normalize
+            aps_per_chan = [e / num_aps for e in aps_per_chan]
+            sta_per_chan = [e / num_sta for e in sta_per_chan]
+            peers_per_chan = [e / num_peers for e in peers_per_chan]
 
-    def track(self, deauth=False, assoc=False, handshake=False, hop=False, sleep=False, miss=False, inc=1):
-        if deauth:
-            self.num_deauths += inc
-            self.did_deauth = True
-            self.any_activity = True
+            self._observation = {
+                'aps_histogram': aps_per_chan,
+                'sta_histogram': sta_per_chan,
+                'peers_histogram': peers_per_chan
+            }
+            self._observation_ready.set()
 
-        if assoc:
-            self.num_assocs += inc
-            self.did_associate = True
-            self.any_activity = True
+    def track(self, deauth: bool = False, assoc: bool = False, handshake: bool = False, 
+              hop: bool = False, sleep: bool = False, miss: bool = False, inc: int = 1) -> None:
+        """Track various activities during the epoch."""
+        with self._lock:  # Thread safety
+            if deauth:
+                self.num_deauths += inc
+                self.did_deauth = True
+                self.any_activity = True
 
-        if miss:
-            self.num_missed += inc
+            if assoc:
+                self.num_assocs += inc
+                self.did_associate = True
+                self.any_activity = True
 
-        if hop:
-            self.num_hops += inc
-            # these two are used in order to determine the sleep time in seconds
-            # before switching to a new channel ... if nothing happened so far
-            # during this epoch on the current channel, we will sleep less
+            if miss:
+                self.num_missed += inc
+
+            if hop:
+                self.num_hops += inc
+                # these two are used in order to determine the sleep time in seconds
+                # before switching to a new channel ... if nothing happened so far
+                # during this epoch on the current channel, we will sleep less
+                self.did_deauth = False
+                self.did_associate = False
+
+            if handshake:
+                self.num_shakes += inc
+                self.did_handshakes = True
+
+            if sleep:
+                self.num_slept += inc
+
+    def next(self) -> None:
+        """Advance to the next epoch and calculate metrics."""
+        with self._lock:  # Thread safety
+            if self.any_activity is False and self.did_handshakes is False:
+                self.inactive_for += 1
+                self.active_for = 0
+            else:
+                self.active_for += 1
+                self.inactive_for = 0
+                self.sad_for = 0
+                self.bored_for = 0
+
+            if self.inactive_for >= self.config['personality']['sad_num_epochs']:
+                # sad > bored; cant be sad and bored
+                self.bored_for = 0
+                self.sad_for += 1
+            elif self.inactive_for >= self.config['personality']['bored_num_epochs']:
+                # sad_treshhold > inactive > bored_treshhold; cant be sad and bored
+                self.sad_for = 0
+                self.bored_for += 1
+            else:
+                self.sad_for = 0
+                self.bored_for = 0
+
+            now = time.time()
+            # FIXED: Use imported functions directly instead of undefined "kaiagotchi"
+            cpu = cpu_load("epoch")
+            mem = mem_usage()
+            temp = temperature()
+
+            self.epoch_duration = now - self.epoch_started
+
+            # cache the state of this epoch for other threads to read
+            self._epoch_data = {
+                'duration_secs': self.epoch_duration,
+                'slept_for_secs': self.num_slept,
+                'blind_for_epochs': self.blind_for,
+                'inactive_for_epochs': self.inactive_for,
+                'active_for_epochs': self.active_for,
+                'sad_for_epochs': self.sad_for,
+                'bored_for_epochs': self.bored_for,
+                'missed_interactions': self.num_missed,
+                'num_hops': self.num_hops,
+                'num_peers': self.num_peers,
+                'tot_bond': self.tot_bond_factor,
+                'avg_bond': self.avg_bond_factor,
+                'num_deauths': self.num_deauths,
+                'num_associations': self.num_assocs,
+                'num_handshakes': self.num_shakes,
+                'cpu_load': cpu,
+                'mem_usage': mem,
+                'temperature': temp
+            }
+
+            self._epoch_data['reward'] = self._reward(self.epoch + 1, self._epoch_data)
+            self._epoch_data_ready.set()
+
+            logging.info("[epoch %d] duration=%s slept_for=%s blind=%d sad=%d bored=%d inactive=%d active=%d peers=%d tot_bond=%.2f "
+                         "avg_bond=%.2f hops=%d missed=%d deauths=%d assocs=%d handshakes=%d cpu=%d%% mem=%d%% "
+                         "temperature=%dC reward=%s" % (
+                             self.epoch,
+                             utils.secs_to_hhmmss(self.epoch_duration),
+                             utils.secs_to_hhmmss(self.num_slept),
+                             self.blind_for,
+                             self.sad_for,
+                             self.bored_for,
+                             self.inactive_for,
+                             self.active_for,
+                             self.num_peers,
+                             self.tot_bond_factor,
+                             self.avg_bond_factor,
+                             self.num_hops,
+                             self.num_missed,
+                             self.num_deauths,
+                             self.num_assocs,
+                             self.num_shakes,
+                             cpu * 100,
+                             mem * 100,
+                             temp,
+                             self._epoch_data['reward']))
+
+            # Reset for next epoch
+            self.epoch += 1
+            self.epoch_started = now
             self.did_deauth = False
+            self.num_deauths = 0
+            self.num_peers = 0
+            self.tot_bond_factor = 0.0
+            self.avg_bond_factor = 0.0
             self.did_associate = False
-
-        if handshake:
-            self.num_shakes += inc
-            self.did_handshakes = True
-
-        if sleep:
-            self.num_slept += inc
-
-    def next(self):
-        if self.any_activity is False and self.did_handshakes is False:
-            self.inactive_for += 1
-            self.active_for = 0
-        else:
-            self.active_for += 1
-            self.inactive_for = 0
-            self.sad_for = 0
-            self.bored_for = 0
-
-        if self.inactive_for >= self.config['personality']['sad_num_epochs']:
-            # sad > bored; cant be sad and bored
-            self.bored_for = 0
-            self.sad_for += 1
-        elif self.inactive_for >= self.config['personality']['bored_num_epochs']:
-            # sad_treshhold > inactive > bored_treshhold; cant be sad and bored
-            self.sad_for = 0
-            self.bored_for += 1
-        else:
-            self.sad_for = 0
-            self.bored_for = 0
-
-        now = time.time()
-        cpu = Kaiagotchi.cpu_load("epoch")
-        mem = Kaiagotchi.mem_usage()
-        temp = Kaiagotchi.temperature()
-
-        self.epoch_duration = now - self.epoch_started
-
-        # cache the state of this epoch for other threads to read
-        self._epoch_data = {
-            'duration_secs': self.epoch_duration,
-            'slept_for_secs': self.num_slept,
-            'blind_for_epochs': self.blind_for,
-            'inactive_for_epochs': self.inactive_for,
-            'active_for_epochs': self.active_for,
-            'sad_for_epochs': self.sad_for,
-            'bored_for_epochs': self.bored_for,
-            'missed_interactions': self.num_missed,
-            'num_hops': self.num_hops,
-            'num_peers': self.num_peers,
-            'tot_bond': self.tot_bond_factor,
-            'avg_bond': self.avg_bond_factor,
-            'num_deauths': self.num_deauths,
-            'num_associations': self.num_assocs,
-            'num_handshakes': self.num_shakes,
-            'cpu_load': cpu,
-            'mem_usage': mem,
-            'temperature': temp
-        }
-
-        self._epoch_data['reward'] = self._reward(self.epoch + 1, self._epoch_data)
-        self._epoch_data_ready.set()
-
-        logging.info("[epoch %d] duration=%s slept_for=%s blind=%d sad=%d bored=%d inactive=%d active=%d peers=%d tot_bond=%.2f "
-                     "avg_bond=%.2f hops=%d missed=%d deauths=%d assocs=%d handshakes=%d cpu=%d%% mem=%d%% "
-                     "temperature=%dC reward=%s" % (
-                         self.epoch,
-                         utils.secs_to_hhmmss(self.epoch_duration),
-                         utils.secs_to_hhmmss(self.num_slept),
-                         self.blind_for,
-                         self.sad_for,
-                         self.bored_for,
-                         self.inactive_for,
-                         self.active_for,
-                         self.num_peers,
-                         self.tot_bond_factor,
-                         self.avg_bond_factor,
-                         self.num_hops,
-                         self.num_missed,
-                         self.num_deauths,
-                         self.num_assocs,
-                         self.num_shakes,
-                         cpu * 100,
-                         mem * 100,
-                         temp,
-                         self._epoch_data['reward']))
-
-        self.epoch += 1
-        self.epoch_started = now
-        self.did_deauth = False
-        self.num_deauths = 0
-        self.num_peers = 0
-        self.tot_bond_factor = 0.0
-        self.avg_bond_factor = 0.0
-        self.did_associate = False
-        self.num_assocs = 0
-        self.num_missed = 0
-        self.did_handshakes = False
-        self.num_shakes = 0
-        self.num_hops = 0
-        self.num_slept = 0
-        self.any_activity = False
-
+            self.num_assocs = 0
+            self.num_missed = 0
+            self.did_handshakes = False
+            self.num_shakes = 0
+            self.num_hops = 0
+            self.num_slept = 0
+            self.any_activity = False

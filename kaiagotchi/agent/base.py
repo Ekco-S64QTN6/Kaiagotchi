@@ -1,34 +1,43 @@
-# kaiagotchi/agent/base.py - Fixed imports
+# kaiagotchi/agent/base.py - Fixed imports and architecture
 import asyncio
 import logging
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Optional, Set
 
-# Import with fallbacks for missing modules
+# Import with proper error handling
 try:
     from kaiagotchi.data.system_types import SystemState, GlobalSystemState
     from kaiagotchi.events import EventEmitter
     from kaiagotchi.agent.decision_engine import DecisionEngine, AgentState
 except ImportError as e:
     logging.warning(f"Some imports failed in base.py: {e}")
-    # Create minimal fallbacks
+    # Create minimal fallbacks for development
     class GlobalSystemState:
         BOOTING = "BOOTING"
-        READY = "READY"
+        MONITORING = "MONITORING"
+        TARGETING = "TARGETING"
+        MAINTENANCE = "MAINTENANCE"
+        SHUTDOWN = "SHUTDOWN"
     
     class SystemState:
         def __init__(self, **kwargs):
-            self.config_hash = kwargs.get('config_hash', 'initial')
             self.current_system_state = kwargs.get('current_system_state', GlobalSystemState.BOOTING)
             self.network = kwargs.get('network', {})
             self.metrics = kwargs.get('metrics', {})
+            self.agents = kwargs.get('agents', {})
+            self.session_metrics = kwargs.get('session_metrics', {})
+            self.last_state_update = time.time()
     
     class EventEmitter:
         async def emit(self, event, data):
-            pass
+            logging.debug(f"Event emitted: {event} - {data}")
     
     class AgentState:
         INITIALIZING = "INITIALIZING"
         RECON_SCAN = "RECON_SCAN"
+        TARGETING = "TARGETING"
+        MAINTENANCE = "MAINTENANCE"
+        PAUSED = "PAUSED"
     
     class DecisionEngine:
         def __init__(self, config):
@@ -38,7 +47,8 @@ except ImportError as e:
         def process_state(self, state, action_manager):
             return AgentState.RECON_SCAN
 
-agent_logger = logging.getLogger('agent.base')
+# Create module-specific logger
+agent_logger = logging.getLogger('kaiagotchi.agent.base')
 
 class KaiagotchiBase:
     """
@@ -48,15 +58,20 @@ class KaiagotchiBase:
     
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.logger = logging.getLogger(__name__)
+        self.logger = agent_logger
         self.events = EventEmitter()
         self.decision_engine = DecisionEngine(config)
         self.action_manager = None
+        self._running = False
+        self._tasks: Set[asyncio.Task] = set()
         
-        # Centralized state management
+        # Centralized state management with proper initialization
         self.system_state = SystemState(
-            config_hash="initial",
-            current_system_state=GlobalSystemState.BOOTING
+            current_system_state=GlobalSystemState.BOOTING,
+            network={"access_points": {}, "interfaces": {}, "last_scan_time": 0.0},
+            metrics={"cpu_usage": 0.0, "memory_usage": 0.0, "disk_free_gb": 0.0, "uptime_seconds": 0.0},
+            agents={},
+            session_metrics={"duration_seconds": 0.0, "handshakes_secured": 0}
         ) 
         
         self._state_lock = asyncio.Lock()
@@ -69,11 +84,19 @@ class KaiagotchiBase:
             try:
                 # Handle both Pydantic model and fallback class
                 if hasattr(self.system_state, 'model_copy'):
+                    # Pydantic v2 model
                     self.system_state = self.system_state.model_copy(update=updates)
                 else:
-                    # Fallback for basic class
+                    # Fallback for basic class - deep update
                     for key, value in updates.items():
-                        setattr(self.system_state, key, value)
+                        if hasattr(self.system_state, key) and isinstance(getattr(self.system_state, key), dict):
+                            getattr(self.system_state, key).update(value)
+                        else:
+                            setattr(self.system_state, key, value)
+                
+                # Update timestamp
+                self.system_state.last_state_update = time.time()
+                
             except Exception as e:
                 self.logger.error(f"Failed to update SystemState: {e}")
                 return
@@ -85,20 +108,26 @@ class KaiagotchiBase:
         Runs one decision cycle.
         """
         try:
-            async with self._state_lock:
-                if hasattr(self.system_state, 'model_dump'):
-                    current_state_data = self.system_state.model_dump()
-                else:
-                    current_state_data = self.system_state.__dict__
+            # Create state snapshot for decision engine
+            if hasattr(self.system_state, 'model_dump'):
+                current_state_data = self.system_state.model_dump()
+            else:
+                current_state_data = {
+                    'current_system_state': self.system_state.current_system_state,
+                    'network': self.system_state.network,
+                    'metrics': self.system_state.metrics,
+                    'agents': self.system_state.agents,
+                    'session_metrics': self.system_state.session_metrics
+                }
             
-            new_agent_state_enum = self.decision_engine.process_state(
+            new_agent_state = self.decision_engine.process_state(
                 current_state_data, 
                 self.action_manager
             )
             
-            if self.system_state.current_system_state != new_agent_state_enum:
-                self.logger.info(f"Agent state changing from {self.system_state.current_system_state} to {new_agent_state_enum}")
-                state_update = {"current_system_state": new_agent_state_enum}
+            if self.system_state.current_system_state != new_agent_state:
+                self.logger.info(f"Agent state changing from {self.system_state.current_system_state} to {new_agent_state}")
+                state_update = {"current_system_state": new_agent_state}
                 await self.update_state(state_update)
             
         except Exception as e:
@@ -109,6 +138,7 @@ class KaiagotchiBase:
         Gather initial system state.
         """
         return {
+            "current_system_state": GlobalSystemState.MONITORING,
             "metrics": {
                 "uptime_seconds": 0.0,
                 "cpu_usage": 0.1,
@@ -123,7 +153,14 @@ class KaiagotchiBase:
                         "mode": "managed",
                     }
                 },
-                "ready_interfaces": ["wlan0"]
+                "access_points": {},
+                "last_scan_time": time.time()
+            },
+            "session_metrics": {
+                "duration_seconds": 0.0,
+                "handshakes_secured": 0,
+                "deauthed_clients": 0,
+                "peer_units": 0
             }
         }
 
@@ -132,21 +169,26 @@ class KaiagotchiBase:
         Main async loop to start the agent's operation.
         """
         try:
+            self._running = True
             self.logger.info("Agent starting up...")
             
+            # Initialize system state
             initial_updates = await self._gather_state()
             await self.update_state(initial_updates)
             
             self.logger.info("Initial state established. Starting decision loop.")
             
-            while True:
+            # Main agent loop
+            while self._running:
                 await self.run_decision_cycle()
                 await asyncio.sleep(self.config.get("decision_cycle_delay", 5.0))
                 
         except asyncio.CancelledError:
             self.logger.info("Agent stopping gracefully...")
         except Exception as e:
-            self.logger.critical(f"Unhandled exception: {e}")
+            self.logger.critical(f"Unhandled exception in agent loop: {e}")
+        finally:
+            self._running = False
 
     def run(self):
         """
@@ -159,9 +201,17 @@ class KaiagotchiBase:
         except Exception as e:
             self.logger.critical(f"Agent crashed: {e}")
 
-    def stop(self):
+    async def stop(self):
         """
         Stop the agent gracefully.
         """
         self.logger.info("Stopping agent...")
-        # Implementation would cancel asyncio tasks
+        self._running = False
+        
+        # Cancel any running tasks
+        for task in self._tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Update state to shutdown
+        await self.update_state({"current_system_state": GlobalSystemState.SHUTDOWN})

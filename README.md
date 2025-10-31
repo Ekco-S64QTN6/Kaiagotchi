@@ -38,6 +38,25 @@ Kaiagotchi adapts the core concepts of wireless security research to modern serv
 - **Python**: 3.11 or newer
 - **Dependencies**: `aircrack-ng`, `wireless-tools`, `iw`
 
+## 🔒 Security Features
+
+Kaiagotchi includes comprehensive security controls for responsible usage:
+
+### Security Warnings
+- Interactive security warnings on first run
+- Legal and ethical usage acknowledgments
+- Environment validation checks
+
+### Secure Configuration
+- Configuration file permission hardening
+- Sensitive data masking in logs
+- Configuration validation on startup
+
+### Safety Controls
+- Root privilege verification
+- Network interface permission checks
+- Secure command execution patterns
+
 ## ⚡ Quick Start
 
 ### Installation
@@ -46,13 +65,14 @@ Kaiagotchi adapts the core concepts of wireless security research to modern serv
 # Clone the repository
 git clone https://github.com/Ekco-S64QTN6/kaiagotchi
 cd kaiagotchi
-
-# Install Python dependencies
 pip install -e .
 
-# Install system dependencies (Ubuntu/Debian)
+# System dependencies (Ubuntu/Debian)
 sudo apt update
 sudo apt install aircrack-ng wireless-tools iw
+
+# First run with security warnings
+sudo kaiagotchi
 
 ### Basic Usage
 
