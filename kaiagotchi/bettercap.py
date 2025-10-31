@@ -7,7 +7,7 @@ import random
 from requests.auth import HTTPBasicAuth
 from time import sleep
 
-import Kaiagotchi
+import kaiagotchi
 
 requests.adapters.DEFAULT_RETRIES = 5  # increase retries number
 
@@ -101,7 +101,7 @@ class Client(object):
                 continue
             except OSError:
                 logging.warning('connection to the bettercap endpoint failed...')
-                Kaiagotchi.restart("AUTO")
+                kaiagotchi.restart("AUTO")
 
     def run(self, command, verbose_errors=True):
         while True:

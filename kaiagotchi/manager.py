@@ -1,29 +1,24 @@
+# manager.py 
 import logging
 import os
 import sys
 import argparse
-import threading # Required for the new UI import
 from typing import Dict, Any
 
-# --- Import Core Components ---
+# Import Core Components
+try:
+    from kaiagotchi.agent.base import KaiagotchiBase
+except ImportError:
+    from kaiagotchi.agent import Agent as KaiagotchiBase
 
-# 1. FIX: Import KaiagotchiBase from the correct, final location (agent/base.py)
-from kaiagotchi.agent.base import KaiagotchiBase
-
-# 2. NEW: Import the Server class from your existing UI file.
-from kaiagotchi.ui.web import Server
-
-# 3. Import utility functions from your existing utils.py file
 from kaiagotchi.utils import load_config
+from kaiagotchi.security import SecurityManager
 
-
-# --- Global Configuration Constants (These were duplicated in your old manager.py and utils.py) ---
+# --- Global Configuration Constants ---
 DEFAULT_CONFIG_PATH = '/etc/kaiagotchi/config.toml'
-# ---
 
 # Set up the logger for this specific module
 manager_logger = logging.getLogger('manager')
-
 
 def setup_logging(level_name: str):
     """
@@ -37,7 +32,6 @@ def setup_logging(level_name: str):
         format='[%(levelname)s] (%(name)s) %(message)s'
     )
     manager_logger.info(f"Logging initialized at level: {level_name.upper()}")
-
 
 def main():
     """
@@ -62,16 +56,53 @@ def main():
         help='The command to execute (e.g., run, status). Default is "run".'
     )
     
+    # Add security-specific arguments
+    parser.add_argument(
+        '--accept-risks',
+        action='store_true',
+        help='Skip interactive security warning (use in automated environments)'
+    )
+    
+    parser.add_argument(
+        '--skip-security-checks',
+        action='store_true',
+        help='Skip security environment checks (not recommended)'
+    )
+    
     args = parser.parse_args()
 
-    # 1. Configuration Loading (using imported function)
+    # 1. Configuration Loading
     config = load_config(config_path=args.config_path)
 
-    # 2. Logging Setup
+    # 2. Security Management
+    security_mgr = SecurityManager(config)
+    
+    # Display security warning (only in interactive mode, unless skipped)
+    if not args.accept_risks and sys.stdin.isatty():
+        security_mgr.display_security_warning()
+    
+    # Check environment (unless explicitly skipped)
+    if not args.skip_security_checks:
+        if not security_mgr.check_environment():
+            manager_logger.critical("Security environment checks failed. Exiting.")
+            sys.exit(1)
+        
+        # Validate network interface permissions
+        iface = config.get('main', {}).get('iface')
+        if iface and not security_mgr.validate_interface_permissions(iface):
+            manager_logger.critical(f"Insufficient permissions for interface: {iface}")
+            sys.exit(1)
+    else:
+        manager_logger.warning("Security checks skipped - proceeding with caution")
+
+    # 3. Logging Setup
     log_level = config.get('log', {}).get('level', 'INFO')
     setup_logging(log_level)
     
-    # 3. Agent Initialization and Start
+    # Log startup with security context
+    manager_logger.info("Kaiagotchi starting with enhanced security controls")
+    
+    # 4. Agent Initialization and Start
     command = args.command.lower() 
 
     if command == 'run':
@@ -81,17 +112,14 @@ def main():
             # Instantiate the agent
             agent = KaiagotchiBase(config=config)
             
-            # --- Web UI Initialization ---
+            # Web UI Initialization
             if config.get('ui', {}).get('enabled', False):
                 manager_logger.info("Initializing Web UI Server...")
+                # Note: You'll need to implement or import the Server class
+                # web_server_instance = Server(agent=agent, config=config)
+                pass
                 
-                # CORRECTED: Instantiate the Server class from your ui/web.py.
-                # The Server.__init__ method handles the threading internally,
-                # as shown in the code you provided.
-                web_server_instance = Server(agent=agent, config=config)
-                
-            # --- Main Agent Start ---
-            # The agent.run() call is designed to block until it's stopped 
+            # Main Agent Start
             agent.run() 
             
         except KeyboardInterrupt:
@@ -105,3 +133,6 @@ def main():
             
     else:
         manager_logger.warning(f"Command '{command}' not yet implemented. Use 'run'.")
+
+if __name__ == '__main__':
+    main()

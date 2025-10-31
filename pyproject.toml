@@ -8,97 +8,182 @@ version = "0.1.0"
 description = "Kaia AI - The Autonomous Technical Counterpart"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "GPL-3.0-only"
+license = {text = "GPL-3.0-only"}
+keywords = ["ai", "headless", "python", "manager", "agent"]
 
 authors = [
-{name = "Michael Schellhorn", email = "michael.schellhorn@example.com"},
+    {name = "Michael Schellhorn", email = "michael.schellhorn@example.com"},
 ]
 maintainers = [
-{name = "Ekco", email = "ekco-s64qtn6@example.com"},
-]
-keywords = [
-"ai",
-"headless",
-"python",
-"manager",
-"agent",
+    {name = "Ekco", email = "ekco-s64qtn6@example.com"},
 ]
 
 classifiers = [
-"Development Status :: 5 - Production/Stable",
-"Programming Language :: Python :: 3.11",
-"Programming Language :: Python :: 3.12",
-"Topic :: Scientific/Engineering :: Artificial Intelligence",
-"Environment :: Console",
-"Typing :: Typed",
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Security",
+    "Environment :: Console",
+    "Operating System :: POSIX :: Linux",
+    "Typing :: Typed",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
 ]
 
 dependencies = [
-# Core Dependencies (from original project)
-"PyYAML",
-"dbus-python; sys_platform == 'linux'",
-"file-read-backwards",
-"flask",
-"flask-cors",
-"flask-wtf",
-"gast",
-"numpy",
-"pycryptodome",
-"pydrive2",
-"python-dateutil",
-"scapy",
-"shimmy",
-"tomlkit",
-"tweepy",
-"websockets",
+    # === Core Data & Serialization ===
+    "PyYAML",                    # YAML configuration parsing
+    "tomlkit",                   # TOML configuration parsing
+    
+    # === Web & API Framework ===
+    "flask",                     # Web UI framework
+    "flask-cors",                # CORS support
+    "flask-wtf",                 # Form handling & CSRF protection
+    "websockets",                # Real-time WebSocket communication
+    "requests>=2.32.3",          # HTTP client with security updates
+    
+    # === System Integration ===
+    "dbus-python; sys_platform == 'linux'",  # Linux D-Bus integration
+    "file-read-backwards",       # Efficient log file reading
+    
+    # === Cryptography & Security ===
+    "cryptography>=42.0.8",      # Modern cryptography (replaces pycryptodome)
+    
+    # === Data Processing ===
+    "numpy",                     # Numerical computing
+    "python-dateutil",           # Date/time utilities
+    
+    # === External Integrations ===
+    "pydrive2",                  # Google Drive API
+    "tweepy",                    # Twitter API
+    
+    # === Network Analysis ===
+    "scapy>=2.5.0",              # Packet manipulation & PCAP parsing
+    
+    # === Modern Architecture ===
+    "pydantic>=2.7.4",           # Data validation & settings
+    "pydantic-settings>=2.2.1",  # Configuration management
+    
+    # === Development & ML (Consider making optional) ===
+    "gast",                      # Generic AST (ML framework dependency)
+    "shimmy",                    # RL environment compatibility
+]
 
-# Architectural Dependencies (for structured data and modern structure)
-"pydantic>=2.7.4",
-"pydantic-settings>=2.2.1",
-"requests>=2.32.3",
-"cryptography>=42.0.8",
-
-
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+]
+ml = [
+    "gast",
+    "shimmy",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Ekco-S64QTN6/kaiagotchi"
 "Bug Tracker" = "https://github.com/Ekco-S64QTN6/kaiagotchi/issues"
+Documentation = "https://github.com/Ekco-S64QTN6/kaiagotchi#readme"
 
 [project.scripts]
 kaiagotchi = "kaiagotchi.main:main"
 
 [tool.setuptools.packages.find]
-include = ["kaiagotchi", "kaiagotchi."]
-exclude = ["tests"]
+include = ["kaiagotchi", "kaiagotchi.*"]
+exclude = ["tests*", "docs*", "scripts*"]
 
-[tool.mypy]
-strict = true
-
-[tool.pytest.ini_options]
-addopts = "--strict-markers"
-asyncio_mode = "strict"
-
+# ===== Code Quality & Formatting =====
 [tool.black]
 line-length = 88
-target-version = ['py311', 'py312', 'py313', 'py314']
+target-version = ["py311", "py312"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  | \.eggs
+  | \.git
+  | \.venv
+  | build
+  | dist
+)/
+'''
 
 [tool.ruff]
 line-length = 88
+target-version = "py311"
 select = [
-"E",  # pycodestyle errors
-"W",  # pycodestyle warnings
-"F",  # pyflakes
-"I",  # isort
-"B",  # bugbear
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings  
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
 ]
 ignore = [
-"B008", # Do not perform function calls in argument defaults (e.g., fun(arg=func())).
-"I001", # isort: Import statements are not grouped correctly
+    "B008", # Function calls in argument defaults
+    "I001", # isort grouping
+    "E501", # line too long (handled by black)
 ]
+unfixable = ["B008", "B009", "F401"]
 
 [tool.ruff.isort]
-known-third-party = ["pydantic", "pydantic_settings", "toml", "requests", "cryptography", "PyYAML", "dbus_python", "file_read_backwards", "flask", "flask_cors", "flask_wtf", "gast", "numpy", "pycryptodome", "pydrive2", "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", "websockets"]
+known-first-party = ["kaiagotchi"]
+known-third-party = [
+    "pydantic", "pydantic_settings", "requests", "cryptography", 
+    "PyYAML", "dbus_python", "file_read_backwards", "flask", 
+    "flask_cors", "flask_wtf", "gast", "numpy", "pydrive2", 
+    "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", 
+    "websockets"
+]
 
 [tool.ruff.mccabe]
-max-complexity = 10
+max-complexity = 12
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+
+# ===== Static Type Checking =====
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "flask.*",
+    "tweepy.*", 
+    "pydrive2.*"
+]
+disallow_untyped_defs = false
+
+# ===== Testing =====
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+    "--durations=10",
+]
+asyncio_mode = "strict"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]

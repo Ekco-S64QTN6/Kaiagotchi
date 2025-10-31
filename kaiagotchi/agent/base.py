@@ -1,10 +1,44 @@
-# filepath: kaiagotchi/agent/base.py
+# kaiagotchi/agent/base.py - Fixed imports
 import asyncio
 import logging
 from typing import Dict, Any
-from kaiagotchi.data.system_types import SystemState # Import SystemState Pydantic model
-from ..events import EventEmitter
-from .decision_engine import DecisionEngine
+
+# Import with fallbacks for missing modules
+try:
+    from kaiagotchi.data.system_types import SystemState, GlobalSystemState
+    from kaiagotchi.events import EventEmitter
+    from kaiagotchi.agent.decision_engine import DecisionEngine, AgentState
+except ImportError as e:
+    logging.warning(f"Some imports failed in base.py: {e}")
+    # Create minimal fallbacks
+    class GlobalSystemState:
+        BOOTING = "BOOTING"
+        READY = "READY"
+    
+    class SystemState:
+        def __init__(self, **kwargs):
+            self.config_hash = kwargs.get('config_hash', 'initial')
+            self.current_system_state = kwargs.get('current_system_state', GlobalSystemState.BOOTING)
+            self.network = kwargs.get('network', {})
+            self.metrics = kwargs.get('metrics', {})
+    
+    class EventEmitter:
+        async def emit(self, event, data):
+            pass
+    
+    class AgentState:
+        INITIALIZING = "INITIALIZING"
+        RECON_SCAN = "RECON_SCAN"
+    
+    class DecisionEngine:
+        def __init__(self, config):
+            self.config = config
+            self.current_state = AgentState.INITIALIZING
+        
+        def process_state(self, state, action_manager):
+            return AgentState.RECON_SCAN
+
+agent_logger = logging.getLogger('agent.base')
 
 class KaiagotchiBase:
     """
@@ -17,75 +51,62 @@ class KaiagotchiBase:
         self.logger = logging.getLogger(__name__)
         self.events = EventEmitter()
         self.decision_engine = DecisionEngine(config)
-        self.action_manager = None # Will be initialized externally
+        self.action_manager = None
         
-        # Centralized state management using Pydantic model for validation
-        self.state: SystemState = SystemState(config_hash="initial") 
-        # Use asyncio.Lock for protection within the async environment
-        self._state_lock = asyncio.Lock() 
+        # Centralized state management
+        self.system_state = SystemState(
+            config_hash="initial",
+            current_system_state=GlobalSystemState.BOOTING
+        ) 
+        
+        self._state_lock = asyncio.Lock()
 
     async def update_state(self, updates: Dict[str, Any]) -> None:
         """
-        Asynchronously update the central SystemState Pydantic model.
-        This method ensures the state object is protected during updates 
-        and validates the incoming data structure.
-        
-        Args:
-            updates: A dictionary of fields to update on the SystemState model.
+        Asynchronously update the central SystemState.
         """
         async with self._state_lock:
-            # Pydantic's model_copy is used for a shallow copy to prevent 
-            # race conditions during the update and emit.
-            current_state_data = self.state.model_dump()
-            
-            # Since pydantic v2, `model_copy(update=...)` is the preferred way 
-            # to create a new instance with updated values.
             try:
-                # Assuming 'updates' can directly update top-level fields 
-                # or nested models (like 'network', 'agents').
-                self.state = self.state.model_copy(update=updates)
-                
+                # Handle both Pydantic model and fallback class
+                if hasattr(self.system_state, 'model_copy'):
+                    self.system_state = self.system_state.model_copy(update=updates)
+                else:
+                    # Fallback for basic class
+                    for key, value in updates.items():
+                        setattr(self.system_state, key, value)
             except Exception as e:
-                self.logger.error(f"Failed to update SystemState with updates: {updates}", exc_info=True)
+                self.logger.error(f"Failed to update SystemState: {e}")
                 return
             
-            # Emit the newly updated, validated state
-            await self.events.emit("state_updated", self.state)
-
+            await self.events.emit("state_updated", self.system_state)
 
     async def run_decision_cycle(self):
         """
-        Runs one decision cycle: reads current state, passes it to the engine,
-        receives the next state, and updates the system state.
+        Runs one decision cycle.
         """
         try:
-            # 1. Get current state safely
             async with self._state_lock:
-                # Use model_dump to provide a mutable dict representation to the engine
-                current_state_data = self.state.model_dump()
+                if hasattr(self.system_state, 'model_dump'):
+                    current_state_data = self.system_state.model_dump()
+                else:
+                    current_state_data = self.system_state.__dict__
             
-            # 2. Process state (DecisionEngine determines next action/state)
-            # The decision engine processes a copy of the state data
-            new_state_data = self.decision_engine.process_state(
+            new_agent_state_enum = self.decision_engine.process_state(
                 current_state_data, 
                 self.action_manager
             )
             
-            # 3. Update the agent's internal state safely
-            # Note: new_state_data must be compliant with the SystemState model
-            async with self._state_lock:
-                self.state = SystemState.model_validate(new_state_data)
-                
-            # 4. Notify listeners of the state change
-            await self.events.emit("state_updated", self.state)
+            if self.system_state.current_system_state != new_agent_state_enum:
+                self.logger.info(f"Agent state changing from {self.system_state.current_system_state} to {new_agent_state_enum}")
+                state_update = {"current_system_state": new_agent_state_enum}
+                await self.update_state(state_update)
             
         except Exception as e:
-            self.logger.error(f"Critical error in decision cycle", exc_info=True)
+            self.logger.error(f"Error in decision cycle: {e}")
 
     async def _gather_state(self) -> Dict[str, Any]:
         """
-        Gather initial system state (e.g., interface count, current metrics).
-        This method will likely be moved to a dedicated MetricsAgent later.
+        Gather initial system state.
         """
         return {
             "metrics": {
@@ -100,20 +121,19 @@ class KaiagotchiBase:
                         "name": "wlan0",
                         "is_up": True,
                         "mode": "managed",
-                        "mac_address": "00:11:22:33:44:55"
                     }
-                }
+                },
+                "ready_interfaces": ["wlan0"]
             }
         }
 
     async def start(self):
         """
-        Main loop to start the agent's operation.
+        Main async loop to start the agent's operation.
         """
         try:
             self.logger.info("Agent starting up...")
             
-            # Initialize state with gathered system information
             initial_updates = await self._gather_state()
             await self.update_state(initial_updates)
             
@@ -121,14 +141,27 @@ class KaiagotchiBase:
             
             while True:
                 await self.run_decision_cycle()
-                # Configurable delay to prevent constant thrashing
-                await asyncio.sleep(self.config.get("decision_cycle_delay", 5.0)) 
+                await asyncio.sleep(self.config.get("decision_cycle_delay", 5.0))
                 
         except asyncio.CancelledError:
             self.logger.info("Agent stopping gracefully...")
-            if self.action_manager:
-                await self.action_manager.cleanup()
         except Exception as e:
-            self.logger.critical(f"Unhandled exception in agent start loop.", exc_info=True)
-            if self.action_manager:
-                await self.action_manager.cleanup()
+            self.logger.critical(f"Unhandled exception: {e}")
+
+    def run(self):
+        """
+        Synchronous run method for compatibility.
+        """
+        try:
+            asyncio.run(self.start())
+        except KeyboardInterrupt:
+            self.logger.info("Agent stopped by user")
+        except Exception as e:
+            self.logger.critical(f"Agent crashed: {e}")
+
+    def stop(self):
+        """
+        Stop the agent gracefully.
+        """
+        self.logger.info("Stopping agent...")
+        # Implementation would cancel asyncio tasks

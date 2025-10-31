@@ -1,3 +1,6 @@
+#
+# kaiagotchi/identity.py
+#
 from Crypto.Signature import PKCS1_PSS
 from Crypto.PublicKey import RSA
 import Crypto.Hash.SHA256 as SHA256
@@ -5,8 +8,9 @@ import base64
 import hashlib
 import os
 import logging
-import subprocess  # <-- NEW: Import for secure command execution
+import subprocess
 
+# Aligned with project structure
 DefaultPath = "/etc/kaiagotchi/"
 
 
@@ -18,6 +22,9 @@ class KeyPair(object):
         self.pub_path = "%s.pub" % self.priv_path
         self.pub_key = None
         self.fingerprint_path = os.path.join(path, "fingerprint")
+        
+        # The 'view' object is legacy from the hardware display. 
+        # We accept it for compatibility but check if it's None.
         self._view = view
 
         if not os.path.exists(self.path):
@@ -26,20 +33,26 @@ class KeyPair(object):
         while True:
             # first time, generate new keys
             if not os.path.exists(self.priv_path) or not os.path.exists(self.pub_path):
-                self._view.on_keys_generation()
-                # The 'pwngrid' command is kept as it is an external dependency
+                if self._view:
+                    self._view.on_keys_generation()
+                
                 logging.info("generating %s ..." % self.priv_path)
                 
-                # CRITICAL FIX: Use subprocess.run for security
+                # CRITICAL SECURITY FIX: Replaced os.system() with subprocess.run
+                # This prevents command injection vulnerabilities.
                 try:
-                    subprocess.run(["pwngrid", "-generate", "-keys", self.path], check=True) 
+                    # We assume 'pwngrid' is a required external dependency.
+                    subprocess.run(["pwngrid", "-generate", "-keys", self.path], check=True, capture_output=True, text=True)
+                
                 except subprocess.CalledProcessError as e:
-                    logging.error(f"pwngrid key generation failed: {e.stderr.decode()}")
-                    # Since we are in a loop, the failure will cause the load to fail, 
-                    # trigger regeneration, and repeat. We just need to log it.
-                    
-            # load keys: they might be corrupted if the unit has been turned off during the generation, in this case
-            # the exception will remove the files and go back at the beginning of this loop.
+                    logging.error(f"pwngrid key generation failed: {e.stderr}")
+                    # Loop will retry after a delay (handled by the caller's loop)
+                except FileNotFoundError:
+                    logging.error("pwngrid command not found. Key generation failed.")
+                    # If pwngrid isn't installed, we must raise this.
+                    raise
+
+            # load keys: they might be corrupted if the unit has been turned off during the generation
             try:
                 with open(self.priv_path) as fp:
                     self.priv_key = RSA.importKey(fp.read())
@@ -47,7 +60,7 @@ class KeyPair(object):
                 with open(self.pub_path) as fp:
                     self.pub_key = RSA.importKey(fp.read())
                     self.pub_key_pem = self.pub_key.exportKey('PEM').decode("ascii")
-                    # python is special
+                    
                     if 'RSA PUBLIC KEY' not in self.pub_key_pem:
                         self.pub_key_pem = self.pub_key_pem.replace('PUBLIC KEY', 'RSA PUBLIC KEY')
 
@@ -60,17 +73,19 @@ class KeyPair(object):
                     fp.write(self.fingerprint)
 
             except Exception as e:
-                # if we're here, loading the keys broke something ...
-                logging.exception("error loading keys, maybe corrupted, deleting and regenerating ...")
+                # Specify the exception for clarity
+                logging.exception(f"Error loading keys, possibly corrupted, deleting and regenerating: {e}")
                 try:
                     os.remove(self.priv_path)
                     os.remove(self.pub_path)
-                except:
-                    # Inner bare except is fine here as it's purely for cleanup attempts.
+                except OSError as e:
+                    # Specify the cleanup exception
+                    logging.error(f"Failed to remove corrupted key files: {e}")
                     pass
 
             # no exception, keys loaded correctly.
-            self._view.on_starting()
+            if self._view:
+                self._view.on_starting()
             return
 
     def sign(self, message):
@@ -78,4 +93,4 @@ class KeyPair(object):
         signer = PKCS1_PSS.new(self.priv_key, saltLen=16)
         signature = signer.sign(hasher)
         signature_b64 = base64.b64encode(signature).decode("ascii")
-        return signature_b64
+        return signature, signature_b64

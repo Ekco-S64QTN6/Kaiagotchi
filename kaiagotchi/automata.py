@@ -1,7 +1,7 @@
 import logging
 
-import Kaiagotchi.plugins as plugins
-from Kaiagotchi.ai.epoch import Epoch
+import kaiagotchi.plugins as plugins
+from kaiagotchi.ai.epoch import Epoch
 import os
 
 

@@ -1,11 +1,12 @@
 import asyncio
 import random
-from typing import ClassVar
-from kaiagotchi.agent.base_agent import BaseAgent
-from kaiagotchi.data.system_types import SystemState
-from kaiagotchi.data.system_types import AccessPoint, AccessPointType, AccessPointProtocol
+from typing import ClassVar, Dict, Any
+from .base import KaiagotchiBase
+from ..data.system_types import SystemState
+from ..data.system_types import AccessPoint, AccessPointType, AccessPointProtocol
 
-class MonitoringAgent(BaseAgent):
+# NOTE: The base class has been renamed to KaiagotchiBase to reflect its central role
+class MonitoringAgent(KaiagotchiBase): 
     """
     The Monitoring Agent is responsible for continuous, passive network scanning
     to discover and maintain the list of known Access Points (APs) in the shared state.
@@ -15,71 +16,57 @@ class MonitoringAgent(BaseAgent):
     AGENT_ID: ClassVar[str] = "MONITOR"
     SCAN_INTERVAL_SECONDS: ClassVar[int] = 5
 
-    def __init__(self, state: SystemState) -> None:
-        super().__init__(state)
+    # Since KaiagotchiBase's __init__ takes (config), this __init__ must be updated 
+    # to pass the config up, or we assume this agent is instantiated with a pre-configured 
+    # SystemState instance (as implied by the original code), which conflicts with 
+    # the KaiagotchiBase(config) constructor. 
+    #
+    # Assuming for now it is passed a full config dictionary:
+    def __init__(self, config: Dict[str, Any]) -> None: 
+        super().__init__(config) # Pass config up to KaiagotchiBase
+        self.agent_config = config.get(self.AGENT_ID, {})
         # Mock interface name, assuming it's already in monitor mode.
-        self.active_interface: str = "wlan0mon" 
+        self.active_interface: str = self.agent_config.get('interface_name', "wlan0mon") 
 
     async def start(self) -> None:
         """
         The main asynchronous loop for the Monitoring Agent.
-        This loop runs until the stop event is set.
+        This loop runs until the stop event is set (not yet implemented in base).
         """
-        self.log(f"Starting network monitoring loop on interface {self.active_interface}...")
-        while not self.stop_event.is_set():
-            await self._perform_scan()
-            try:
-                # Wait for the next scan interval, allowing for immediate stop if signaled
-                await asyncio.wait_for(self.stop_event.wait(), timeout=self.SCAN_INTERVAL_SECONDS)
-            except asyncio.TimeoutError:
-                # Timeout means the stop event wasn't set, so continue the loop
-                continue
-            except Exception as e:
-                self.log(f"An unexpected error occurred in the scan loop: {e}")
-                break
+        self.logger.info(f"[{self.AGENT_ID}] Starting network monitoring loop on interface {self.active_interface}...")
+        
+        # NOTE: Using a simple infinite loop until a stop method is formally added to KaiagotchiBase
+        while True: 
+            # 1. Perform a scan and get a list of mock AP objects
+            mock_discovered_aps = await self._perform_scan()
+            
+            # 2. Build the state update dictionary
+            ap_updates = {ap.bssid: ap.model_dump() for ap in mock_discovered_aps}
+            
+            updates = {
+                "network": {
+                    "access_points": ap_updates,
+                    "last_scan_time": asyncio.get_event_loop().time()
+                }
+            }
+            
+            # 3. Apply the updates to the shared system state
+            await self.update_state(updates)
+            
+            # The decision cycle will run independently in KaiagotchiBase's main loop.
+            await asyncio.sleep(self.SCAN_INTERVAL_SECONDS)
 
-    async def cleanup(self) -> None:
+    async def _perform_scan(self) -> list[AccessPoint]:
         """
-        Performs interface cleanup. (Mocked: resetting monitor mode).
-        """
-        self.log(f"Cleaning up network interface {self.active_interface}. Resetting mode...")
-        await asyncio.sleep(0.5) # Simulate time taken for interface reset
-        self.log("Cleanup complete.")
-
-    async def _perform_scan(self) -> None:
-        """
-        Mocks the execution of a network scan and updates the system state.
-        This updates the shared SystemState object, which is visible to all other agents.
-        """
-        self.log("Executing mock scan for new Access Points...")
-        new_aps = self._mock_new_aps()
-
-        # Update the centralized system state (atomic operation is assumed for the whole block)
-        current_aps = self.state.network.access_points
-        updated_count = 0
-        new_count = 0
-
-        for ap in new_aps:
-            if ap.bssid in current_aps:
-                # Mock update existing AP properties (only updating last_seen)
-                current_aps[ap.bssid].last_seen = ap.last_seen
-                updated_count += 1
-            else:
-                # Add new AP
-                current_aps[ap.bssid] = ap
-                new_count += 1
-
-        total_aps = len(current_aps)
-        self.log(f"Scan complete. Found {total_aps} total APs. ({new_count} new, {updated_count} refreshed).")
-
-
-    def _mock_new_aps(self) -> list[AccessPoint]:
-        """
-        Generates a list of mock AccessPoint objects for simulation.
+        [MOCK METHOD] Simulates a network scan and returns a list of AccessPoint objects.
         This function simulates both new AP discovery and updates to existing APs.
         """
+        # Fetch the current APs for existing BSSIDs to update
+        current_aps = self.system_state.network.access_points # Use the corrected name
+        
         mock_data = []
-        # Simulate discovering a few new APs periodically
+        
+        # --- Simulate new AP discovery ---
         if random.random() < 0.3:
             for _ in range(random.randint(1, 3)):
                 bssid = f"00:1A:2B:3C:4D:{random.randint(0, 99):02X}"
@@ -96,11 +83,16 @@ class MonitoringAgent(BaseAgent):
                 )
                 mock_data.append(new_ap)
         
-        # Also return a few existing BSSIDs to simulate updates (refreshing last_seen)
-        existing_bssid_keys = list(self.state.network.access_points.keys())
+        # --- Simulate updates to existing APs (refreshing last_seen) ---
+        existing_bssid_keys = list(current_aps.keys())
         if existing_bssid_keys:
              for bssid in random.sample(existing_bssid_keys, k=min(len(existing_bssid_keys), 2)):
-                 # Note: model_copy is used to easily create a copy for mutation/update
-                 mock_data.append(self.state.network.access_points[bssid].model_copy(update={'last_seen': asyncio.get_event_loop().time()}))
-
+                 # Create an updated AP model from the existing one (only update last_seen)
+                 updated_ap = current_aps[bssid].model_copy(update={
+                     "last_seen": asyncio.get_event_loop().time(),
+                     # Optionally simulate a handshake capture
+                     "handshakes_captured": current_aps[bssid].handshakes_captured + (1 if random.random() < 0.1 else 0)
+                 })
+                 mock_data.append(updated_ap)
+                 
         return mock_data
