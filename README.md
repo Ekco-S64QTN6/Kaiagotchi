@@ -1,4 +1,20 @@
+Origin and Attribution
+
+This project, Kaiagotchi, is a direct fork and derivative work of the original Pwnagotchi project, which was initially authored by @evilsocket. This project adapts the core concept from a Raspberry Pi platform to a specialized Linux server environment.
+
+We extend full credit to the original author for the foundational design and core components.
+
+Original Project Name: Pwnagotchi
+
+Original Project Repository: https://github.com/jayofelony/pwnagotchi
+
+Original Author: @evilsocket
+
+License: This fork remains licensed under the GNU General Public License v3 (GPLv3).
+
 Kaia AI - The Autonomous Technical Counterpart
+
+(⌐■_■) Autonomous Wireless Security Research
 
 Kaia AI is a specialized, autonomous wireless security research tool built on the Linux server platform. It is designed for optimal performance in capturing WPA key material (handshakes and PMKIDs) from surrounding Wi-Fi environments.
 
@@ -12,7 +28,7 @@ Key Features
 
 WPA Handshake Capture: Collects full and half WPA handshakes, as well as PMKIDs.
 
-Autonomous Operation: Operates independently, managing network interfaces and attack strategies.
+Autonomous Operation: Operates independently, managing network interfaces and attack strategies using its dedicated decision engine.
 
 High Performance: Optimized for multi-core CPUs and dedicated network cards typical of server deployments.
 

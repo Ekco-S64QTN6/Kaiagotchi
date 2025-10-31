@@ -1,55 +1,104 @@
 [build-system]
-requires = ["setuptools"]
+requires = ["setuptools>=61.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "kaiagotchi"
 version = "0.1.0"
-dependencies = [
-    "PyYAML",
-    "dbus-python; sys_platform == 'linux'",
-    "file-read-backwards",
-    "flask",
-    "flask-cors",
-    "flask-wtf",
-    "gast",
-    "numpy",
-    "pycryptodome",
-    "pydrive2",
-    "python-dateutil",
-    "requests",
-    "scapy",
-    "setuptools",
-    "shimmy",
-    "tomlkit",
-    "tweepy",
-    "websockets",
-]
-
+description = "Kaia AI - The Autonomous Technical Counterpart"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "GPL-3.0-only"
+
 authors = [
-  {name = "Evilsocket", email = "evilsocket@gmail.com"},
-  {name = "Jayofelony", email = "oudshoorn.jeroen@gmail.com"}
+{name = "Michael Schellhorn", email = "michael.schellhorn@example.com"},
 ]
 maintainers = [
-  {name = "Jayofelony", email = "oudshoorn.jeroen@gmail.com"}
+{name = "Ekco", email = "ekco-s64qtn6@example.com"},
 ]
-description = "(⌐■_■) - An autonomous technical counterpart"
-readme = "README.md"
-license = {file = "LICENSE.md"}
+keywords = [
+"ai",
+"headless",
+"python",
+"manager",
+"agent",
+]
+
 classifiers = [
-    "Programming Language :: Python :: 3.11",
-    "Development Status :: 5 - Production/Stable",
-    "License :: OSI Approved :: GNU General Public License (GPL)",
-    "Environment :: Console",
+"Development Status :: 5 - Production/Stable",
+"Programming Language :: Python :: 3.11",
+"Programming Language :: Python :: 3.12",
+"Topic :: Scientific/Engineering :: Artificial Intelligence",
+"Environment :: Console",
+"Typing :: Typed",
+]
+
+dependencies = [
+# Core Dependencies (from original project)
+"PyYAML",
+"dbus-python; sys_platform == 'linux'",
+"file-read-backwards",
+"flask",
+"flask-cors",
+"flask-wtf",
+"gast",
+"numpy",
+"pycryptodome",
+"pydrive2",
+"python-dateutil",
+"scapy",
+"shimmy",
+"tomlkit",
+"tweepy",
+"websockets",
+
+# Architectural Dependencies (for structured data and modern structure)
+"pydantic>=2.7.4",
+"pydantic-settings>=2.2.1",
+"requests>=2.32.3",
+"cryptography>=42.0.8",
+
+
 ]
 
 [project.urls]
 Homepage = "https://github.com/Ekco-S64QTN6/kaiagotchi"
-Repository = "https://github.com/Ekco-S64QTN6/kaiagotchi.git"
-GitHub = "https://github.com/Ekco-S64QTN6/kaiagotchi"
-Issues = "https://github.com/Ekco-S64QTN6/kaiagotchi/issues"
-Download = "https://github.com/Ekco-S64QTN6/kaiagotchi/releases/latest"
+"Bug Tracker" = "https://github.com/Ekco-S64QTN6/kaiagotchi/issues"
 
 [project.scripts]
-kaiagotchi = "kaiagotchi:main"
+kaiagotchi = "kaiagotchi.main:main"
+
+[tool.setuptools.packages.find]
+include = ["kaiagotchi", "kaiagotchi."]
+exclude = ["tests"]
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+addopts = "--strict-markers"
+asyncio_mode = "strict"
+
+[tool.black]
+line-length = 88
+target-version = ['py311', 'py312', 'py313', 'py314']
+
+[tool.ruff]
+line-length = 88
+select = [
+"E",  # pycodestyle errors
+"W",  # pycodestyle warnings
+"F",  # pyflakes
+"I",  # isort
+"B",  # bugbear
+]
+ignore = [
+"B008", # Do not perform function calls in argument defaults (e.g., fun(arg=func())).
+"I001", # isort: Import statements are not grouped correctly
+]
+
+[tool.ruff.isort]
+known-third-party = ["pydantic", "pydantic_settings", "toml", "requests", "cryptography", "PyYAML", "dbus_python", "file_read_backwards", "flask", "flask_cors", "flask_wtf", "gast", "numpy", "pycryptodome", "pydrive2", "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", "websockets"]
+
+[tool.ruff.mccabe]
+max-complexity = 10

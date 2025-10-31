@@ -5,6 +5,7 @@ import base64
 import hashlib
 import os
 import logging
+import subprocess  # <-- NEW: Import for secure command execution
 
 DefaultPath = "/etc/kaiagotchi/"
 
@@ -28,8 +29,15 @@ class KeyPair(object):
                 self._view.on_keys_generation()
                 # The 'pwngrid' command is kept as it is an external dependency
                 logging.info("generating %s ..." % self.priv_path)
-                os.system("pwngrid -generate -keys '%s'" % self.path)
-
+                
+                # CRITICAL FIX: Use subprocess.run for security
+                try:
+                    subprocess.run(["pwngrid", "-generate", "-keys", self.path], check=True) 
+                except subprocess.CalledProcessError as e:
+                    logging.error(f"pwngrid key generation failed: {e.stderr.decode()}")
+                    # Since we are in a loop, the failure will cause the load to fail, 
+                    # trigger regeneration, and repeat. We just need to log it.
+                    
             # load keys: they might be corrupted if the unit has been turned off during the generation, in this case
             # the exception will remove the files and go back at the beginning of this loop.
             try:
@@ -58,6 +66,7 @@ class KeyPair(object):
                     os.remove(self.priv_path)
                     os.remove(self.pub_path)
                 except:
+                    # Inner bare except is fine here as it's purely for cleanup attempts.
                     pass
 
             # no exception, keys loaded correctly.
@@ -69,4 +78,4 @@ class KeyPair(object):
         signer = PKCS1_PSS.new(self.priv_key, saltLen=16)
         signature = signer.sign(hasher)
         signature_b64 = base64.b64encode(signature).decode("ascii")
-        return signature, signature_b64
+        return signature_b64

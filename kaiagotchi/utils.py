@@ -5,6 +5,7 @@ import os
 import sys
 import tomlkit
 import glob
+import time
 from typing import List, Tuple, Union, Dict, Any, Sequence
 
 # --- Global Configuration Constants ---
@@ -13,24 +14,7 @@ DEFAULT_BASE_DIR = '/var/lib/kaiagotchi'
 DEFAULT_STATE_FILENAME = 'state.json'
 # ---
 
-utils_logger = logging.getLogger('utils')
-
-def run_checked(cmd: Sequence[str], *, timeout: int | None = None) -> subprocess.CompletedProcess:
-    """
-    Run a command with a list of args (no shell). Raises CalledProcessError on failure.
-    """
-    if not isinstance(cmd, (list, tuple)):
-        raise TypeError("cmd must be a list/tuple of arguments")
-    _log = logging.getLogger(__name__)
-    _log.debug("Running command: %s", cmd)
-    try:
-        return subprocess.run(list(cmd), check=True, capture_output=True, text=True, timeout=timeout)
-    except subprocess.CalledProcessError as e:
-        _log.error("Command failed (%s): %s", e.returncode, e.stderr)
-        raise
-    except Exception:
-        _log.exception("Running command failed")
-        raise
+utils_logger = logging.getLogger('kaiagotchi.utils')
 
 def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
     """
@@ -44,53 +28,73 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
     Returns:
         A dictionary containing the application configuration.
     """
-    # Base/Default Configuration
-    config: Dict[str, Any] = {
+    default_config = {
         'main': {
-            'name': 'Kaiagotchi',
+            'log': {
+                'path': '/var/log/kaiagotchi/kaiagotchi.log',
+                'level': 'INFO'
+            },
             'base_dir': DEFAULT_BASE_DIR,
-            'plugin_dirs': ['/etc/kaiagotchi/plugins'],
+            'state_filename': DEFAULT_STATE_FILENAME,
+            'language': 'en_US'
         },
-        'ui': {'enabled': True},
-        'log': {'level': 'INFO'}
+        'ui': {
+            'enabled': False,
+            'bind_host': '0.0.0.0',
+            'bind_port': 8080,
+            'secret_key': 'change-this-secret'
+        },
+        # Add more default sections as needed
     }
 
-    # 1. Check if config file exists
-    if not os.path.exists(config_path):
-        utils_logger.warning(f"Configuration file not found at {config_path}. Using default configuration.")
-        return config
-
-    # 2. Load and merge configuration
     try:
-        with open(config_path, 'r', encoding='utf-8') as fp:
-            loaded_config = tomlkit.load(fp)
-
-        # Merge loaded config into default config
-        for section, settings in loaded_config.items():
-            if section in config and isinstance(config[section], dict):
-                config[section].update(settings)
-            else:
-                config[section] = settings
-
-        utils_logger.info(f"Configuration loaded successfully from {config_path}.")
-
+        with open(config_path, 'r') as f:
+            # Load the user's config
+            user_config = tomlkit.load(f)
+            
+            # Merge: Use default settings unless overridden by user config
+            config = default_config.copy()
+            for key, value in user_config.items():
+                if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+                    config[key].update(value)
+                else:
+                    config[key] = value
+            
+            utils_logger.info(f"Configuration loaded successfully from {config_path}.")
+            return config
+            
+    except FileNotFoundError:
+        utils_logger.warning(f"Configuration file not found at {config_path}. Using default configuration.")
+        return default_config
+    except tomlkit.exceptions.ParseError as e:
+        utils_logger.error(f"Error parsing configuration file {config_path}: {e}. Using default configuration.")
+        return default_config
     except Exception as e:
-        utils_logger.error(f"Error loading or parsing configuration from {config_path}: {e}", exc_info=True)
-        utils_logger.warning("Falling back to default configuration.")
+        utils_logger.exception(f"An unexpected error occurred while loading config. Using default configuration.")
+        return default_config
 
-    return config
-
-
-def get_state_path(config: Dict[str, Any], filename: str = DEFAULT_STATE_FILENAME) -> str:
+def get_state_path(config: Dict[str, Any]) -> str:
     """
-    Determines the full path for a persistent state file based on the application config.
+    Calculates the full, absolute path for the application's state file.
 
-    The path is constructed as: <base_dir>/<filename>
+    Args:
+        config: The application's configuration dictionary.
+
+    Returns:
+        The full path to the state file.
     """
     base_dir = config.get('main', {}).get('base_dir', DEFAULT_BASE_DIR)
-
+    filename = config.get('main', {}).get('state_filename', DEFAULT_STATE_FILENAME)
+    
     # Ensure the directory exists
-    pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
+    try:
+        pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        utils_logger.error(f"Failed to create base directory {base_dir}: {e}")
+        # Fallback to a temporary directory if base_dir cannot be created
+        base_dir = '/tmp/kaiagotchi'
+        pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
+
 
     state_path = str(pathlib.Path(base_dir) / filename)
     utils_logger.debug(f"Determined state path: {state_path}")
@@ -104,6 +108,7 @@ def parse_version(version: str) -> Tuple[str, ...]:
 
 def secs_to_hhmmss(secs: Union[int, float]) -> str:
     """Converts seconds into HH:MM:SS format."""
+    # Ensure input is an integer
     secs = int(secs)
     mins, secs = divmod(secs, 60)
     hours, mins = divmod(mins, 60)
@@ -114,23 +119,3 @@ def total_unique_handshakes(path: str) -> int:
     """Returns the count of unique handshakes (files ending in .pcap) in a directory."""
     expr = os.path.join(path, "*.pcap")
     return len(glob.glob(expr))
-
-
-def iface_channels(ifname: str) -> List[int]:
-    """Returns a list of available wireless channels for a given interface name."""
-    channels = []
-    # Find the physical device name
-    phy = subprocess.getoutput(f"/sbin/iw {ifname} info | grep wiphy | cut -d ' ' -f 2")
-
-    # Get all non-disabled channels from iw output
-    output = subprocess.getoutput(f"/sbin/iw phy {phy} channels | grep -v disabled | grep -v DFS")
-
-    for line in output.split('\n'):
-        if '[' in line and ']' in line:
-            try:
-                channel = int(line.split('[')[1].split(']')[0].strip())
-                channels.append(channel)
-            except ValueError:
-                continue
-
-    return channels
