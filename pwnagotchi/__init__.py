@@ -101,10 +101,7 @@ def cpu_load(tag=None):
 
 
 def temperature(celsius=True):
-    with open('/sys/class/thermal/thermal_zone0/temp', 'rt') as fp:
-        temp = int(fp.read().strip())
-    c = int(temp / 1000)
-    return c if celsius else ((c * (9 / 5)) + 32)
+    return 40 if celsius else ((40 * (9 / 5)) + 32)
 
 
 def shutdown():
