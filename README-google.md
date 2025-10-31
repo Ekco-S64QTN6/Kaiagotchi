@@ -1,9 +1,10 @@
 Before you enable the gdrivesync plugin follow these guidelines.
 
-# Authentication
+Authentication
+
 Drive API requires OAuth2.0 for authentication. PyDrive2 makes your life much easier by handling complex authentication steps for you.
 
-Go to [APIs Console](https://console.developers.google.com/iam-admin/projects) and make your own project.
+Go to APIs Console and make your own project.
 
 Search for ‘Google Drive API’, select the entry, and click ‘Enable’.
 
@@ -19,8 +20,9 @@ Input http://localhost/ for ‘Authorized redirect URIs’.
 
 Select the correct oauth scope:
 
-    - drive
-    - drive.install
+- drive
+- drive.install
+
 
 Click ‘Create’.
 
@@ -28,15 +30,16 @@ Click ‘Download JSON’ and copy the contents to /root/client_secrets.json.
 
 Then copy your client_id and client_secret to /root/settings.yaml
 
-# Login to google
+Login to google
 
 When you have done this please run the following command in your ssh shell:
 
-`sudo pwnagotchi google login`
+sudo kaiagotchi google login
 
 And follow the steps, after which you can enable the plugin and let the magic begin.
 
-# Functionality
+Functionality
+
 Set a backup folder in config file
 
 It will then upload a zip file there of all your backup files.

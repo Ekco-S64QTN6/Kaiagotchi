@@ -2,8 +2,12 @@ import os
 import logging
 import time
 import re
+import sys
+import argparse
 
 from pwnagotchi._version import __version__
+from pwnagotchi.log_config import setup_logging
+import pwnagotchi.config as config_loader
 
 _name = None
 config = None
@@ -118,7 +122,7 @@ def shutdown():
     from pwnagotchi import fs
     for m in fs.mounts:
         m.sync()
- 
+    
     os.system("sync")
     os.system("halt")
 
@@ -162,3 +166,29 @@ def reboot(mode=None):
 
     os.system("sync")
     os.system("shutdown -r now")
+
+
+def main():
+    """
+    The main entry point for the Kaiagotchi application.
+    Handles command line arguments, configuration loading, and logging setup.
+    """
+    parser = argparse.ArgumentParser(description='The Kaia AI system application.')
+    parser.add_argument('-c', '--config', dest='config_path', help='path to config file', default=None)
+    parser.add_argument('-d', '--debug', dest='debug', action='store_true', help='enable debug logging', default=False)
+    args = parser.parse_args()
+
+    global config
+    if not config_loader.load(args.config_path):
+        logging.critical("Configuration failed to load. Cannot proceed.")
+        sys.exit(1)
+    
+    config = config_loader.get_config()
+    
+    setup_logging(config, args.debug)
+    
+    logging.info(f"Kaiagotchi v{__version__} starting with name '{name()}'...")
+
+
+if __name__ == '__main__':
+    main()
