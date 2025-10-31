@@ -15,6 +15,21 @@ from Kaiagotchi.plugins import cmd as plugins_cmd
 from Kaiagotchi import log
 from Kaiagotchi import fs
 from Kaiagotchi.utils import parse_version as version_to_tuple
+from .config import CONFIG
+from .utils import run_checked
+
+_log = logging.getLogger(__name__)
+
+def restart_service():
+    svc = CONFIG.get("system", {}).get("service_name", "kaiagotchi")
+    # prefer systemctl but fall back to service for compatibility
+    try:
+        run_checked(["systemctl", "restart", f"{svc}.service"])
+    except Exception:
+        try:
+            run_checked(["service", svc, "restart"])
+        except Exception:
+            _log.exception("Failed to restart service %s", svc)
 
 
 def Kaiagotchi_cli():

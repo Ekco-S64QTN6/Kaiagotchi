@@ -5,7 +5,7 @@ import os
 import sys
 import tomlkit
 import glob
-from typing import List, Tuple, Union, Dict, Any
+from typing import List, Tuple, Union, Dict, Any, Sequence
 
 # --- Global Configuration Constants ---
 DEFAULT_CONFIG_PATH = '/etc/kaiagotchi/config.toml'
@@ -15,6 +15,22 @@ DEFAULT_STATE_FILENAME = 'state.json'
 
 utils_logger = logging.getLogger('utils')
 
+def run_checked(cmd: Sequence[str], *, timeout: int | None = None) -> subprocess.CompletedProcess:
+    """
+    Run a command with a list of args (no shell). Raises CalledProcessError on failure.
+    """
+    if not isinstance(cmd, (list, tuple)):
+        raise TypeError("cmd must be a list/tuple of arguments")
+    _log = logging.getLogger(__name__)
+    _log.debug("Running command: %s", cmd)
+    try:
+        return subprocess.run(list(cmd), check=True, capture_output=True, text=True, timeout=timeout)
+    except subprocess.CalledProcessError as e:
+        _log.error("Command failed (%s): %s", e.returncode, e.stderr)
+        raise
+    except Exception:
+        _log.exception("Running command failed")
+        raise
 
 def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> Dict[str, Any]:
     """

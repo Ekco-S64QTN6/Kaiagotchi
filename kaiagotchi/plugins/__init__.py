@@ -243,3 +243,32 @@ def load(config):
     except Exception as e:
         logging.exception(repr(e))
 
+import logging
+import threading
+
+# replaced direct references to kaiagotchi.* and hardcoded /etc paths
+from ..config import CONFIG
+from ..utils import run_checked
+
+_log = logging.getLogger(__name__)
+
+def _plugin_runner(plugin_callable, *args, **kwargs):
+    try:
+        plugin_callable(*args, **kwargs)
+    except Exception:
+        _log.exception("Plugin crashed: %s", getattr(plugin_callable, "__name__", repr(plugin_callable)))
+
+def start_plugin_in_thread(plugin_callable, *args, **kwargs):
+    t = threading.Thread(target=_plugin_runner, args=(plugin_callable,) + args, kwargs=kwargs, daemon=True)
+    t.start()
+    return t
+
+# safe save_config usage (was: save_config(kaiagotchi.config, '/etc/kaiagotchi/config.toml'))
+def save_config_safe(save_func):
+    cfg_path = CONFIG.get("paths", {}).get("config_file", "/etc/kaiagotchi/config.toml")
+    try:
+        save_func(CONFIG, cfg_path)
+    except Exception:
+        _log.exception("Failed to save config to %s", cfg_path)
+
+
