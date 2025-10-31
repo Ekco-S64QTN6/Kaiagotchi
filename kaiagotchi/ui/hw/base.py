@@ -1,4 +1,4 @@
-import pwnagotchi.ui.fonts as fonts
+import Kaiagotchi.ui.fonts as fonts
 
 
 class DisplayImpl(object):
@@ -41,3 +41,4 @@ class DisplayImpl(object):
 
     def clear(self):
         raise NotImplementedError
+

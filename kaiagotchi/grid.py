@@ -3,7 +3,7 @@ import requests
 import json
 import logging
 
-import pwnagotchi
+import Kaiagotchi
 
 # pwngrid-peer is running on port 8666
 API_ADDRESS = "http://127.0.0.1:8666/api/v1"
@@ -13,7 +13,7 @@ def is_connected():
     try:
         # check DNS
         host = 'https://api.opwngrid.xyz/api/v1/uptime'
-        headers = {'user-agent': f'pwnagotchi/{pwnagotchi.__version__}'}
+        headers = {'user-agent': f'Kaiagotchi/{Kaiagotchi.__version__}'}
         r = requests.get(host, headers=headers, timeout=(30.0, 60.0))
         if r.json().get('isUp'):
             return True
@@ -68,9 +68,9 @@ def update_data(last_session):
             brain = json.load(fp)
     except:
         pass
-    enabled = [name for name, options in pwnagotchi.config['main']['plugins'].items() if
+    enabled = [name for name, options in Kaiagotchi.config['main']['plugins'].items() if
                'enabled' in options and options['enabled']]
-    language = pwnagotchi.config['main']['lang']
+    language = Kaiagotchi.config['main']['lang']
 
     data = {
         'ai': "No AI!",
@@ -87,8 +87,8 @@ def update_data(last_session):
             'peers': last_session.peers,
         },
         'uname': subprocess.getoutput("uname -a"),
-        'version': pwnagotchi.__version__,
-        'build': "Pwnagotchi by Jayofelony",
+        'version': Kaiagotchi.__version__,
+        'build': "Kaiagotchi by Jayofelony",
         'plugins': enabled,
         'language': language,
         'bettercap': subprocess.getoutput("bettercap -version"),
@@ -128,3 +128,4 @@ def mark_message(id, mark):
 
 def send_message(to, message):
     return call("/unit/%s/inbox" % to, message.encode('utf-8'))
+

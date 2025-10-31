@@ -12,13 +12,13 @@ whitelist = [
     "fo:od:ba:be:fo:od",
     "fo:od:ba"
 ]
-confd = "/etc/pwnagotchi/conf.d/"
+confd = "/etc/Kaiagotchi/conf.d/"
 custom_plugin_repos = [
-    "https://github.com/jayofelony/pwnagotchi-torch-plugins/archive/master.zip",
-    "https://github.com/Sniffleupagus/pwnagotchi_plugins/archive/master.zip",
+    "https://github.com/jayofelony/Kaiagotchi-torch-plugins/archive/master.zip",
+    "https://github.com/Sniffleupagus/Kaiagotchi_plugins/archive/master.zip",
     "https://github.com/NeonLightning/pwny/archive/master.zip",
-    "https://github.com/wpa-2/Pwnagotchi-Plugins/archive/master.zip",
-    "https://github.com/cyberartemio/wardriver-pwnagotchi-plugin/archive/main.zip"
+    "https://github.com/wpa-2/Kaiagotchi-Plugins/archive/master.zip",
+    "https://github.com/cyberartemio/wardriver-Kaiagotchi-plugin/archive/main.zip"
 ]
 custom_plugins = "/usr/local/share/kaiagotchi/custom-plugins/" # Corrected path
 

@@ -7,16 +7,16 @@ from threading import Lock
 
 from PIL import ImageDraw
 
-import pwnagotchi
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.faces as faces
-import pwnagotchi.ui.fonts as fonts
-import pwnagotchi.ui.web as web
-import pwnagotchi.utils as utils
+import Kaiagotchi
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.faces as faces
+import Kaiagotchi.ui.fonts as fonts
+import Kaiagotchi.ui.web as web
+import Kaiagotchi.utils as utils
 
-from pwnagotchi.ui.components import *
-from pwnagotchi.ui.state import State
-from pwnagotchi.voice import Voice
+from Kaiagotchi.ui.components import *
+from Kaiagotchi.ui.state import State
+from Kaiagotchi.voice import Voice
 
 WHITE = 0x00  # white is actually black on jays image
 BLACK = 0xFF  # black is actually white on jays image
@@ -79,7 +79,7 @@ class View(object):
             # 'friend_face': Text(value=None, position=self._layout['friend_face'], font=fonts.Bold, color=BLACK),
             'friend_name': Text(value=None, position=self._layout['friend_face'], font=fonts.BoldSmall, color=BLACK),
 
-            'name': Text(value='%s>' % 'pwnagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
+            'name': Text(value='%s>' % 'Kaiagotchi', position=self._layout['name'], color=BLACK, font=fonts.Bold),
 
             'status': Text(value=self._voice.default(),
                            position=self._layout['status']['pos'],
@@ -162,7 +162,7 @@ class View(object):
         return self._state.get(key)
 
     def on_starting(self):
-        self.set('status', self._voice.on_starting() + ("\n(v%s)" % pwnagotchi.__version__))
+        self.set('status', self._voice.on_starting() + ("\n(v%s)" % Kaiagotchi.__version__))
         self.set('face', faces.AWAKE)
         self.update()
 
@@ -408,3 +408,4 @@ class View(object):
                     cb(self._canvas)
 
                 self._state.reset()
+

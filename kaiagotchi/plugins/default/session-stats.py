@@ -3,8 +3,8 @@ import logging
 import threading
 from time import sleep
 from datetime import datetime,timedelta
-from pwnagotchi import plugins
-from pwnagotchi.utils import StatusFile
+from Kaiagotchi import plugins
+from Kaiagotchi.utils import StatusFile
 from flask import render_template_string
 from flask import jsonify
 
@@ -261,3 +261,4 @@ class SessionStats(plugins.Plugin):
                 file_stats = StatusFile(os.path.join(self.options['save_directory'], session_param), data_format='json')
                 data = file_stats.data_field_or('data', default=dict())
             return jsonify(SessionStats.extract_key_values(data, extract_keys))
+

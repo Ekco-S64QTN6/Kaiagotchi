@@ -6,11 +6,11 @@ import sqlite3
 from datetime import datetime
 from enum import Enum
 from threading import Lock
-from pwnagotchi.utils import remove_whitelisted
-from pwnagotchi import plugins
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
-import pwnagotchi.ui.fonts as fonts
+from Kaiagotchi.utils import remove_whitelisted
+from Kaiagotchi import plugins
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
+import Kaiagotchi.ui.fonts as fonts
 
 
 class WpaSec(plugins.Plugin):
@@ -283,3 +283,4 @@ class WpaSec(plugins.Plugin):
             except OSError as e:
                 result = f"Error reading file: {e}"
             ui.set('pass', result)
+

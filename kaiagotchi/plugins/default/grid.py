@@ -4,9 +4,9 @@ import time
 import glob
 import re
 
-import pwnagotchi.grid as grid
-import pwnagotchi.plugins as plugins
-from pwnagotchi.utils import StatusFile, WifiInfo, extract_from_pcap
+import Kaiagotchi.grid as grid
+import Kaiagotchi.plugins as plugins
+from Kaiagotchi.utils import StatusFile, WifiInfo, extract_from_pcap
 from threading import Lock
 
 
@@ -153,3 +153,4 @@ class Grid(plugins.Plugin):
             except Exception as e:
                 logging.error("[grid] error while checking pcaps: %s" % e)
                 logging.debug(e, exc_info=True)
+

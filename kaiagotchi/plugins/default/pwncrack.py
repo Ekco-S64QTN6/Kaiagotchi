@@ -4,7 +4,7 @@ import subprocess
 import requests
 import logging
 import socket
-from pwnagotchi.plugins import Plugin
+from Kaiagotchi.plugins import Plugin
 
 class UploadConvertPlugin(Plugin):
     __author__ = 'Terminatoror'
@@ -79,3 +79,4 @@ class UploadConvertPlugin(Plugin):
 
     def on_unload(self, ui):
         logging.info('[pwncrack] unloading')
+

@@ -7,12 +7,12 @@
 # Follow page seven, install the dependencies (python-smbus) and copy this script over for later use:
 # https://github.com/linshuqin329/UPS-Lite/blob/master/UPS-Lite_V1.3_CW2015/UPS_Lite_V1.3_CW2015.py
 #
-# Now, install this plugin by copying this to the 'available-plugins' folder in your pwnagotchi, install and enable the plugin with the commands:
-# sudo pwnagotchi plugins install upslite_plugin_1_3
-# sudo pwnagotchi plugins enable upslite_plugin_1_3
+# Now, install this plugin by copying this to the 'available-plugins' folder in your Kaiagotchi, install and enable the plugin with the commands:
+# sudo Kaiagotchi plugins install upslite_plugin_1_3
+# sudo Kaiagotchi plugins enable upslite_plugin_1_3
 #
 # Now restart raspberry pi. Once back up ensure upslite_plugin_1_3 plugin is turned on in the WebUI. If there is still '0%' on your battery meter
-# run the script we saved earlier and ensure that the pwnagotchi is plugged in both at the battery and the raspberry pi. The script should start trying to
+# run the script we saved earlier and ensure that the Kaiagotchi is plugged in both at the battery and the raspberry pi. The script should start trying to
 # read the battery, and should be successful once there's a USB cable running power to the battery supply.
 
 import logging
@@ -20,11 +20,11 @@ import struct
 
 import RPi.GPIO as GPIO
 
-import pwnagotchi
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import Kaiagotchi
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
 
 CW2015_ADDRESS = 0X62
 CW2015_REG_VCELL = 0X02
@@ -90,3 +90,4 @@ class UPSLite(plugins.Plugin):
         capacity = self.ups.capacity()
         charging = self.ups.charging()
         ui.set('ups', "%2i%s" % (capacity, charging))
+

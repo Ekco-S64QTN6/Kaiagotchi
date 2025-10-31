@@ -24,11 +24,11 @@
 # - Changed horizontal UI elements to Text
 # - Updated to version 1.0.2
 ###############################################################
-from pwnagotchi.ui.components import LabeledValue, Text
-from pwnagotchi.ui.view import BLACK
-import pwnagotchi.ui.fonts as fonts
-import pwnagotchi.plugins as plugins
-import pwnagotchi
+from Kaiagotchi.ui.components import LabeledValue, Text
+from Kaiagotchi.ui.view import BLACK
+import Kaiagotchi.ui.fonts as fonts
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi
 import logging
 
 
@@ -57,10 +57,10 @@ class MemTemp(plugins.Plugin):
         logging.info("memtemp plugin loaded.")
 
     def mem_usage(self):
-        return f"{int(pwnagotchi.mem_usage() * 100)}%"
+        return f"{int(Kaiagotchi.mem_usage() * 100)}%"
 
     def cpu_load(self):
-        return f"{int(pwnagotchi.cpu_load() * 100)}%"
+        return f"{int(Kaiagotchi.cpu_load() * 100)}%"
 
     def _cpu_stat(self):
         """
@@ -86,14 +86,14 @@ class MemTemp(plugins.Plugin):
 
     def cpu_temp(self):
         if self.options['scale'] == "fahrenheit":
-            temp = (pwnagotchi.temperature(celsius=False))
+            temp = (Kaiagotchi.temperature(celsius=False))
             symbol = "F"
         elif self.options['scale'] == "kelvin":
-            temp = pwnagotchi.temperature() + 273.15
+            temp = Kaiagotchi.temperature() + 273.15
             symbol = "K"
         else:
             # default to celsius
-            temp = pwnagotchi.temperature()
+            temp = Kaiagotchi.temperature()
             symbol = "C"
         return f"{temp}{symbol}"
 
@@ -212,3 +212,4 @@ class MemTemp(plugins.Plugin):
                 # default to horizontal
                 data = " ".join([self.pad_text(getattr(self, self.ALLOWED_FIELDS[x])()) for x in self.fields])
                 ui.set('memtemp_data', data)
+

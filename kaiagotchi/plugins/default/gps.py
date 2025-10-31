@@ -2,10 +2,10 @@ import json
 import logging
 import os
 
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
 
 
 class GPS(plugins.Plugin):
@@ -162,3 +162,4 @@ class GPS(plugins.Plugin):
                 ui.set("latitude", f"{self.coordinates['Latitude']:.4f} ")
                 ui.set("longitude", f"{self.coordinates['Longitude']:.4f} ")
                 ui.set("altitude", f"{self.coordinates['Altitude']:.1f}m ")
+

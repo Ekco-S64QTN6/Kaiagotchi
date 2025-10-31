@@ -4,8 +4,8 @@ import requests
 import time
 from datetime import datetime
 from threading import Lock
-from pwnagotchi.utils import StatusFile
-import pwnagotchi.plugins as plugins
+from Kaiagotchi.utils import StatusFile
+import Kaiagotchi.plugins as plugins
 from json.decoder import JSONDecodeError
 
 class ohcapi(plugins.Plugin):
@@ -227,3 +227,4 @@ class ohcapi(plugins.Plugin):
             if os.path.exists(hccapx_path):
                 os.remove(hccapx_path)
         return hashes
+

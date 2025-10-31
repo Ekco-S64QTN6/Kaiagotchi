@@ -1,7 +1,7 @@
 import logging
 import RPi.GPIO as GPIO
 import subprocess
-import pwnagotchi.plugins as plugins
+import Kaiagotchi.plugins as plugins
 
 
 class GPIOButtons(plugins.Plugin):
@@ -42,3 +42,4 @@ class GPIOButtons(plugins.Plugin):
             GPIO.setup(22, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
             GPIO.setup(27, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
             logging.info("Added command: %s to GPIO #%d", command, gpio)
+

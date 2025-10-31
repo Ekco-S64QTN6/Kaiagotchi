@@ -2,9 +2,9 @@ import logging
 import json
 import toml
 import _thread
-import pwnagotchi
-from pwnagotchi import restart, plugins
-from pwnagotchi.utils import save_config, merge_config
+import Kaiagotchi
+from Kaiagotchi import restart, plugins
+from Kaiagotchi.utils import save_config, merge_config
 from flask import abort
 from flask import render_template_string
 
@@ -533,7 +533,7 @@ class WebConfig(plugins.Plugin):
         elif request.method == "POST":
             if path == "save-config":
                 try:
-                    save_config(request.get_json(), '/etc/pwnagotchi/config.toml')  # test
+                    save_config(request.get_json(), '/etc/Kaiagotchi/config.toml')  # test
                     _thread.start_new_thread(restart, (self.mode,))
                     return "success"
                 except Exception as ex:
@@ -542,15 +542,16 @@ class WebConfig(plugins.Plugin):
             elif path == "merge-save-config":
                 try:
                     self.config = merge_config(request.get_json(), self.config)
-                    pwnagotchi.config = merge_config(request.get_json(), pwnagotchi.config)
-                    logging.debug("PWNAGOTCHI CONFIG:\n%s" % repr(pwnagotchi.config))
+                    Kaiagotchi.config = merge_config(request.get_json(), Kaiagotchi.config)
+                    logging.debug("Kaiagotchi CONFIG:\n%s" % repr(Kaiagotchi.config))
                     if self._agent:
                         self._agent._config = merge_config(request.get_json(), self._agent._config)
                         logging.debug("    Agent CONFIG:\n%s" % repr(self._agent._config))
                     logging.debug("   Updated CONFIG:\n%s" % request.get_json())
-                    save_config(request.get_json(), '/etc/pwnagotchi/config.toml')  # test
+                    save_config(request.get_json(), '/etc/Kaiagotchi/config.toml')  # test
                     return "success"
                 except Exception as ex:
                     logging.error("[webcfg mergesave] %s" % ex)
                     return "config error", 500
         abort(404)
+

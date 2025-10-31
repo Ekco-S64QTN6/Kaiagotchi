@@ -1,6 +1,6 @@
 import sys
 
-import pwnagotchi.plugins as plugins
+import Kaiagotchi.plugins as plugins
 import logging
 import os
 import json
@@ -29,7 +29,7 @@ class Webgpsmap(plugins.Plugin):
     __version__ = '1.4.0'
     __name__ = 'webgpsmap'
     __license__ = 'GPL3'
-    __description__ = 'a plugin for pwnagotchi that shows a openstreetmap with positions of ap-handshakes in your webbrowser'
+    __description__ = 'a plugin for Kaiagotchi that shows a openstreetmap with positions of ap-handshakes in your webbrowser'
 
     ALREADY_SENT = list()
     SKIP = list()
@@ -402,3 +402,4 @@ class PositionFile:
             except KeyError:
                 pass
         return None
+

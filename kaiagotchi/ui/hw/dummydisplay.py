@@ -1,7 +1,7 @@
 import logging
 
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.hw.base import DisplayImpl
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.hw.base import DisplayImpl
 
 
 class DummyDisplay(DisplayImpl):
@@ -42,3 +42,4 @@ class DummyDisplay(DisplayImpl):
 
     def clear(self):
         return
+

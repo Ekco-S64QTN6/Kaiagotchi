@@ -2,9 +2,9 @@ import os
 import logging
 import threading
 
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.hw as hw
-from pwnagotchi.ui.view import View
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.hw as hw
+from Kaiagotchi.ui.view import View
 
 
 class Display(View):
@@ -342,3 +342,4 @@ class Display(View):
             if self._implementation is not None:
                 self._canvas_next = self._canvas
                 self._canvas_next_event.set()
+

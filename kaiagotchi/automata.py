@@ -1,7 +1,7 @@
 import logging
 
-import pwnagotchi.plugins as plugins
-from pwnagotchi.ai.epoch import Epoch
+import Kaiagotchi.plugins as plugins
+from Kaiagotchi.ai.epoch import Epoch
 import os
 
 
@@ -141,3 +141,4 @@ class Automata(object):
             logging.critical("%d epochs without visible access points -> restarting ...", self._epoch.blind_for)
             self._restart()
             self._epoch.blind_for = 0
+

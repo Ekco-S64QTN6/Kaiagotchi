@@ -4,10 +4,10 @@ import os
 import subprocess
 import threading
 
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
 
 """
 # Android
@@ -78,7 +78,7 @@ while true; do
 done
 -----
 
-# Pwnagotchi
+# Kaiagotchi
 main.plugins.gps_listener.enabled = true
 
 # packages
@@ -231,3 +231,4 @@ class GPS(plugins.Plugin):
 
     def on_ui_update(self, ui):
         ui.set('gps', self.get_status())
+

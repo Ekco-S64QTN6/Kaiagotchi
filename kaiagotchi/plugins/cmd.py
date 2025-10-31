@@ -5,12 +5,12 @@ import re
 import shutil
 import socket  # <-- Added for DNS check
 from fnmatch import fnmatch
-from pwnagotchi.utils import download_file, unzip, save_config, parse_version, md5
-from pwnagotchi.plugins import default_path
+from Kaiagotchi.utils import download_file, unzip, save_config, parse_version, md5
+from Kaiagotchi.plugins import default_path
 
 
-SAVE_DIR = '/usr/local/share/pwnagotchi/available-plugins/'
-DEFAULT_INSTALL_PATH = '/usr/local/share/pwnagotchi/installed-plugins/'
+SAVE_DIR = '/usr/local/share/Kaiagotchi/available-plugins/'
+DEFAULT_INSTALL_PATH = '/usr/local/share/Kaiagotchi/installed-plugins/'
 
 
 def add_parsers(subparsers):
@@ -18,42 +18,42 @@ def add_parsers(subparsers):
     Adds the plugins subcommand to a given argparse.ArgumentParser
     """
     # subparsers = parser.add_subparsers()
-    # pwnagotchi plugins
+    # Kaiagotchi plugins
     parser_plugins = subparsers.add_parser('plugins')
     plugin_subparsers = parser_plugins.add_subparsers(dest='plugincmd')
 
-    # pwnagotchi plugins search
-    parser_plugins_search = plugin_subparsers.add_parser('search', help='Search for pwnagotchi plugins')
+    # Kaiagotchi plugins search
+    parser_plugins_search = plugin_subparsers.add_parser('search', help='Search for Kaiagotchi plugins')
     parser_plugins_search.add_argument('pattern', type=str, help="Search expression (wildcards allowed)")
 
-    # pwnagotchi plugins list
-    parser_plugins_list = plugin_subparsers.add_parser('list', help='List available pwnagotchi plugins')
+    # Kaiagotchi plugins list
+    parser_plugins_list = plugin_subparsers.add_parser('list', help='List available Kaiagotchi plugins')
     parser_plugins_list.add_argument('-i', '--installed', action='store_true', required=False, help='List also installed plugins')
 
-    # pwnagotchi plugins update
+    # Kaiagotchi plugins update
     parser_plugins_update = plugin_subparsers.add_parser('update', help='Updates the database')
 
-    # pwnagotchi plugins upgrade
+    # Kaiagotchi plugins upgrade
     parser_plugins_upgrade = plugin_subparsers.add_parser('upgrade', help='Upgrades plugins')
     parser_plugins_upgrade.add_argument('pattern', type=str, nargs='?', default='*', help="Filter expression (wildcards allowed)")
 
-    # pwnagotchi plugins enable
+    # Kaiagotchi plugins enable
     parser_plugins_enable = plugin_subparsers.add_parser('enable', help='Enables a plugin')
     parser_plugins_enable.add_argument('name', type=str, help='Name of the plugin')
 
-    # pwnagotchi plugins disable
+    # Kaiagotchi plugins disable
     parser_plugins_disable = plugin_subparsers.add_parser('disable', help='Disables a plugin')
     parser_plugins_disable.add_argument('name', type=str, help='Name of the plugin')
 
-    # pwnagotchi plugins install
+    # Kaiagotchi plugins install
     parser_plugins_install = plugin_subparsers.add_parser('install', help='Installs a plugin')
     parser_plugins_install.add_argument('name', type=str, help='Name of the plugin')
 
-    # pwnagotchi plugins uninstall
+    # Kaiagotchi plugins uninstall
     parser_plugins_uninstall = plugin_subparsers.add_parser('uninstall', help='Uninstalls a plugin')
     parser_plugins_uninstall.add_argument('name', type=str, help='Name of the plugin')
 
-    # pwnagotchi plugins edit
+    # Kaiagotchi plugins edit
     parser_plugins_edit = plugin_subparsers.add_parser('edit', help='Edit the options')
     parser_plugins_edit.add_argument('name', type=str, help='Name of the plugin')
 
@@ -199,7 +199,7 @@ def list_plugins(args, config, pattern='*'):
 
     max_len_list = available_and_installed if args.installed else available_not_installed
     if not max_len_list:
-        print('Maybe try: sudo pwnagotchi plugins update')
+        print('Maybe try: sudo Kaiagotchi plugins update')
         return 1
     max_len = max(map(len, max_len_list))
     # MODIFIED: Added author to the header format
@@ -244,7 +244,7 @@ def list_plugins(args, config, pattern='*'):
     print('-' * line_length)
 
     if not found:
-        print('Maybe try: sudo pwnagotchi plugins update')
+        print('Maybe try: sudo Kaiagotchi plugins update')
         return 1
     return 0
 
@@ -386,13 +386,13 @@ def update(config):
 
     if not _check_internet():
         logging.error("No internet connection or DNS not working. Please follow these instructions:")
-        logging.error("https://github.com/jayofelony/pwnagotchi/wiki/Step-2-Connecting")
+        logging.error("https://github.com/jayofelony/Kaiagotchi/wiki/Step-2-Connecting")
         print("No internet/DNS. Please follow these instructions:")
-        print("https://github.com/jayofelony/pwnagotchi/wiki/Step-2-Connecting")
+        print("https://github.com/jayofelony/Kaiagotchi/wiki/Step-2-Connecting")
         return 1
     else:
-        logging.info("Internet detected - Please run sudo pwnagotchi plugins list")
-        print("Internet detected - Please run sudo pwnagotchi plugins list")
+        logging.info("Internet detected - Please run sudo Kaiagotchi plugins list")
+        print("Internet detected - Please run sudo Kaiagotchi plugins list")
 
     urls = config['main']['custom_plugin_repos']
     if not urls:
@@ -433,3 +433,4 @@ def update(config):
             logging.error('Error while updating plugins: %s', ex)
             rc = 1
     return rc
+

@@ -20,7 +20,7 @@ msgstr ""
 msgid "ZzzzZZzzzzZzzz"
 msgstr ""
 
-msgid "Hi, I'm Pwnagotchi! Starting ..."
+msgid "Hi, I'm Kaiagotchi! Starting ..."
 msgstr ""
 
 msgid "New day, new hunt, new pwns!"
@@ -234,7 +234,7 @@ msgstr ""
 #, python-brace-format
 msgid ""
 "I've been pwning for {duration} and kicked {deauthed} clients! I've also met "
-"{associated} new friends and ate {handshakes} handshakes! #pwnagotchi "
+"{associated} new friends and ate {handshakes} handshakes! #Kaiagotchi "
 "#pwnlog #pwnlife #hacktheplanet #skynet"
 msgstr ""
 
@@ -255,3 +255,4 @@ msgstr ""
 
 msgid "second"
 msgstr ""
+

@@ -11,14 +11,14 @@ def add_parsers(subparsers):
     Adds the plugins subcommand to a given argparse.ArgumentParser
     """
     #subparsers = parser.add_subparsers()
-    # pwnagotchi google
+    # Kaiagotchi google
     parser_google = subparsers.add_parser('google')
     google_subparsers = parser_google.add_subparsers(dest='googlecmd')
 
-    # pwnagotchi google auth
+    # Kaiagotchi google auth
     parser_google_auth = google_subparsers.add_parser('login', help='Login to Google')
 
-    # pwnagotchi google refresh token
+    # Kaiagotchi google refresh token
     parser_google_refresh = google_subparsers.add_parser('refresh', help="Refresh Google authentication token")
     return subparsers
 
@@ -43,7 +43,7 @@ def handle_cmd(args):
 
 def auth():
     # start authentication process
-    user_input = input("By completing these steps you give pwnagotchi access to your personal Google Drive!\n"
+    user_input = input("By completing these steps you give Kaiagotchi access to your personal Google Drive!\n"
                        "Personal credentials will be stored only locally for automated verification in the future.\n"
                        "No one else but you have access to these.\n"
                        "Do you agree? \n\n[y(es)/n(o)]\n"
@@ -99,3 +99,4 @@ def refresh():
     gauth.Authorize()
     print("No refresh required ..")
     return 0
+

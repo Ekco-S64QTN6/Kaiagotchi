@@ -84,7 +84,7 @@ do_backup() {
 /root/.profile
 /home/pi/handshakes
 /root/peers
-/etc/pwnagotchi/
+/etc/kaiagotchi/
 /usr/local/share/pwnagotchi/custom-plugins
 /etc/ssh/
 /home/pi/.bashrc
@@ -196,3 +196,5 @@ case "$SUBCOMMAND" in
     exit 1
     ;;
 esac
+
+

@@ -3,7 +3,7 @@ import json
 import os
 import re
 import pathlib
-import pwnagotchi.plugins as plugins
+import Kaiagotchi.plugins as plugins
 from datetime import datetime, UTC
 from threading import Lock
 
@@ -117,3 +117,4 @@ class Cache(plugins.Plugin):
         if (current_time - self.last_clean).total_seconds() > 60:
             self.clean_ap_cache()
             self.last_clean = current_time
+

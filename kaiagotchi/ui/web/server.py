@@ -12,7 +12,7 @@ from flask import Flask
 from flask_cors import CORS
 from flask_wtf.csrf import CSRFProtect
 
-from pwnagotchi.ui.web.handler import Handler
+from Kaiagotchi.ui.web.handler import Handler
 
 class Server:
     def __init__(self, agent, config):
@@ -53,3 +53,4 @@ class Server:
             app.run(host=self._address, port=self._port)
         else:
             logging.info("could not get ip of usb0, video server not starting")
+

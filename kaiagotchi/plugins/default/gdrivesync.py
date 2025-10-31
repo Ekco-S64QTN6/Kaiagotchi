@@ -2,13 +2,13 @@ import logging
 import os
 import shutil
 import time
-import pwnagotchi.plugins as plugins
-import pwnagotchi
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi
 import pydrive2
 from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
 from threading import Lock
-from pwnagotchi.utils import StatusFile
+from Kaiagotchi.utils import StatusFile
 import zipfile
 
 
@@ -16,7 +16,7 @@ class GdriveSync(plugins.Plugin):
     __author__ = '@jayofelony & Moist'
     __version__ = '1.4'
     __license__ = 'GPL3'
-    __description__ = 'A plugin to backup various pwnagotchi files and folders to Google Drive. Once every hour from loading plugin.'
+    __description__ = 'A plugin to backup various Kaiagotchi files and folders to Google Drive. Once every hour from loading plugin.'
 
     def __init__(self):
         self.options = dict()
@@ -30,9 +30,9 @@ class GdriveSync(plugins.Plugin):
             '/root/.api-report.json',
             '/home/pi/handshakes',
             '/root/peers',
-            '/etc/pwnagotchi',
+            '/etc/Kaiagotchi',
             '.etc/profile/',
-            '/usr/local/share/pwnagotchi/custom-plugins',
+            '/usr/local/share/Kaiagotchi/custom-plugins',
             '/boot/firmware/config.txt',
             '/boot/firmware/cmdline.txt'
         ]
@@ -73,7 +73,7 @@ class GdriveSync(plugins.Plugin):
                 backup_folder_file_list = self.drive.ListFile({'q': f"'{backup_folder}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed=false"}).GetList()
                 if not backup_folder_file_list:
                     # Handle the case where no files were found
-                    # logging.warning(f"[gDriveSync] No files found in the folder with ID {root_file_list} and {pwnagotchi_file_list}")
+                    # logging.warning(f"[gDriveSync] No files found in the folder with ID {root_file_list} and {Kaiagotchi_file_list}")
                     if self.options['backupfiles'] is not None:
                         self.backupfiles = self.backupfiles + self.options['backupfiles']
                     self.backup_files(self.backupfiles, '/home/pi/backup')
@@ -113,7 +113,7 @@ class GdriveSync(plugins.Plugin):
                     self.ready = True
                     logging.info("[gdrivesync] loaded")
                     # Restart so we can start opwngrid with the backup id
-                    pwnagotchi.restart("AUTO")
+                    Kaiagotchi.restart("AUTO")
 
                 # all set, gdriveSync is ready to run
             self.ready = True
@@ -252,3 +252,4 @@ class GdriveSync(plugins.Plugin):
             self.upload_to_gdrive(backup_path, gdrive_folder)
         else:
             logging.error(f"[gDriveSync] API Request Error: {api_error}")
+

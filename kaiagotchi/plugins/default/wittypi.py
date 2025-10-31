@@ -1,10 +1,10 @@
 # Witty Pi 4 L3V7
 #
 import logging
-import pwnagotchi.plugins as plugins
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
 
 class UPS:
     I2C_MC_ADDRESS = 0x08
@@ -73,3 +73,4 @@ class WittyPi(plugins.Plugin):
         capacity = self.ups.capacity()
         charging = self.ups.charging()
         ui.set('ups', "%2i%s" % (capacity, charging))
+

@@ -123,16 +123,16 @@ def toggle_plugin(name, enable=True):
 
     returns True if changed, otherwise False
     """
-    import pwnagotchi
-    from pwnagotchi.ui import view
-    from pwnagotchi.utils import save_config
+    import Kaiagotchi
+    from Kaiagotchi.ui import view
+    from Kaiagotchi.utils import save_config
 
     global loaded, database
 
-    if pwnagotchi.config:
-        if not name in pwnagotchi.config['main']['plugins']:
-            pwnagotchi.config['main']['plugins'][name] = dict()
-        pwnagotchi.config['main']['plugins'][name]['enabled'] = enable
+    if Kaiagotchi.config:
+        if not name in Kaiagotchi.config['main']['plugins']:
+            Kaiagotchi.config['main']['plugins'][name] = dict()
+        Kaiagotchi.config['main']['plugins'][name]['enabled'] = enable
 
     if not enable and name in loaded:
         if getattr(loaded[name], 'on_unload', None):
@@ -141,22 +141,22 @@ def toggle_plugin(name, enable=True):
         if name in plugin_event_queues:
             plugin_event_queues[name].keep_going = False
             del plugin_event_queues[name]
-        if pwnagotchi.config:
-            save_config(pwnagotchi.config, '/etc/pwnagotchi/config.toml')
+        if Kaiagotchi.config:
+            save_config(Kaiagotchi.config, '/etc/Kaiagotchi/config.toml')
         return True
 
     if enable and name in database and name not in loaded:
         load_from_file(database[name])
-        if name in loaded and pwnagotchi.config and name in pwnagotchi.config['main']['plugins']:
-            loaded[name].options = pwnagotchi.config['main']['plugins'][name]
+        if name in loaded and Kaiagotchi.config and name in Kaiagotchi.config['main']['plugins']:
+            loaded[name].options = Kaiagotchi.config['main']['plugins'][name]
         one(name, 'loaded')
         time.sleep(3)
-        if pwnagotchi.config:
-            one(name, 'config_changed', pwnagotchi.config)
+        if Kaiagotchi.config:
+            one(name, 'config_changed', Kaiagotchi.config)
         one(name, 'ui_setup', view.ROOT)
         one(name, 'ready', view.ROOT._agent)
-        if pwnagotchi.config:
-            save_config(pwnagotchi.config, '/etc/pwnagotchi/config.toml')
+        if Kaiagotchi.config:
+            save_config(Kaiagotchi.config, '/etc/Kaiagotchi/config.toml')
         return True
 
     return False
@@ -242,3 +242,4 @@ def load(config):
         on('config_changed', config)
     except Exception as e:
         logging.exception(repr(e))
+

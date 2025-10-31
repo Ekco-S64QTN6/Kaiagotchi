@@ -1,4 +1,4 @@
-import pwnagotchi.mesh.wifi as wifi
+import Kaiagotchi.mesh.wifi as wifi
 
 range: tuple[float, float] = (-.7, 1.02)
 fuck_zero: float = 1e-20
@@ -26,3 +26,4 @@ class RewardFunction(object):
         l: float = -.1 * (_bored / tot_epochs)
 
         return h + a + c + b + i + m + s + l
+

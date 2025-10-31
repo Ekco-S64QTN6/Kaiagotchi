@@ -1,2 +1,23 @@
+--- Python Artifacts ---
+
 *.pyc
+pycache/
+venv/
+
+--- IDE Files ---
+
 .vscode
+
+Since you deleted them, ensure they stay ignored in case they regenerate
+
+.idea/
+
+--- Temporary/Backup Files ---
+
+*.bak
+*~
+*.tmp
+
+--- Explicit Backups ---
+
+project-backup-20251031-*

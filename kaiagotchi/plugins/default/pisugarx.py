@@ -1,10 +1,10 @@
 import logging
 
-from pwnagotchi.ui.components import LabeledValue
-from pwnagotchi.ui.view import BLACK
-import pwnagotchi.ui.fonts as fonts
-import pwnagotchi.plugins as plugins
-import pwnagotchi
+from Kaiagotchi.ui.components import LabeledValue
+from Kaiagotchi.ui.view import BLACK
+import Kaiagotchi.ui.fonts as fonts
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi
 import time
 import smbus
 from flask import abort
@@ -191,7 +191,7 @@ class PiSugarServer:
                     if self.battery_level < self.lowpower_shutdown_level:
                         logging.info("[PiSugarX] low power shutdown now.")
                         self.shutdown()
-                        pwnagotchi.shutdown()
+                        Kaiagotchi.shutdown()
                 time.sleep(3)
             except Exception as e:
                 logging.error(f"read error{e}")
@@ -586,7 +586,7 @@ class PiSugar(plugins.Plugin):
 
     def on_loaded(self):
         logging.info("[PiSugarX] plugin loaded.")
-        cfg = pwnagotchi.config['main']['plugins']['pisugarx']
+        cfg = Kaiagotchi.config['main']['plugins']['pisugarx']
         self.rotation_enabled = cfg.get('rotation', True)
         self.default_display = cfg.get('default_display', 'voltage').lower()
 
@@ -844,3 +844,4 @@ class PiSugar(plugins.Plugin):
                 ui.set('bat', f"{capacity:.0f}%")
             elif self.default_display == 'temp':
                 ui.set('bat', f"{temp}°C")
+

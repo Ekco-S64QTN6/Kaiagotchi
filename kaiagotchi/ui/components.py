@@ -11,7 +11,7 @@ class Widget(object):
         raise Exception("not implemented")
 
 # canvas.paste: https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.Image.paste
-# takes mask variable, to identify color system. (not used for pwnagotchi yet)
+# takes mask variable, to identify color system. (not used for Kaiagotchi yet)
 # Pwn should use "1" since its mainly black or white displays.
 class Bitmap(Widget):
     def __init__(self, path, xy, color=0):
@@ -93,3 +93,4 @@ class LabeledValue(Widget):
             pos = self.xy
             drawer.text(pos, self.label, font=self.label_font, fill=self.color)
             drawer.text((pos[0] + self.label_spacing + 5 * len(self.label), pos[1]), self.value, font=self.text_font, fill=self.color)
+

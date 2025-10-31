@@ -3,12 +3,12 @@ import threading
 import logging
 import time
 
-import pwnagotchi
-import pwnagotchi.utils as utils
-import pwnagotchi.ui.faces as faces
-import pwnagotchi.plugins as plugins
-import pwnagotchi.grid as grid
-from pwnagotchi.mesh.peer import Peer
+import Kaiagotchi
+import Kaiagotchi.utils as utils
+import Kaiagotchi.ui.faces as faces
+import Kaiagotchi.plugins as plugins
+import Kaiagotchi.grid as grid
+from Kaiagotchi.mesh.peer import Peer
 
 
 class AsyncAdvertiser(object):
@@ -17,8 +17,8 @@ class AsyncAdvertiser(object):
         self._view = view
         self._keypair = keypair
         self._advertisement = {
-            'name': pwnagotchi.name(),
-            'version': pwnagotchi.__version__,
+            'name': Kaiagotchi.name(),
+            'version': Kaiagotchi.__version__,
             'identity': self._keypair.fingerprint,
             'face': faces.FRIEND,
             'pwnd_run': 0,
@@ -36,7 +36,7 @@ class AsyncAdvertiser(object):
     def _update_advertisement(self, s):
         self._advertisement['pwnd_run'] = len(self._handshakes)
         self._advertisement['pwnd_tot'] = utils.total_unique_handshakes(self._config['bettercap']['handshakes'])
-        self._advertisement['uptime'] = pwnagotchi.uptime()
+        self._advertisement['uptime'] = Kaiagotchi.uptime()
         self._advertisement['epoch'] = self._epoch.epoch
         grid.set_advertisement_data(self._advertisement)
 
@@ -110,3 +110,4 @@ class AsyncAdvertiser(object):
                 logging.debug(e, exc_info=True)
 
             time.sleep(3)
+

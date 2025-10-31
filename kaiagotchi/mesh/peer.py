@@ -2,7 +2,7 @@ import time
 import logging
 import datetime
 
-import pwnagotchi.ui.faces as faces
+import Kaiagotchi.ui.faces as faces
 
 
 def parse_rfc3339(dt):
@@ -87,3 +87,4 @@ class Peer(object):
 
     def is_closer(self, other):
         return self.rssi > other.rssi
+

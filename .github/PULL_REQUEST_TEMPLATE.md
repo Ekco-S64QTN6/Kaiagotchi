@@ -28,3 +28,4 @@
 - [ ] I have updated the documentation accordingly.
 - [ ] I've read the [CONTRIBUTION](https://github.com/evilsocket/pwnagotchi/blob/master/CONTRIBUTING.md) guide
 - [ ] I have signed-off my commits with `git commit -s`
+

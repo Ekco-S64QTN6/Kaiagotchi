@@ -2,11 +2,11 @@ import time
 import threading
 import logging
 
-import pwnagotchi
-import pwnagotchi.utils as utils
-import pwnagotchi.mesh.wifi as wifi
+import Kaiagotchi
+import Kaiagotchi.utils as utils
+import Kaiagotchi.mesh.wifi as wifi
 
-from pwnagotchi.ai.reward import RewardFunction
+from Kaiagotchi.ai.reward import RewardFunction
 
 
 class Epoch(object):
@@ -177,9 +177,9 @@ class Epoch(object):
             self.bored_for = 0
 
         now = time.time()
-        cpu = pwnagotchi.cpu_load("epoch")
-        mem = pwnagotchi.mem_usage()
-        temp = pwnagotchi.temperature()
+        cpu = Kaiagotchi.cpu_load("epoch")
+        mem = Kaiagotchi.mem_usage()
+        temp = Kaiagotchi.temperature()
 
         self.epoch_duration = now - self.epoch_started
 
@@ -247,3 +247,4 @@ class Epoch(object):
         self.num_hops = 0
         self.num_slept = 0
         self.any_activity = False
+

@@ -12,10 +12,10 @@ import flask
 logging.getLogger('werkzeug').setLevel(logging.ERROR)
 os.environ['WERKZEUG_RUN_MAIN'] = 'false'
 
-import pwnagotchi
-import pwnagotchi.grid as grid
-import pwnagotchi.ui.web as web
-from pwnagotchi import plugins
+import Kaiagotchi
+import Kaiagotchi.grid as grid
+import Kaiagotchi.ui.web as web
+from Kaiagotchi import plugins
 
 from flask import send_file
 from flask import Response
@@ -77,7 +77,7 @@ class Handler:
 
     def index(self):
         return render_template('index.html',
-                               title=pwnagotchi.name(),
+                               title=Kaiagotchi.name(),
                                other_mode='AUTO' if self._agent.mode == 'manual' else 'MANU',
                                fingerprint=self._agent.fingerprint())
 
@@ -100,7 +100,7 @@ class Handler:
             error = str(e)
 
         return render_template('inbox.html',
-                               name=pwnagotchi.name(),
+                               name=Kaiagotchi.name(),
                                page=page,
                                error=error,
                                inbox=inbox)
@@ -116,7 +116,7 @@ class Handler:
             error = str(e)
 
         return render_template('profile.html',
-                               name=pwnagotchi.name(),
+                               name=Kaiagotchi.name(),
                                fingerprint=self._agent.fingerprint(),
                                data=json.dumps(data, indent=2),
                                error=error)
@@ -132,7 +132,7 @@ class Handler:
             error = str(e)
 
         return render_template('peers.html',
-                               name=pwnagotchi.name(),
+                               name=Kaiagotchi.name(),
                                peers=peers,
                                error=error)
 
@@ -152,7 +152,7 @@ class Handler:
             error = str(e)
 
         return render_template('message.html',
-                               name=pwnagotchi.name(),
+                               name=Kaiagotchi.name(),
                                error=error,
                                message=message)
 
@@ -193,7 +193,7 @@ class Handler:
 
         if name == 'upgrade' and request.method == 'POST':
             logging.info(f"Upgrading plugin: {request.form['plugin']}")
-            os.system(f"pwnagotchi plugins update && pwnagotchi plugins upgrade {request.form['plugin']}")
+            os.system(f"Kaiagotchi plugins update && Kaiagotchi plugins upgrade {request.form['plugin']}")
             return redirect("/plugins")
 
         if name in plugins.loaded and plugins.loaded[name] is not None and hasattr(plugins.loaded[name], 'on_webhook'):
@@ -207,18 +207,18 @@ class Handler:
     # serve a message and shuts down the unit
     def shutdown(self):
         try:
-            return render_template('status.html', title=pwnagotchi.name(), go_back_after=60,
+            return render_template('status.html', title=Kaiagotchi.name(), go_back_after=60,
                                    message='Shutting down ...')
         finally:
-            _thread.start_new_thread(pwnagotchi.shutdown, ())
+            _thread.start_new_thread(Kaiagotchi.shutdown, ())
 
     # serve a message and reboot the unit
     def reboot(self):
           try:
-              return render_template('status.html', title=pwnagotchi.name(), go_back_after=60,
+              return render_template('status.html', title=Kaiagotchi.name(), go_back_after=60,
                                      message='Rebooting ...')
           finally:
-              _thread.start_new_thread(pwnagotchi.reboot, ())
+              _thread.start_new_thread(Kaiagotchi.reboot, ())
 
     # serve a message and restart the unit in the other mode
     def restart(self):
@@ -227,12 +227,13 @@ class Handler:
             mode = 'MANU'
 
         try:
-            return render_template('status.html', title=pwnagotchi.name(), go_back_after=30,
+            return render_template('status.html', title=Kaiagotchi.name(), go_back_after=30,
                                    message='Restarting in %s mode ...' % mode)
         finally:
-            _thread.start_new_thread(pwnagotchi.restart, (mode,))
+            _thread.start_new_thread(Kaiagotchi.restart, (mode,))
 
     # serve the PNG file with the display image
     def ui(self):
         with web.frame_lock:
             return send_file(web.frame_path, mimetype='image/png')
+

@@ -539,9 +539,9 @@ License: GNU GENERAL PUBLIC LICENSE
         WITH ANY OTHER PROGRAMS), EVEN IF SUCH HOLDER OR OTHER PARTY HAS BEEN ADVISED OF THE
         POSSIBILITY OF SUCH DAMAGES.
         
-        **ADDITIONAL PWNAGOTCHI PROJECT DISCLAIMERS:**
+        **ADDITIONAL KAIAGOTCHI PROJECT DISCLAIMERS:**
         
-        THE PWNAGOTCHI PROJECT, ITS MAINTAINERS, CONTRIBUTORS, AND DISTRIBUTORS (COLLECTIVELY, "PROJECT PARTIES") PROVIDE THIS SOFTWARE FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY. BY USING THIS SOFTWARE, YOU ACKNOWLEDGE AND ACCEPT THE FOLLOWING ADDITIONAL TERMS:
+        THE KAIAGOTCHI PROJECT, ITS MAINTAINERS, CONTRIBUTORS, AND DISTRIBUTORS (COLLECTIVELY, "PROJECT PARTIES") PROVIDE THIS SOFTWARE FOR EDUCATIONAL AND RESEARCH PURPOSES ONLY. BY USING THIS SOFTWARE, YOU ACKNOWLEDGE AND ACCEPT THE FOLLOWING ADDITIONAL TERMS:
         
         **SCOPE OF LIABILITY DISCLAIMER:** The Project Parties specifically disclaim liability for:
         (A) Damage to or loss of any property, including computer hardware, network equipment, electronic devices, or any other physical or digital property;
@@ -617,6 +617,7 @@ License: GNU GENERAL PUBLIC LICENSE
         License. But first, please read
         &lt;<https://www.gnu.org/philosophy/why-not-lgpl.html>&gt;.
         
+        
 Project-URL: Homepage, https://github.com/Ekco-S64QTN6/kaiagotchi
 Project-URL: Repository, https://github.com/Ekco-S64QTN6/kaiagotchi.git
 Project-URL: GitHub, https://github.com/Ekco-S64QTN6/kaiagotchi
@@ -629,6 +630,7 @@ Classifier: Environment :: Console
 Requires-Python: >=3.11
 Description-Content-Type: text/markdown
 License-File: LICENSE.md
+License-File: LICENSE.md.bak
 Requires-Dist: PyYAML
 Requires-Dist: dbus-python; sys_platform == "linux"
 Requires-Dist: file-read-backwards

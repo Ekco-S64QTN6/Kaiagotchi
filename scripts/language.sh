@@ -71,3 +71,4 @@ case "$1" in
     update_lang "$2"
     ;;
 esac
+

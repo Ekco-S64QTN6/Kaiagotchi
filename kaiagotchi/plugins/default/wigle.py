@@ -3,7 +3,7 @@ import logging
 import json
 import csv
 import requests
-import pwnagotchi
+import Kaiagotchi
 import re
 from glob import glob
 from threading import Lock
@@ -12,20 +12,20 @@ from datetime import datetime, UTC
 from dataclasses import dataclass
 
 from flask import make_response, redirect
-from pwnagotchi.utils import (
+from Kaiagotchi.utils import (
     WifiInfo,
     FieldNotFoundError,
     extract_from_pcap,
     StatusFile,
     remove_whitelisted,
 )
-from pwnagotchi import plugins
-from pwnagotchi.plugins.default.cache import read_ap_cache
-from pwnagotchi._version import __version__ as __pwnagotchi_version__
+from Kaiagotchi import plugins
+from Kaiagotchi.plugins.default.cache import read_ap_cache
+from Kaiagotchi._version import __version__ as __Kaiagotchi_version__
 
-import pwnagotchi.ui.fonts as fonts
-from pwnagotchi.ui.components import Text
-from pwnagotchi.ui.view import BLACK
+import Kaiagotchi.ui.fonts as fonts
+from Kaiagotchi.ui.components import Text
+from Kaiagotchi.ui.view import BLACK
 
 from scapy.all import Scapy_Exception
 
@@ -189,13 +189,13 @@ class Wigle(plugins.Plugin):
 
     def generate_csv(self, data):
         date = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{pwnagotchi.name()}_{date}.csv"
+        filename = f"{Kaiagotchi.name()}_{date}.csv"
 
         content = StringIO()
         # write kismet header + header
         content.write(
-            f"WigleWifi-1.6,appRelease={self.__version__},model=pwnagotchi,release={__pwnagotchi_version__},"
-            f"device={pwnagotchi.name()},display=kismet,board=RaspberryPi,brand=pwnagotchi,star=Sol,body=3,subBody=0\n"
+            f"WigleWifi-1.6,appRelease={self.__version__},model=Kaiagotchi,release={__Kaiagotchi_version__},"
+            f"device={Kaiagotchi.name()},display=kismet,board=RaspberryPi,brand=Kaiagotchi,star=Sol,body=3,subBody=0\n"
             f"MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,AccuracyMeters,RCOIs,MfgrId,Type\n"
         )
         writer = csv.writer(content, delimiter=",", quoting=csv.QUOTE_NONE, escapechar="\\")
@@ -369,3 +369,4 @@ class Wigle(plugins.Plugin):
             elif self.ui_counter == 5:
                 msg = f"Grp rank:{self.statistics.grouprank}"
             ui.set("wigle", msg)
+

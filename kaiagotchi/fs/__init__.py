@@ -58,7 +58,7 @@ def setup_mounts(config):
             continue
         logging.debug("[FS] Trying to setup mount %s (%s)", name, options['mount'])
         size,unit = re.match(r"(\d+)([a-zA-Z]+)", options['size']).groups()
-        target = os.path.join('/run/pwnagotchi/disk/', os.path.basename(options['mount']))
+        target = os.path.join('/run/Kaiagotchi/disk/', os.path.basename(options['mount']))
 
         is_mounted = is_mountpoint(target)
         logging.debug("[FS] %s is %s mounted", options['mount'],
@@ -174,10 +174,10 @@ class MemoryFS:
             return False
 
         if self.zram and self.zdev is not None:
-            if os.system(f"mount -t {self.zram_fs_type} -o nosuid,noexec,nodev,user=pwnagotchi /dev/zram{self.zdev} {self.mountpoint}/"):
+            if os.system(f"mount -t {self.zram_fs_type} -o nosuid,noexec,nodev,user=Kaiagotchi /dev/zram{self.zdev} {self.mountpoint}/"):
                 return False
         else:
-            if os.system(f"mount -t tmpfs -o nosuid,noexec,nodev,mode=0755,size={self.size} pwnagotchi {self.mountpoint}/"):
+            if os.system(f"mount -t tmpfs -o nosuid,noexec,nodev,mode=0755,size={self.size} Kaiagotchi {self.mountpoint}/"):
                 return False
 
         return True
@@ -190,3 +190,4 @@ class MemoryFS:
         if os.system(f"umount -l {self.disk}"):
             return False
         return True
+

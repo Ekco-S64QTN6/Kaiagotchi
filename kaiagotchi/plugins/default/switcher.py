@@ -2,8 +2,8 @@ import os
 import logging
 from threading import Lock
 from functools import partial
-from pwnagotchi import plugins
-from pwnagotchi import reboot
+from Kaiagotchi import plugins
+from Kaiagotchi import reboot
 
 
 def systemd_dropin(name, content):
@@ -44,8 +44,8 @@ def run_task(name, options):
     with open('/etc/systemd/system/%s' % task_service_name, 'wt') as task_service:
         task_service.write("""
         [Unit]
-        Description=Executes the tasks of the pwnagotchi switcher plugin
-        After=pwnagotchi.service bettercap.service
+        Description=Executes the tasks of the Kaiagotchi switcher plugin
+        After=Kaiagotchi.service bettercap.service
 
         [Service]
         Type=oneshot
@@ -64,7 +64,7 @@ def run_task(name, options):
         open('/root/.switcher', 'a').close()
 
         # add condition
-        systemd_dropin("pwnagotchi.service", """
+        systemd_dropin("Kaiagotchi.service", """
         [Unit]
         ConditionPathExists=!/root/.switcher""")
 
@@ -148,3 +148,4 @@ class Switcher(plugins.Plugin):
             setattr(Switcher, 'on_%s' % m, partial(self.trigger, m))
 
         logging.debug("[switcher] triggers are ready to fire...")
+
