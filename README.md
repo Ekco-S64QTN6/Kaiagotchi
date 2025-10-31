@@ -2,7 +2,7 @@
 
 > (⌐■_■) The Autonomous Technical Counterpart
 
-**Kaiagotchi** is a specialized, autonomous wireless security research tool built for Linux server environments. Designed for precision, autonomy, and structural clarity, it ensures reliable operation and high-efficiency data collection in stable server deployments.
+**Kaiagotchi** is an autonomous AI terminal agent built for Linux server environments, designed to conduct wireless security research with minimal supervision. It adapts the fundamentals of wireless reconnaissance to modern server infrastructure, using high-performance, multi-core hardware for optimal WPA handshake and PMKID capture, network analysis, and coordinated multi-agent operation.
 
 ## 🚀 Overview
 
@@ -73,8 +73,8 @@ sudo apt install aircrack-ng wireless-tools iw
 
 # First run with security warnings
 sudo kaiagotchi
-
-### Basic Usage
+```
+## Basic Usage
 
 ```bash
 # Start Kaiagotchi (requires root for network access)
@@ -85,9 +85,10 @@ kaiagotchi --help
 
 # Interactive configuration wizard
 kaiagotchi --wizard
+```
 
-
-Configuration
+## Configuration
+```bash
 Edit /etc/kaiagotchi/config.toml to customize:
 
 [main]
@@ -98,11 +99,11 @@ iface = "wlan0mon"
 advertise = true
 deauth = true
 channels = [1, 6, 11]
-
+```
 
 ## 🏗️ Architecture
 Kaiagotchi employs a modern, modular architecture:
-
+```bash
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Monitoring    │    │  Decision Engine │    │ Network Actions │
 │     Agent       │◄──►│   (State Machine)│◄──►│    Manager      │
@@ -113,13 +114,13 @@ Kaiagotchi employs a modern, modular architecture:
 │  System State   │    │   Event System   │    │  bettercap API  │
 │  (Pydantic)     │    │   (Async)        │    │  Integration    │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-
+```
 
 ## 🔧 Advanced Usage
 Plugin Development
 Kaiagotchi supports custom plugins. Create plugins in /etc/kaiagotchi/plugins/:
 
-```python
+```bash
 from kaiagotchi.plugins import Plugin
 
 class CustomPlugin(Plugin):
@@ -130,12 +131,13 @@ class CustomPlugin(Plugin):
         # Custom handshake processing
         pass
 Service Deployment
-
+```
 # Install as systemd service
 ```bash
 sudo cp contrib/kaiagotchi.service /etc/systemd/system/
 sudo systemctl enable kaiagotchi
 sudo systemctl start kaiagotchi
+```
 
 ## 🤝 Contributing
 We welcome contributions! Please see our Contributing Guide for details on:
