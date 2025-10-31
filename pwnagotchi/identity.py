@@ -6,7 +6,7 @@ import hashlib
 import os
 import logging
 
-DefaultPath = "/etc/pwnagotchi/"
+DefaultPath = "/etc/kaiagotchi/"
 
 
 class KeyPair(object):
@@ -26,6 +26,7 @@ class KeyPair(object):
             # first time, generate new keys
             if not os.path.exists(self.priv_path) or not os.path.exists(self.pub_path):
                 self._view.on_keys_generation()
+                # The 'pwngrid' command is kept as it is an external dependency
                 logging.info("generating %s ..." % self.priv_path)
                 os.system("pwngrid -generate -keys '%s'" % self.path)
 
@@ -62,6 +63,7 @@ class KeyPair(object):
             # no exception, keys loaded correctly.
             self._view.on_starting()
             return
+
     def sign(self, message):
         hasher = SHA256.new(message.encode("ascii"))
         signer = PKCS1_PSS.new(self.priv_key, saltLen=16)

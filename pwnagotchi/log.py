@@ -12,7 +12,8 @@ from pwnagotchi.voice import Voice
 from pwnagotchi.mesh.peer import Peer
 from file_read_backwards import FileReadBackwards
 
-LAST_SESSION_FILE = '/root/.pwnagotchi-last-session'
+# Updated to reflect the new project name 'kaiagotchi'
+LAST_SESSION_FILE = '/root/.kaiagotchi-last-session'
 
 
 class LastSession(object):
@@ -268,7 +269,8 @@ def setup_logging(args, config):
         requests_log.addHandler(logging.NullHandler())
         requests_log.prpagate = False
 
-    logging.info("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- Pwnagotchi Re|Started -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
+    # Updated to reflect the new project name 'Kaiagotchi'
+    logging.info("-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- Kaiagotchi Re|Started -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-")
 
 
 
