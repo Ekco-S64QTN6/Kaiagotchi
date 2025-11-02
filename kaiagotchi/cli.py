@@ -7,18 +7,37 @@ import tomlkit
 import requests
 import os
 import re
-
+import subprocess 
 import kaiagotchi
 from kaiagotchi import utils
 from kaiagotchi.google import cmd as google_cmd
 from kaiagotchi.plugins import cmd as plugins_cmd
-from kaiagotchi import log
+from kaiagotchi import log_config 
 from kaiagotchi import fs
 from kaiagotchi.utils import parse_version as version_to_tuple
 from .config import CONFIG
-from .utils import run_checked
 
 _log = logging.getLogger(__name__)
+
+# Function to resolve the previous ImportError and provide system command execution
+def run_checked(command: list[str], log_error: bool = True):
+    """
+    Runs a shell command, logs the command, and raises CalledProcessError on failure.
+    """
+    _log.debug("Running command: %s", " ".join(command))
+    try:
+        subprocess.run(
+            command,
+            check=True,  # Raises CalledProcessError on non-zero exit code
+            capture_output=False
+        )
+    except subprocess.CalledProcessError:
+        raise
+    except FileNotFoundError:
+        if log_error:
+            _log.error(f"Command not found: {command[0]}")
+        raise
+
 
 def restart_service():
     svc = CONFIG.get("system", {}).get("service_name", "kaiagotchi")
@@ -158,13 +177,13 @@ def kaiagotchi_cli():
     args = parser.parse_args()
 
     if plugins_cmd.used_plugin_cmd(args):
-        config = utils.load_config(args)
-        log.setup_logging(args, config)
+        config = utils.load_config(args.config) # <-- FIXED: Pass path string, not Namespace
+        log_config.setup_logging(config, debug_mode=args.debug)
         rc = plugins_cmd.handle_cmd(args, config)
         sys.exit(rc)
     if google_cmd.used_google_cmd(args):
-        config = utils.load_config(args)
-        log.setup_logging(args, config)
+        config = utils.load_config(args.config) # <-- FIXED: Pass path string, not Namespace
+        log_config.setup_logging(config, debug_mode=args.debug)
         rc = google_cmd.handle_cmd(args)
         sys.exit(rc)
 
@@ -317,14 +336,14 @@ def kaiagotchi_cli():
             print("You are currently on the latest release, v%s." % kaiagotchi.__version__)
         sys.exit(0)
 
-    config = utils.load_config(args)
+    config = utils.load_config(args.config) # <-- FIXED: Pass path string, not Namespace
 
     if args.print_config:
         print(tomlkit.dumps(config))
         sys.exit(0)
 
     from kaiagotchi.identity import KeyPair
-    from kaiagotchi.agent import Agent
+    from kaiagotchi import Agent
     from kaiagotchi.ui import fonts
     from kaiagotchi.ui.display import Display
     from kaiagotchi import grid
@@ -332,7 +351,7 @@ def kaiagotchi_cli():
 
     kaiagotchi.config = config
     fs.setup_mounts(config)
-    log.setup_logging(args, config)
+    log_config.setup_logging(config, debug_mode=args.debug)
     fonts.init(config)
 
     kaiagotchi.set_name(config['main']['name'])
@@ -361,4 +380,3 @@ def kaiagotchi_cli():
 
 if __name__ == '__main__':
     kaiagotchi_cli()
-

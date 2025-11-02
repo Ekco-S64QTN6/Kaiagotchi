@@ -11,8 +11,9 @@ requires-python = ">=3.11"
 license = {text = "GPL-3.0-only"}
 keywords = ["ai", "headless", "python", "manager", "agent"]
 
+# Corrected list formatting for robust parsing
 authors = [
-    {name = "Michael Schellhorn", email = "michael.schellhorn@example.com"},
+    {name = "Michael Schellhorn", email = "michael.schellhorn@example.com"}
 ]
 maintainers = [
     {name = "Ekco", email = "ekco-s64qtn6@example.com"},
@@ -32,50 +33,52 @@ classifiers = [
 
 dependencies = [
     # === Core Data & Serialization ===
-    "PyYAML",                    # YAML configuration parsing
-    "tomlkit",                   # TOML configuration parsing
+    "PyYAML",                        # YAML configuration parsing
+    "tomlkit",                       # TOML configuration parsing
     
     # === Web & API Framework ===
-    "flask",                     # Web UI framework
-    "flask-cors",                # CORS support
-    "flask-wtf",                 # Form handling & CSRF protection
-    "websockets",                # Real-time WebSocket communication
-    "requests>=2.32.3",          # HTTP client with security updates
+    "flask",                         # Web UI framework
+    "flask-cors",                    # CORS support
+    "flask-wtf",                     # Form handling & CSRF protection
+    "websockets",                    # Real-time WebSocket communication
+    "requests>=2.32.3",              # HTTP client with security updates
     
     # === System Integration ===
-    "dbus-python; sys_platform == 'linux'",  # Linux D-Bus integration
-    "file-read-backwards",       # Efficient log file reading
-    "python-prctl>=1.8.1; sys_platform == 'linux'",  # Process control for Linux
+    "dbus-python; sys_platform == 'linux'", # Linux D-Bus integration
+    "file-read-backwards",           # Efficient log file reading
+    "python-prctl>=1.8.1; sys_platform == 'linux'", # Process control for Linux
     
     # === Cryptography & Security ===
-    "cryptography>=42.0.8",      # Modern cryptography (replaces pycryptodome)
+    # ADDED: Required for 'from Crypto...' imports (PyCryptodome)
+    "pycryptodome>=3.17", 
+    "cryptography>=42.0.8",           # Modern cryptography (replaces pycryptodome)
     
     # === Data Processing ===
-    "numpy",                     # Numerical computing
-    "python-dateutil",           # Date/time utilities
+    "numpy",                         # Numerical computing
+    "python-dateutil",               # Date/time utilities
     
     # === External Integrations ===
-    "pydrive2",                  # Google Drive API
-    "tweepy",                    # Twitter API
+    "pydrive2",                      # Google Drive API
+    "tweepy",                        # Twitter API
     
     # === Network Analysis ===
-    "scapy>=2.5.0",              # Packet manipulation & PCAP parsing
+    "scapy>=2.5.0",                  # Packet manipulation & PCAP parsing
     
     # === Modern Architecture ===
-    "pydantic>=2.7.4",           # Data validation & settings
-    "pydantic-settings>=2.2.1",  # Configuration management
+    "pydantic>=2.7.4",               # Data validation & settings
+    "pydantic-settings>=2.2.1",      # Configuration management
     
     # === System Monitoring ===
-    "psutil>=5.9.0",             # System and network monitoring
+    "psutil>=5.9.0",                 # System and network monitoring
     
     # === Development & ML (Consider making optional) ===
-    "gast",                      # Generic AST (ML framework dependency)
-    "shimmy",                    # RL environment compatibility
+    "gast",                          # Generic AST (ML framework dependency)
+    "shimmy",                        # RL environment compatibility
     
     # === NEW: Hardware & Plugin Dependencies ===
-    "RPi.GPIO; sys_platform == 'linux'",           # Raspberry Pi GPIO
-    "smbus2; sys_platform == 'linux'",             # I2C communication (better than smbus)
-    "toml",                                        # TOML parsing for plugins
+    "RPi.GPIO; sys_platform == 'linux'",      # Raspberry Pi GPIO
+    "smbus2; sys_platform == 'linux'",        # I2C communication (better than smbus)
+    "toml",                                   # TOML parsing for plugins
 ]
 
 [project.optional-dependencies]
@@ -84,7 +87,7 @@ dev = [
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
-    "mock-GPIO",                  # Mock RPi.GPIO for development
+    "mock-GPIO",                     # Mock RPi.GPIO for development
 ]
 ml = [
     "gast",
@@ -94,8 +97,8 @@ full = [
     "RPi.GPIO",
     "smbus2", 
     "toml",
-    "bettercap",                  # Packet capture framework
-    "hcxpcapngtool",              # PCAP conversion tool
+    "bettercap",                     # Packet capture framework
+    "hcxpcapngtool",                 # PCAP conversion tool
 ]
 
 [project.urls]
@@ -104,7 +107,7 @@ Homepage = "https://github.com/Ekco-S64QTN6/kaiagotchi"
 Documentation = "https://github.com/Ekco-S64QTN6/kaiagotchi#readme"
 
 [project.scripts]
-kaiagotchi = "kaiagotchi.main:main"
+kaiagotchi = "kaiagotchi.cli:kaiagotchi_cli"
 
 [tool.setuptools.packages.find]
 include = ["kaiagotchi", "kaiagotchi.*"]
@@ -117,12 +120,11 @@ target-version = ["py311", "py312"]
 include = '\.pyi?$'
 extend-exclude = '''
 /(
-  # directories
-  | \.eggs
-  | \.git
-  | \.venv
-  | build
-  | dist
+    | \.eggs
+    | \.git
+    | \.venv
+    | build
+    | dist
 )/
 '''
 
@@ -130,25 +132,25 @@ extend-exclude = '''
 line-length = 88
 target-version = "py311"
 select = [
-    "E",  # pycodestyle errors
-    "W",  # pycodestyle warnings  
-    "F",  # pyflakes
-    "I",  # isort
-    "B",  # bugbear
-    "C4", # flake8-comprehensions
-    "UP", # pyupgrade
+    "E",  
+    "W",    
+    "F",  
+    "I",  
+    "B",  
+    "C4", 
+    "UP", 
 ]
 ignore = [
-    "B008", # Function calls in argument defaults
-    "I001", # isort grouping
-    "E501", # line too long (handled by black)
+    "B008", 
+    "I001", 
+    "E501", 
 ]
 unfixable = ["B008", "B009", "F401"]
 
 [tool.ruff.isort]
 known-first-party = ["kaiagotchi"]
 known-third-party = [
-    "pydantic", "pydantic_settings", "requests", "cryptography", 
+    "pydantic", "pydantic_settings", "requests", "cryptography", "pycryptodome", 
     "PyYAML", "dbus_python", "file_read_backwards", "flask", 
     "flask_cors", "flask_wtf", "gast", "numpy", "pydrive2", 
     "python_dateutil", "scapy", "shimmy", "tomlkit", "tweepy", 
@@ -156,7 +158,7 @@ known-third-party = [
 ]
 
 [tool.ruff.per-file-ignores]
-"__init__.py" = ["F401"]  # Allow unused imports in __init__.py
+"__init__.py" = ["F401"]  
 
 # ===== Static Type Checking =====
 [tool.mypy]

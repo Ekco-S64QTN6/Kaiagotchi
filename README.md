@@ -69,7 +69,7 @@ pip install -e .
 
 # System dependencies (Ubuntu/Debian)
 sudo apt update
-sudo apt install aircrack-ng wireless-tools iw
+sudo apt install aircrack-ng wireless-tools iw python3-pip libdbus-1-dev libglib2.0-dev
 
 # First run with security warnings
 sudo kaiagotchi

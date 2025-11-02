@@ -1,6 +1,6 @@
 # Minimal package metadata — must NOT import legacy packages during build
 __version__ = "0.1.0"
-__all__ = ["__version__", "name", "set_name", "uptime", "mem_usage", "main"]
+__all__ = ["__version__", "name", "set_name", "uptime", "mem_usage", "main", "Agent"] # FIX 1: Corrected syntax and included 'Agent'
 
 import re
 import time
@@ -10,6 +10,9 @@ import sys
 from typing import Optional, Dict, Any
 
 _logger = logging.getLogger(__name__)
+
+# FIX 2: Import the Agent class from the .agent sub-package
+from .agent import Agent
 
 _name: Optional[str] = None
 
