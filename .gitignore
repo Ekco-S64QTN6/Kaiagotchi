@@ -1,0 +1,50 @@
+# Create .gitignore file
+cat > .gitignore << 'EOF'
+# Virtual environment
+venv/
+.env
+.env.local
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+kaiagotchi/storage/mood_state.json
+kaiagotchi/storage/network_history.json
+kaiagotchi/storage/pcaps/*
+!kaiagotchi/storage/pcaps/.gitkeep
+/tmp/
+EOF
