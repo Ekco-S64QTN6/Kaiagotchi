@@ -26,7 +26,8 @@ from kaiagotchi.ui.voice import Voice
 
 _LOG = logging.getLogger("kaiagotchi.agent.monitoring")
 
-PCAP_STORAGE_DIR = Path("kaiagotchi/storage/pcaps")
+# FIXED: Use absolute path based on project structure
+PCAP_STORAGE_DIR = Path(__file__).parent.parent / "storage" / "pcaps"
 
 
 class MonitoringAgent:
@@ -163,28 +164,38 @@ class MonitoringAgent:
             try:
                 await self._loop_task
             except asyncio.CancelledError:
-                pass
+                _LOG.debug("[monitoring] Scan loop cancelled")
+            except Exception as e:
+                _LOG.error(f"[monitoring] Error stopping scan loop: {e}")
 
         if self._process:
             try:
+                _LOG.info("[monitoring] Terminating airodump process...")
                 self._process.terminate()
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(2.0)  # Give it time to terminate gracefully
                 if self._process.returncode is None:
+                    _LOG.info("[monitoring] Killing airodump process...")
                     self._process.kill()
                     await self._process.wait()
-            except Exception:
-                pass
+                _LOG.info("[monitoring] Airodump process stopped")
+            except Exception as e:
+                _LOG.error(f"[monitoring] Error stopping airodump: {e}")
 
         try:
             await self._restore_managed_mode()
-        except Exception:
-            pass
+            _LOG.debug("[monitoring] Restored managed mode")
+        except Exception as e:
+            _LOG.error(f"[monitoring] Error restoring managed mode: {e}")
+
+        # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY
+        await self._archive_pcap()
 
         try:
             if self.persistent_network:
                 self.persistent_network.save()
-        except Exception:
-            _LOG.exception("[monitoring] Failed to save network history")
+                _LOG.debug("[monitoring] Saved network history")
+        except Exception as e:
+            _LOG.exception(f"[monitoring] Failed to save network history: {e}")
 
         if self.persistent_mood:
             try:
@@ -192,12 +203,18 @@ class MonitoringAgent:
                     self.persistent_mood.update_mood("neutral")
                 if hasattr(self.persistent_mood, "apply_reward"):
                     self.persistent_mood.apply_reward(-0.2, event="session_end")
-            except Exception:
-                _LOG.debug("persistent_mood shutdown hooks failed", exc_info=True)
+                _LOG.debug("[monitoring] Updated mood for session end")
+            except Exception as e:
+                _LOG.debug(f"persistent_mood shutdown hooks failed: {e}")
 
-        await self._archive_pcap()
         await self._emit_capture_summary("Monitoring stopped.")
         _LOG.info("[monitoring] Stopped cleanly.")
+
+    # NEW: Public method to force PCAP archiving without full stop
+    async def archive_current_pcap(self):
+        """Force archiving of the current PCAP file without stopping monitoring."""
+        _LOG.info("[monitoring] Force archiving current PCAP...")
+        await self._archive_pcap()
 
     # ------------------------------------------------------------------
     async def _set_monitor_mode(self):
@@ -219,7 +236,9 @@ class MonitoringAgent:
         self._base_path = Path("/tmp") / f"kaiagotchi_{os.getpid()}"
         self._csv_path = Path(f"{self._base_path}-01.csv")
         self._session_pcap = Path(f"{self._base_path}-01.cap")
+        # FIXED: Ensure the storage directory exists
         PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        _LOG.info(f"[monitoring] PCAP storage directory: {PCAP_STORAGE_DIR}")
 
         args = [
             "airodump-ng",
@@ -236,7 +255,7 @@ class MonitoringAgent:
         self._process = await asyncio.create_subprocess_exec(
             *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
         )
-        _LOG.info(f"[monitoring] airodump started; CSV: {self._csv_path}")
+        _LOG.info(f"[monitoring] airodump started; CSV: {self._csv_path}, PCAP: {self._session_pcap}")
 
     # ------------------------------------------------------------------
     async def _emit_capture_summary(self, message: str):
@@ -271,42 +290,69 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def _archive_pcap(self):
-        """Register the session PCAP directly with persistence (no copy)."""
+        """Copy the session PCAP from /tmp to storage/pcaps with proper filename."""
         try:
-            src = Path(f"{self._base_path}-01.cap")
-            if not src.exists():
-                _LOG.debug("[monitoring] No .cap file found to archive.")
-                return
+            # FIXED: Check both possible file extensions and use the session_pcap path
+            possible_sources = [
+                self._session_pcap,
+                Path(f"{self._base_path}-01.cap"),
+                Path(f"{self._base_path}-01.pcap")  # Some systems might create .pcap
+            ]
+            
+            src = None
+            for possible_src in possible_sources:
+                if possible_src and possible_src.exists():
+                    src = possible_src
+                    _LOG.info(f"[monitoring] Found PCAP source: {src}")
+                    break
+            
+            if not src or not src.exists():
+                _LOG.warning(f"[monitoring] No .cap/.pcap file found to archive. Checked: {[str(p) for p in possible_sources if p]}")
+                # Try to find any kaiagotchi_*.cap files in /tmp as fallback
+                fallback_files = list(Path("/tmp").glob(f"kaiagotchi_{os.getpid()}-*.cap"))
+                if fallback_files:
+                    src = fallback_files[0]
+                    _LOG.info(f"[monitoring] Using fallback PCAP file: {src}")
+                else:
+                    _LOG.error("[monitoring] No PCAP files found for archiving")
+                    return
 
-            self._session_pcap = src
             src_size = src.stat().st_size
-            _LOG.info(f"[monitoring] Found session PCAP: {src.name} ({src_size} bytes)")
+            _LOG.info(f"[monitoring] Found session PCAP: {src} ({src_size} bytes)")
+
+            # FIXED: Generate clean filename using timestamp format
+            timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
+            clean_filename = f"{timestamp}_airodump.pcap"
+            clean_dest = PCAP_STORAGE_DIR / clean_filename
+            
+            # FIXED: Copy the file with clean name
+            import shutil
+            shutil.copy2(src, clean_dest)
+            _LOG.info(f"[monitoring] Copied PCAP from {src} to: {clean_dest}")
 
             if self.persistent_network:
                 try:
-                    # Generate clean filename without BSSID placeholder
-                    timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
-                    clean_filename = f"{timestamp}_airodump.pcap"
-                    clean_dest = PCAP_STORAGE_DIR / clean_filename
-                    
-                    # Copy the file with clean name
-                    import shutil
-                    shutil.copy2(src, clean_dest)
-                    _LOG.info(f"[monitoring] Copied PCAP to: {clean_dest}")
-                    
                     # Register with persistent network using the clean file
                     self.persistent_network.add_pcap_file(
                         str(clean_dest), bssid=None, src_name="airodump", analyze=True
                     )
                     _LOG.info("[monitoring] Handed PCAP to PersistentNetwork.")
-                except Exception:
-                    _LOG.debug("persistent_network.add_pcap_file failed", exc_info=True)
+                except Exception as e:
+                    _LOG.error(f"[monitoring] persistent_network.add_pcap_file failed: {e}", exc_info=True)
             else:
-                _LOG.debug("[monitoring] PersistentNetwork not attached; skipping registration.")
+                _LOG.warning("[monitoring] PersistentNetwork not attached; PCAP registered but not analyzed.")
 
             await self._emit_capture_summary("Session PCAP archived.")
-        except Exception:
-            _LOG.exception("[monitoring] Failed to archive PCAP")
+            
+            # FIXED: Clean up the temporary file after successful copy
+            try:
+                src.unlink()
+                _LOG.info(f"[monitoring] Cleaned up temporary PCAP: {src}")
+            except Exception as e:
+                _LOG.debug(f"[monitoring] Could not remove temporary PCAP {src}: {e}")
+                
+        except Exception as e:
+            _LOG.exception(f"[monitoring] Failed to archive PCAP: {e}")
 
     # ------------------------------------------------------------------
     async def _scan_loop(self):
@@ -314,6 +360,7 @@ class MonitoringAgent:
             while self._running:
                 await asyncio.sleep(self.refresh_interval)
                 if not self._csv_path or not self._csv_path.exists():
+                    _LOG.debug("[monitoring] CSV file not ready, waiting...")
                     continue
 
                 aps, stations = self._parse_airodump_csv(self._csv_path)
@@ -358,7 +405,8 @@ class MonitoringAgent:
 
                 await self._update_state(aps, stations)
         except asyncio.CancelledError:
-            pass
+            _LOG.debug("[monitoring] Scan loop cancelled normally")
+            raise
         except Exception:
             _LOG.exception("[monitoring] CSV loop error")
 

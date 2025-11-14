@@ -82,6 +82,12 @@ class Automata:
         self._loop_task: Optional[asyncio.Task] = None
         self._state_getter = None
 
+        # Mood coordination and debouncing
+        self._mood_change_lock = asyncio.Lock()
+        self._mood_update_in_progress = False
+        self._last_mood_check = 0
+        self._mood_check_interval = 2.0  # Only check mood every 2 seconds
+
         _LOG.debug(
             "Automata initialized (alpha=%.2f, min_dur=%.1fs, hysteresis=%.2f)",
             self._alpha,
@@ -150,61 +156,79 @@ class Automata:
     # -----------------------------------------------------
     async def _apply_mood(self, new_mood: AgentMood) -> None:
         """Apply mood and propagate to UI + plugins (async-safe)."""
-        now = time.time()
-        if new_mood == self._current_mood:
-            return
-        since_change = now - self._last_mood_change
-        if since_change < self._min_mood_duration:
-            _LOG.debug("Mood change suppressed (%.1fs < %.1fs)", since_change, self._min_mood_duration)
-            return
-
-        old_mood = self._current_mood
-        self._current_mood = new_mood
-        self._last_mood_change = now
-        self._last_drift_time = now
-
-        _LOG.info("💫 Mood transition: %s → %s", old_mood.name, new_mood.name)
-
-        try:
-            # Update view state
-            if self._view:
-                # Try to update view state directly
-                view_state = getattr(self._view, "state", None)
-                if isinstance(view_state, dict):
-                    view_state["agent_mood"] = new_mood.value
-                    if self._ema_reward is not None:
-                        view_state["reward_value"] = round(float(self._ema_reward), 4)
-                    view_state["face"] = faces.get_face(new_mood.value)
-                    view_state["status"] = self._voice.get_mood_line(new_mood.value)
-
-                # Use view's update method if available
-                if hasattr(self._view, "update_mood"):
-                    if asyncio.iscoroutinefunction(self._view.update_mood):
-                        await self._view.update_mood(new_mood, reason="automata")
-                    else:
-                        self._view.update_mood(new_mood, reason="automata")
-                elif hasattr(self._view, "async_update"):
-                    # Fallback to general update
-                    await self._view.async_update({
-                        "agent_mood": new_mood.value,
-                        "face": faces.get_face(new_mood.value),
-                        "status": self._voice.get_mood_line(new_mood.value),
-                    })
-
-            # Notify plugins
-            plugins.on("mood_change", self, old_mood, new_mood)
+        async with self._mood_change_lock:
+            if self._mood_update_in_progress:
+                _LOG.debug("Mood update already in progress, skipping")
+                return
+                
+            self._mood_update_in_progress = True
             
-        except Exception as e:
-            _LOG.debug("Automata._apply_mood failed: %s", e, exc_info=True)
+            try:
+                now = time.time()
+                if new_mood == self._current_mood:
+                    return
+                    
+                since_change = now - self._last_mood_change
+                if since_change < self._min_mood_duration:
+                    _LOG.debug("Mood change suppressed (%.1fs < %.1fs)", since_change, self._min_mood_duration)
+                    return
+
+                old_mood = self._current_mood
+                self._current_mood = new_mood
+                self._last_mood_change = now
+                self._last_drift_time = now
+
+                _LOG.info("💫 Mood transition: %s → %s", old_mood.name, new_mood.name)
+
+                # Update view state
+                if self._view:
+                    try:
+                        # Use view's update method if available
+                        if hasattr(self._view, "update_mood"):
+                            if asyncio.iscoroutinefunction(self._view.update_mood):
+                                await self._view.update_mood(new_mood.value, reason="automata")
+                            else:
+                                self._view.update_mood(new_mood.value, reason="automata")
+                        elif hasattr(self._view, "async_update"):
+                            # Fallback to general update
+                            await self._view.async_update({
+                                "agent_mood": new_mood.value,
+                                "face": faces.get_face(new_mood.value),
+                                "status": self._voice.get_mood_line(new_mood.value),
+                            })
+                    except Exception as e:
+                        _LOG.error("Failed to update view mood: %s", e)
+
+                # Notify plugins
+                try:
+                    plugins.on("mood_change", self, old_mood, new_mood)
+                except Exception as e:
+                    _LOG.debug("Plugin mood change notification failed: %s", e)
+                    
+            except Exception as e:
+                _LOG.error("Automata._apply_mood failed: %s", e, exc_info=True)
+            finally:
+                self._mood_update_in_progress = False
 
     # -----------------------------------------------------
     def process_reward(self, reward: float) -> AgentMood:
         """Smooth reward, map to mood, and apply if changed."""
         try:
+            # Debounce mood checks
+            current_time = time.time()
+            if current_time - self._last_mood_check < self._mood_check_interval:
+                return self._current_mood
+                
+            self._last_mood_check = current_time
+            
             smoothed = self._smooth_reward(reward)
             _LOG.debug("Automata: reward=%.4f smoothed=%.4f", reward, smoothed)
             target = self._map_reward_to_mood(smoothed)
-            asyncio.create_task(self._apply_mood(target))
+            
+            # Only create task if mood actually changed
+            if target != self._current_mood:
+                asyncio.create_task(self._apply_mood(target))
+                
             self._last_reward = smoothed
             return self._current_mood
         except Exception as e:
@@ -214,17 +238,21 @@ class Automata:
     # -----------------------------------------------------
     async def _maybe_drift(self):
         """Trigger gentle mood drift if idle too long in NEUTRAL."""
-        now = time.time()
-        if now - self._last_mood_change < (self._min_mood_duration * 2):
+        current_time = time.time()
+        if current_time - self._last_mood_check < self._mood_check_interval:
+            return
+            
+        if current_time - self._last_mood_change < (self._min_mood_duration * 2):
             return
         if self._ema_reward is None or self._last_reward is None:
             return
+            
         drift_interval = 120.0  # 2 minutes neutral window before drift
-        if now - self._last_drift_time < drift_interval:
+        if current_time - self._last_drift_time < drift_interval:
             return
 
         reward_trend = self._ema_reward - self._last_reward
-        self._last_drift_time = now
+        self._last_drift_time = current_time
 
         # Only drift if we're in a stable, low-activity state
         if abs(reward_trend) < 0.02 and abs(self._ema_reward) < 0.1:
@@ -240,12 +268,17 @@ class Automata:
                     
                 drift_mood = random.choice(drift_options)
                 _LOG.info("🌊 Mood drift triggered: %s → %s", self._current_mood.name, drift_mood.name)
-                asyncio.create_task(self._apply_mood(drift_mood))
+                await self._apply_mood(drift_mood)
 
     # -----------------------------------------------------
     async def tick(self, state: Dict[str, Any]) -> AgentMood:
         """Async tick: evaluate reward and update mood."""
         try:
+            # Debounce mood checks
+            current_time = time.time()
+            if current_time - self._last_mood_check < self._mood_check_interval:
+                return self._current_mood
+                
             reward_val = 0.0
             
             # Priority 1: Use Epoch system if available (primary reward source)
@@ -351,15 +384,15 @@ class Automata:
         return self._ema_reward or 0.0
 
     # Manual triggers for testing and external events
-    def set_happy(self): asyncio.create_task(self._apply_mood(AgentMood.HAPPY))
-    def set_curious(self): asyncio.create_task(self._apply_mood(AgentMood.CURIOUS))
-    def set_bored(self): asyncio.create_task(self._apply_mood(AgentMood.BORED))
-    def set_sad(self): asyncio.create_task(self._apply_mood(AgentMood.SAD))
-    def set_frustrated(self): asyncio.create_task(self._apply_mood(AgentMood.FRUSTRATED))
-    def set_sleepy(self): asyncio.create_task(self._apply_mood(AgentMood.SLEEPY))
-    def set_confident(self): asyncio.create_task(self._apply_mood(AgentMood.CONFIDENT))
-    def set_angry(self): asyncio.create_task(self._apply_mood(AgentMood.ANGRY))
-    def set_neutral(self): asyncio.create_task(self._apply_mood(AgentMood.NEUTRAL))
+    async def set_happy(self): await self._apply_mood(AgentMood.HAPPY)
+    async def set_curious(self): await self._apply_mood(AgentMood.CURIOUS)
+    async def set_bored(self): await self._apply_mood(AgentMood.BORED)
+    async def set_sad(self): await self._apply_mood(AgentMood.SAD)
+    async def set_frustrated(self): await self._apply_mood(AgentMood.FRUSTRATED)
+    async def set_sleepy(self): await self._apply_mood(AgentMood.SLEEPY)
+    async def set_confident(self): await self._apply_mood(AgentMood.CONFIDENT)
+    async def set_angry(self): await self._apply_mood(AgentMood.ANGRY)
+    async def set_neutral(self): await self._apply_mood(AgentMood.NEUTRAL)
 
     def get_emotional_state(self) -> Dict[str, Any]:
         """Get comprehensive emotional state for debugging."""

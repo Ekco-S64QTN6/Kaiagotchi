@@ -79,6 +79,12 @@ class View:
         # AP tracking
         self._max_aps_seen: int = 0
 
+        # Mood state management - FIXED: Add proper mood tracking
+        self._current_mood = "neutral"
+        self._mood_lock = asyncio.Lock()
+        self._last_mood_update = 0.0
+        self._mood_debounce_interval = 2.0  # Minimum 2 seconds between mood changes
+
         if not self.display:
             _log.warning("No display provided to View; creating fallback TerminalDisplay.")
             self.display = TerminalDisplay(self._config)
@@ -121,9 +127,9 @@ class View:
                 s[key] = []  # set as empty list if not already a list
         # agent_mood & face & status presence - CHANGED: default to "neutral" (not "calm")
         if "agent_mood" not in s:
-            s["agent_mood"] = s.get("agent_mood", "neutral")
+            s["agent_mood"] = self._current_mood  # Use tracked mood state
         if "face" not in s:
-            s["face"] = s.get("face", self.voice.get_face_for_mood(s.get("agent_mood", "neutral")))
+            s["face"] = self.voice.get_face_for_mood(self._current_mood)
         if not s.get("status"):
             s["status"] = s.get("status", "Monitoring signals...")
         return s
@@ -134,13 +140,17 @@ class View:
         async with self._update_lock:
             now = time.time()
 
-            # CRITICAL: Enhanced mood change detection with debugging
-            current_mood = self.state.get("agent_mood")
-            new_mood = state.get("agent_mood")
-            mood_changed = current_mood != new_mood
+            # FIXED: Proper mood change detection with debouncing
+            incoming_mood = state.get("agent_mood")
+            mood_changed = False
             
-            if mood_changed:
-                _log.info(f"🎭 View detected mood change: {current_mood} -> {new_mood}")
+            if incoming_mood and incoming_mood != self._current_mood:
+                # Debounce mood changes
+                if now - self._last_mood_update >= self._mood_debounce_interval:
+                    _log.info(f"🎭 View detected mood change: {self._current_mood} -> {incoming_mood}")
+                    self._current_mood = incoming_mood
+                    self._last_mood_update = now
+                    mood_changed = True
             
             face_changed = (state.get("face") != self.state.get("face"))
             status_changed = (state.get("status") != self.state.get("status"))
@@ -162,6 +172,11 @@ class View:
                 if not isinstance(self.state, dict):
                     self.state = {}
                 _deep_merge(self.state, state)
+                
+                # FIXED: Ensure mood state is consistent
+                if self._current_mood:
+                    self.state["agent_mood"] = self._current_mood
+                    
             except Exception:
                 _log.exception("View.async_update: merge failed")
 
@@ -247,7 +262,7 @@ class View:
             try:
                 msg = cap.get("message", "")
                 _log.info(f"[UI] New capture event: {msg}")
-                mood = self.state.get("agent_mood", "neutral")
+                mood = self._current_mood  # Use tracked mood state
                 voice_line = self.voice.get_event_line(msg, mood) or msg
 
                 self.state["status"] = voice_line
@@ -280,32 +295,45 @@ class View:
     async def update_mood(self, new_mood, reason: str = "automata"):
         """Update UI to reflect the current mood."""
         mood_name = getattr(new_mood, "name", str(new_mood)).lower()
-        _log.info(f"🎭 View.update_mood: Updating mood to {mood_name} (reason={reason})")
+        
+        # FIXED: Add debouncing to prevent rapid mood changes
+        current_time = time.time()
+        if current_time - self._last_mood_update < self._mood_debounce_interval:
+            _log.debug(f"Mood change debounced: {self._current_mood} -> {mood_name} (too soon)")
+            return
+            
+        async with self._mood_lock:
+            _log.info(f"🎭 View.update_mood: Updating mood to {mood_name} (reason={reason})")
 
-        try:
-            # Update state with new mood
-            self.state["agent_mood"] = mood_name
-            self.state["face"] = self.voice.get_face_for_mood(mood_name)
-            text_message = self.voice.get_mood_line(mood_name) or "..."
-            self.state["status"] = text_message
-            self._current_chatter_msg = text_message
-            self._last_chatter_change = time.time()
-            self._chatter_hold = self.voice.get_chatter_interval(mood_name)
-            self._event_cooldown = 0.0
+            try:
+                # Update tracked mood state
+                old_mood = self._current_mood
+                self._current_mood = mood_name
+                self._last_mood_update = current_time
 
-            # Force immediate render
-            normalized_state = self._ensure_normalized(self.state)
-            if self.display:
-                # Use render() for immediate update, not draw()
-                maybe = self.display.render(normalized_state)
-                if asyncio.iscoroutine(maybe):
-                    await maybe
-                self._last_drawn_state = normalized_state.copy()
-                self._last_draw_time = time.time()
-                
-            _log.info(f"✅ Mood update completed: {mood_name}")
-        except Exception:
-            _log.exception("View.update_mood failed")
+                # Update state with new mood
+                self.state["agent_mood"] = mood_name
+                self.state["face"] = self.voice.get_face_for_mood(mood_name)
+                text_message = self.voice.get_mood_line(mood_name) or "..."
+                self.state["status"] = text_message
+                self._current_chatter_msg = text_message
+                self._last_chatter_change = time.time()
+                self._chatter_hold = self.voice.get_chatter_interval(mood_name)
+                self._event_cooldown = 0.0
+
+                # Force immediate render
+                normalized_state = self._ensure_normalized(self.state)
+                if self.display:
+                    # Use render() for immediate update, not draw()
+                    maybe = self.display.render(normalized_state)
+                    if asyncio.iscoroutine(maybe):
+                        await maybe
+                    self._last_drawn_state = normalized_state.copy()
+                    self._last_draw_time = time.time()
+                    
+                _log.info(f"✅ Mood update completed: {mood_name}")
+            except Exception:
+                _log.exception("View.update_mood failed")
 
     # ------------------------------------------------------------------
     async def start(self):
@@ -353,7 +381,7 @@ class View:
         """Mood-aware chatter cycle with per-mood intervals and event cooldown."""
         while self._running:
             try:
-                mood = self.state.get("agent_mood", "neutral")
+                mood = self._current_mood  # Use tracked mood state
                 now = time.time()
 
                 mood_interval = self.voice.get_chatter_interval(mood)

@@ -1,7 +1,5 @@
 """
-Robust Agent for Kaiagotchi.
-
-Now with emotional loop integration via Automata.
+- Robust Agent for Kaiagotchi.
 - Integrates Automata.start/stop for live emotional feedback.
 - Ensures MonitoringAgent and ActionManager both share the View reference.
 - Adds early UI state propagation when entering MONITORING.
@@ -9,12 +7,10 @@ Now with emotional loop integration via Automata.
 - Keeps throttled and non-flickering UI update loop behavior.
 - Adds missing _update_view_state method.
 - Automatically creates persistent View + TerminalDisplay if none provided.
-
- Phase 4 Integration Additions (Persistence Layer)
----------------------------------------------------
 - Loads/saves persistent mood and reward (PersistentMood)
 - Initializes PersistentNetwork for long-term BSSID/Station tracking
 - Automatically saves mood, reward, and network state on shutdown
+- Integrates EpochTracker and RewardEngine with MonitoringAgent
 """
 
 import asyncio
@@ -30,9 +26,13 @@ from kaiagotchi.core.automata import Automata  # ← Emotion engine
 from kaiagotchi.ui.view import View
 from kaiagotchi.ui.terminal_display import TerminalDisplay
 
-# NEW imports for persistence systems
+# Persistence systems
 from kaiagotchi.storage.persistent_mood import PersistentMood
 from kaiagotchi.storage.persistent_network import PersistentNetwork
+
+# AI systems
+from kaiagotchi.ai.epoch import Epoch
+from kaiagotchi.ai.reward import RewardEngine
 
 from .base import kaiagotchiBase
 from .monitoring_agent import MonitoringAgent
@@ -66,32 +66,34 @@ class Agent(kaiagotchiBase):
 
         # ------------------------------------------------------------------
         # 🧩 Initialize persistence subsystems
-        try:
-            self.persistent_mood = PersistentMood()
-            self.persistent_network = PersistentNetwork()
-            self.logger.info("PersistentMood and PersistentNetwork initialized.")
-        except Exception:
-            self.logger.exception("Failed to initialize persistent storage modules")
-            self.persistent_mood = None
-            self.persistent_network = None
+        self.persistent_mood = PersistentMood()
+        self.persistent_network = PersistentNetwork()
+        self.logger.info("PersistentMood and PersistentNetwork initialized.")
+
+        # ------------------------------------------------------------------
+        # 🧠 Initialize AI subsystems - SINGLE SOURCE OF TRUTH
+        # Create RewardEngine FIRST (core calculator)
+        self.reward_engine = RewardEngine(self.config)
+        
+        # Create EpochTracker SECOND with shared RewardEngine
+        self.epoch_tracker = Epoch(self.config)
+        self.epoch_tracker.set_reward_engine(self.reward_engine)
+        self.epoch_tracker.set_persistent_mood(self.persistent_mood)
+        self.logger.info("AI subsystems initialized with shared RewardEngine.")
 
         # ------------------------------------------------------------------
         # 🖥️ Ensure persistent TerminalDisplay + View
         if view is None:
-            try:
-                display = TerminalDisplay()
-                self._view = View(display=display)
-                self.logger.info("Created default TerminalDisplay and View for agent.")
-            except Exception:
-                self.logger.exception("Failed to initialize fallback View/TerminalDisplay")
-                self._view = None
+            display = TerminalDisplay()
+            self._view = View(display=display)
+            self.logger.info("Created default TerminalDisplay and View for agent.")
         else:
             self._view = view
 
         # UI timing setup
         self.ui_fps = float(self.config.get("ui", {}).get("fps", 2.0) or 2.0)
         if self.ui_fps <= 0:
-            self.logger.warning(f"Config 'ui.fps' invalid ({self.ui_fps}), clamping to 2.0 FPS.")
+            self.logger.error(f"Config 'ui.fps' invalid ({self.ui_fps}), clamping to 2.0 FPS.")
             self.ui_fps = 2.0
         self.ui_delay = 1.0 / self.ui_fps
 
@@ -100,8 +102,9 @@ class Agent(kaiagotchiBase):
         self.last_session = LastSession()
         try:
             self.last_session.load()
-        except Exception:
-            self.logger.debug("No last session to load or failed to load.", exc_info=True)
+            self.logger.info("Last session loaded successfully.")
+        except Exception as e:
+            self.logger.error(f"Failed to load last session: {e}")
 
         # Create monitoring agent and pass shared references
         self.monitoring_agent = MonitoringAgent(
@@ -111,64 +114,42 @@ class Agent(kaiagotchiBase):
             view=self._view,
         )
 
-        # Connect persistent network tracker to monitoring agent
-        try:
-            if hasattr(self.monitoring_agent, "set_persistence"):
-                # If MonitoringAgent supports persistence injection
-                self.monitoring_agent.set_persistence(self.persistent_network)
-            else:
-                # fallback attach for later use
-                self.monitoring_agent.persistent_network = self.persistent_network
-        except Exception:
-            self.logger.debug("Failed to link PersistentNetwork with MonitoringAgent", exc_info=True)
+        # Connect all persistence and AI systems to monitoring agent
+        self.monitoring_agent.set_persistence(self.persistent_network)
+        self.monitoring_agent.set_mood_persistence(self.persistent_mood)
+        self.monitoring_agent.set_epoch_tracker(self.epoch_tracker)
+        # MonitoringAgent does NOT get RewardEngine - it updates EpochTracker instead
+        self.logger.info("All persistence systems connected to MonitoringAgent.")
 
         # Initialize Automata for emotional state
-        try:
-            self.automata = Automata(self.config, self._view)
-        except Exception:
-            self.logger.exception("Failed to initialize Automata")
-            self.automata = None
+        self.automata = Automata(self.config, self._view)
+        self.logger.info("Automata emotional engine initialized.")
 
         # Restore last mood and reward from persistence
-        try:
-            if self.persistent_mood:
-                last_mood = self.persistent_mood.get_last_mood()
-                last_reward = self.persistent_mood.get_last_reward()
-                if last_mood or last_reward is not None:
-                    self.logger.info(f"Restoring last mood={last_mood}, reward={last_reward}")
-                    # Feed these into system_state or automata if supported
-                    if hasattr(self.system_state, "mood"):
-                        # FIXED: Use NEUTRAL instead of CALM
-                        self.system_state.mood = last_mood or AgentMood.NEUTRAL.value
-                    if self.automata and hasattr(self.automata, "restore_state"):
-                        try:
-                            self.automata.restore_state(mood=last_mood, reward=last_reward)
-                        except Exception:
-                            self.logger.debug("Automata.restore_state() not available", exc_info=True)
-        except Exception:
-            self.logger.debug("Failed to restore mood state", exc_info=True)
+        last_mood = self.persistent_mood.get_last_mood()
+        last_reward = self.persistent_mood.get_last_reward()
+        if last_mood or last_reward is not None:
+            self.logger.info(f"Restoring last mood={last_mood}, reward={last_reward}")
+            if hasattr(self.system_state, "mood"):
+                self.system_state.mood = last_mood or AgentMood.NEUTRAL.value
+            if hasattr(self.automata, "restore_state"):
+                self.automata.restore_state(mood=last_mood, reward=last_reward)
+                self.logger.info("Automata state restored from persistence.")
 
         # Connect view references across subsystems
         if self._view:
-            try:
-                self.monitoring_agent.view = self._view
-                self.action_manager.view = self._view
-            except Exception:
-                self.logger.debug("Could not set shared view references", exc_info=True)
+            self.monitoring_agent.view = self._view
+            self.action_manager.view = self._view
+            self.logger.info("View references connected to all subsystems.")
 
         self._interface_ready = False
 
         # Connect View and DecisionEngine
         if self._view:
             if hasattr(self._view, "set_agent"):
-                try:
-                    self._view.set_agent(self)
-                except Exception:
-                    self.logger.exception("View.set_agent() failed")
-            try:
-                self.decision_engine.view = self._view
-            except Exception:
-                self.logger.exception("Failed to set view on decision engine")
+                self._view.set_agent(self)
+            self.decision_engine.view = self._view
+            self.logger.info("DecisionEngine connected to View.")
 
         try:
             iface_name = getattr(self, "interface_name", None) or getattr(self, "interface", "unknown")
@@ -182,57 +163,60 @@ class Agent(kaiagotchiBase):
         self._monitor_task = None
 
         # Subscribe to system state updates
-        try:
-            async def _on_state_updated(new_state):
-                """Handle MONITORING state entry → UI and Automata startup."""
+        async def _on_state_updated(new_state):
+            """Handle MONITORING state entry → UI and Automata startup."""
+            cs = getattr(new_state, "current_system_state", None)
+            if isinstance(cs, str):
                 try:
-                    cs = getattr(new_state, "current_system_state", None)
-                    if isinstance(cs, str):
-                        try:
-                            cs = GlobalSystemState(cs)
-                        except Exception:
-                            pass
-
-                    if cs == GlobalSystemState.MONITORING:
-                        self._interface_ready = True
-                        self.logger.info("System state MONITORING: interface ready, initializing UI + emotions.")
-
-                        # Draw early minimal UI before automata mood loop starts
-                        if self._view:
-                            try:
-                                await self._view.async_update({
-                                    "status": "Monitoring Wi-Fi traffic...",
-                                    "mode": "MONITORING",
-                                    "substatus": "Live scanning active.",
-                                })
-                            except Exception:
-                                self.logger.debug("Early UI async_update failed", exc_info=True)
-
-                        # Start emotional loop once monitoring is live
-                        if self.automata and not self.automata._running:
-                            try:
-                                await self.automata.start(self.get_state)
-                            except Exception:
-                                self.logger.debug("Automata.start() from event failed", exc_info=True)
-
+                    cs = GlobalSystemState(cs)
                 except Exception:
-                    self.logger.debug("Error handling state_updated event", exc_info=True)
+                    pass
 
-            self.events.on("state_updated", lambda s: asyncio.create_task(_on_state_updated(s)))
-        except Exception:
-            self.logger.debug("Failed to subscribe to state updates for UI readiness", exc_info=True)
+            if cs == GlobalSystemState.MONITORING:
+                self._interface_ready = True
+                self.logger.info("System state MONITORING: interface ready, initializing UI + emotions.")
+
+                # Draw early minimal UI before automata mood loop starts
+                if self._view:
+                    await self._view.async_update({
+                        "status": "Monitoring Wi-Fi traffic...",
+                        "mode": "MONITORING",
+                        "substatus": "Live scanning active.",
+                    })
+
+                # Start emotional loop once monitoring is live
+                if self.automata and not self.automata._running:
+                    await self.automata.start(self.get_state)
+                    self.logger.info("Automata emotional loop started.")
+
+        self.events.on("state_updated", lambda s: asyncio.create_task(_on_state_updated(s)))
+        self.logger.info("State update event handler registered.")
+
+    # ------------------------------------------------------------------
+    def get_state(self) -> Dict[str, Any]:
+        """Get current system state for Automata emotional engine."""
+        return {
+            "current_system_state": getattr(self.system_state, "current_system_state", None),
+            "network": {
+                "access_points": getattr(self.system_state.network, "access_points", {}),
+                "interfaces": getattr(self.system_state.network, "interfaces", {}),
+            },
+            "metrics": getattr(self.system_state, "metrics", {}),
+            "session_metrics": getattr(self.system_state, "session_metrics", {}),
+            "aps": getattr(self.system_state, "aps", 0),
+            "mode": getattr(self.system_state, "mode", "AUTO"),
+            "status": getattr(self.system_state, "status", ""),
+            "mood": getattr(self.system_state, "mood", AgentMood.NEUTRAL.value),
+        }
 
     # ------------------------------------------------------------------
     async def update_state(self, updates: Dict[str, Any]) -> None:
         """Override base update_state to trigger UI refresh for important changes."""
         await super().update_state(updates)
 
-        try:
-            important_keys = {"aps", "mode", "status", "mood"}
-            if self._view and any(k in updates for k in important_keys):
-                await self._view.async_update(updates)
-        except Exception:
-            self.logger.debug("update_state() UI push failed", exc_info=True)
+        important_keys = {"aps", "mode", "status", "mood"}
+        if self._view and any(k in updates for k in important_keys):
+            await self._view.async_update(updates)
 
     # ------------------------------------------------------------------
     async def start_async(self):
@@ -241,22 +225,19 @@ class Agent(kaiagotchiBase):
         self.logger.info("Agent main run loop starting...")
 
         # Start the network monitor
-        try:
-            self._monitor_task = asyncio.create_task(self.monitoring_agent.start())
-        except Exception:
-            self.logger.exception("Failed to start monitoring_agent")
+        self._monitor_task = asyncio.create_task(self.monitoring_agent.start())
+        self.logger.info("MonitoringAgent started.")
 
-        #  Start emotional loop (fallback if not already started by MONITORING event)
+        # Start emotional loop (fallback if not already started by MONITORING event)
         if self.automata and not self.automata._running:
-            try:
-                await self.automata.start(self.get_state)
-            except Exception:
-                self.logger.debug("Automata.start() failed", exc_info=True)
+            await self.automata.start(self.get_state)
+            self.logger.info("Automata emotional loop started (fallback).")
 
-        #  Start decision and UI loops
+        # Start decision and UI loops
         decision_delay = float(self.config.get("decision_cycle_delay", 5.0) or 5.0)
         self._decision_task = asyncio.create_task(self._decision_loop(decision_delay))
         self._update_task = asyncio.create_task(self._update_loop())
+        self.logger.info(f"Decision loop (delay={decision_delay}s) and UI update loop started.")
 
         try:
             await asyncio.wait(
@@ -265,8 +246,9 @@ class Agent(kaiagotchiBase):
             )
         except asyncio.CancelledError:
             self.logger.info("Agent tasks cancelled.")
-        except Exception:
-            self.logger.exception("Unhandled exception in Agent.run()")
+        except Exception as e:
+            self.logger.error(f"Unhandled exception in Agent.run(): {e}")
+            raise
         finally:
             await self.stop()
 
@@ -288,31 +270,32 @@ class Agent(kaiagotchiBase):
                         loop = asyncio.get_running_loop()
                         await loop.run_in_executor(None, func)
                 else:
-                    await self._fallback_decision_cycle()
+                    # Use the actual decision engine instead of fallback
+                    state_dict = {
+                        "current_system_state": getattr(self.system_state, "current_system_state", None),
+                        "network": {
+                            "access_points": getattr(self.system_state.network, "access_points", {}),
+                            "interfaces": getattr(self.system_state.network, "interfaces", {}),
+                        },
+                        "metrics": getattr(self.system_state, "metrics", {}),
+                        "session_metrics": getattr(self.system_state, "session_metrics", {}),
+                    }
+                    result = self.decision_engine.process_state(state_dict, self.action_manager)
+                    if hasattr(result, "name"):
+                        self.logger.debug("DecisionEngine state: %s", result.name)
+                
+                # Advance epoch after each decision cycle - uses shared RewardEngine
+                if self.epoch_tracker:
+                    await self.epoch_tracker.next()
+                    self.logger.debug("Epoch advanced with shared RewardEngine")
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.exception("Error in decision cycle: %s", e)
+                self.logger.error(f"Error in decision cycle: {e}")
+                raise
             finally:
                 await asyncio.sleep(delay)
-
-    async def _fallback_decision_cycle(self):
-        """Fallback decision engine runner."""
-        try:
-            state_dict = {
-                "current_system_state": getattr(self.system_state, "current_system_state", None),
-                "network": {
-                    "access_points": getattr(self.system_state.network, "access_points", {}),
-                    "interfaces": getattr(self.system_state.network, "interfaces", {}),
-                },
-                "metrics": getattr(self.system_state, "metrics", {}),
-                "session_metrics": getattr(self.system_state, "session_metrics", {}),
-            }
-            result = self.decision_engine.process_state(state_dict, self.action_manager)
-            if hasattr(result, "name"):
-                self.logger.debug("DecisionEngine state: %s", result.name)
-        except Exception:
-            self.logger.exception("Fallback decision cycle failed")
 
     # ------------------------------------------------------------------
     def __init_ui_state(self):
@@ -324,7 +307,6 @@ class Agent(kaiagotchiBase):
             "face": "",
             "uptime": "00:00:00",
             "mode": "AUTO",
-            # FIXED: Use NEUTRAL instead of CALM
             "mood": AgentMood.NEUTRAL.value,
         }
         self._next_update_time = 0.0
@@ -354,102 +336,109 @@ class Agent(kaiagotchiBase):
 
             except asyncio.CancelledError:
                 break
-            except Exception:
-                self.logger.exception("Error in UI update loop")
-                self._next_update_time = time.time() + 1.0
+            except Exception as e:
+                self.logger.error(f"Error in UI update loop: {e}")
+                raise
 
     # ------------------------------------------------------------------
     async def _update_view_state(self, iteration: int, force_status_rotate: bool = False):
         """Push periodic updates to the view based on current system_state."""
         if not self._view:
+            self.logger.error("No view available for UI updates!")
             return
 
-        try:
-            uptime = int(time.time() - self._started_at)
-            uptime_str = time.strftime("%H:%M:%S", time.gmtime(uptime))
+        uptime = int(time.time() - self._started_at)
+        uptime_str = time.strftime("%H:%M:%S", time.gmtime(uptime))
 
-            aps = getattr(self.system_state, "aps", 0)
-            mode = getattr(self.system_state, "mode", "AUTO")
-            status = getattr(self.system_state, "status", "")
-            # FIXED: Use NEUTRAL instead of CALM
-            mood = getattr(self.system_state, "mood", AgentMood.NEUTRAL.value)
+        aps = getattr(self.system_state, "aps", 0)
+        mode = getattr(self.system_state, "mode", "AUTO")
+        status = getattr(self.system_state, "status", "")
+        mood = getattr(self.system_state, "mood", AgentMood.NEUTRAL.value)
 
-            current_snapshot = {
-                "aps": str(aps),
-                "status": status,
-                "uptime": uptime_str,
-                "mode": mode,
-                "mood": mood,
-            }
+        current_snapshot = {
+            "aps": str(aps),
+            "status": status,
+            "uptime": uptime_str,
+            "mode": mode,
+            "mood": mood,
+        }
 
-            if not force_status_rotate and current_snapshot == self._last_ui_state:
-                return
+        if not force_status_rotate and current_snapshot == self._last_ui_state:
+            return
 
-            self._last_ui_state = current_snapshot
-            await self._view.async_update(current_snapshot)
-            self.logger.debug(f"[UI] Updated view (iter={iteration}) aps={aps} mode={mode}")
-
-        except Exception:
-            self.logger.debug("Failed in _update_view_state()", exc_info=True)
+        self._last_ui_state = current_snapshot
+        await self._view.async_update(current_snapshot)
+        self.logger.debug(f"[UI] Updated view (iter={iteration}) aps={aps} mode={mode}")
 
     # ------------------------------------------------------------------
     async def stop(self):
         """Clean shutdown of Agent and all components, including emotions and persistence."""
         if not self._running:
             self.logger.debug("Agent.stop() called but already stopped")
+            return
+            
         self.logger.info("Stopping Kaiagotchi agent...")
         self._running = False
 
-        # Save emotional and network persistence state
-        try:
-            if self.persistent_mood and self.automata:
-                # FIXED: Use NEUTRAL instead of CALM
-                mood_val = getattr(self.system_state, "mood", AgentMood.NEUTRAL.value)
-                reward_val = getattr(self.automata, "last_reward", 0.0)
-                self.persistent_mood.set_and_save(mood_val, reward_val)
-                self.logger.info(f"Saved persistent mood={mood_val}, reward={reward_val}")
-            if self.persistent_network:
-                self.persistent_network.save()
-                self.logger.info("Persistent network state saved.")
-        except Exception:
-            self.logger.exception("Failed saving persistent states", exc_info=True)
-
-        # Stop Automata emotional loop
+        # Stop Automata emotional loop first
         if self.automata:
-            try:
-                await self.automata.stop()
-            except Exception:
-                self.logger.debug("Automata.stop() failed", exc_info=True)
+            await self.automata.stop()
+            self.logger.info("Automata emotional loop stopped.")
 
-        # Cancel async loops
+        # Cancel async loops with proper timeout
+        tasks_to_cancel = []
         for name, task in (
             ("update", self._update_task),
             ("decision", self._decision_task),
             ("monitor", self._monitor_task),
         ):
-            if task:
-                try:
-                    if not task.done():
-                        task.cancel()
-                        await asyncio.wait_for(task, timeout=1.0)
-                except Exception:
-                    self.logger.debug(f"Task {name} failed to cancel", exc_info=True)
+            if task and not task.done():
+                tasks_to_cancel.append(task)
+                self.logger.debug(f"Cancelling {name} task")
 
+        if tasks_to_cancel:
+            for task in tasks_to_cancel:
+                task.cancel()
+            try:
+                await asyncio.wait_for(asyncio.gather(*tasks_to_cancel, return_exceptions=True), timeout=5.0)
+                self.logger.info("All agent tasks cancelled successfully.")
+            except asyncio.TimeoutError:
+                self.logger.warning("Some tasks didn't cancel within timeout")
+            except Exception as e:
+                self.logger.error(f"Error cancelling tasks: {e}")
+
+        # CRITICAL FIX: Stop MonitoringAgent BEFORE saving persistence to ensure PCAP archiving
+        if hasattr(self, 'monitoring_agent') and self.monitoring_agent:
+            try:
+                self.logger.info("Stopping MonitoringAgent...")
+                await self.monitoring_agent.stop()
+                self.logger.info("MonitoringAgent stopped successfully.")
+            except Exception as e:
+                self.logger.error(f"Error stopping MonitoringAgent: {e}")
+
+        # Save emotional and network persistence state AFTER MonitoringAgent has archived PCAP
+        if self.persistent_mood:
+            mood_val = getattr(self.system_state, "mood", AgentMood.NEUTRAL.value)
+            reward_val = getattr(self.automata, "last_reward", 0.0) if self.automata else 0.0
+            self.persistent_mood.set_and_save(mood_val, reward_val)
+            self.logger.info(f"Saved persistent mood={mood_val}, reward={reward_val}")
+        
+        if self.persistent_network:
+            self.persistent_network.save()
+            self.logger.info("Persistent network state saved.")
+
+        # Save session data
         try:
             self.last_session.save()
-        except Exception:
-            self.logger.exception("Failed to save last session")
+            self.logger.info("Last session saved.")
+        except Exception as e:
+            self.logger.error(f"Failed to save last session: {e}")
 
-        try:
-            await self.monitoring_agent.stop()
-        except Exception:
-            self.logger.exception("monitoring_agent.stop() failed")
+        # Clean up action manager
+        await self.action_manager.cleanup()
+        self.logger.info("ActionManager cleaned up.")
 
-        try:
-            await self.action_manager.cleanup()
-        except Exception:
-            self.logger.exception("action_manager.cleanup() failed")
-
+        # Notify view of shutdown
         if self._view and hasattr(self._view, "on_shutdown"):
             try:
                 if asyncio.iscoroutinefunction(self._view.on_shutdown):
@@ -457,7 +446,7 @@ class Agent(kaiagotchiBase):
                 else:
                     self._view.on_shutdown()
                 self.logger.info("View on_shutdown() executed")
-            except Exception:
-                self.logger.exception("View.on_shutdown() failed")
+            except Exception as e:
+                self.logger.error(f"View.on_shutdown() failed: {e}")
 
         self.logger.info("Kaiagotchi agent stopped cleanly.")

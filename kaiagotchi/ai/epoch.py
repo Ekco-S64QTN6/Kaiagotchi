@@ -7,6 +7,10 @@ Enhanced with robust network data integration and proper reward flow:
 - Properly connects AP discoveries and station data to RewardEngine
 - Maintains accurate activity tracking and mood persistence
 - Ensures reward system receives comprehensive state data
+
+ARCHITECTURE FIX: Removed duplicate RewardEngine and PersistentMood creation
+- Now uses shared instances injected by Agent
+- Added proper setter methods for dependency injection
 """
 
 import time
@@ -76,12 +80,26 @@ class Epoch:
         self._epoch_data_ready = threading.Event()
         self._lock = threading.Lock()
 
-        # Reward & mood systems
-        self._reward_engine = RewardEngine(self.config)
-        self._persistent_mood = PersistentMood()
+        # ARCHITECTURE FIX: Remove duplicate instances - use shared ones from Agent
+        self._reward_engine: Optional[RewardEngine] = None  # Will be set by Agent
+        self._persistent_mood: Optional[PersistentMood] = None  # Will be set by Agent
         self._epoch_data: Dict[str, Any] = {}
         self._last_reward = 0.0
         self._last_mood = "neutral"
+
+        _LOG.debug("EpochTracker initialized (awaiting shared RewardEngine and PersistentMood)")
+
+    # --------------------------------------------------------------
+    # ARCHITECTURE FIX: Add dependency injection methods
+    def set_reward_engine(self, reward_engine: RewardEngine) -> None:
+        """Set shared RewardEngine instance from Agent."""
+        self._reward_engine = reward_engine
+        _LOG.info("EpochTracker: Shared RewardEngine attached")
+
+    def set_persistent_mood(self, persistent_mood: PersistentMood) -> None:
+        """Set shared PersistentMood instance from Agent."""
+        self._persistent_mood = persistent_mood
+        _LOG.info("EpochTracker: Shared PersistentMood attached")
 
     # --------------------------------------------------------------
     def wait_for_epoch_data(self, with_observation: bool = True, timeout: Optional[float] = None) -> Dict[str, Any]:
@@ -186,6 +204,15 @@ class Epoch:
     def next(self) -> None:
         """Advance epoch, compute reward with real network data, update mood persistence."""
         with self._lock:
+            # ARCHITECTURE FIX: Validate shared dependencies
+            if self._reward_engine is None:
+                _LOG.error("EpochTracker.next() called before RewardEngine was set!")
+                return
+                
+            if self._persistent_mood is None:
+                _LOG.error("EpochTracker.next() called before PersistentMood was set!")
+                return
+
             # Detect activity using both action tracking and network state
             network_activity = self.current_aps > 0 or self.current_stations > 0
             has_activity = self.any_activity or network_activity or self.did_handshakes
@@ -243,6 +270,7 @@ class Epoch:
                 }
             }
 
+            # ARCHITECTURE FIX: Use shared RewardEngine instance
             reward = float(self._reward_engine.evaluate(reward_state))
             self._last_reward = reward
             self._last_mood = mood
@@ -267,12 +295,12 @@ class Epoch:
                 "associations": self.num_assocs,
             }
 
-            # Sync mood persistence layer with epoch data
+            # ARCHITECTURE FIX: Use shared PersistentMood instance
             try:
                 self._persistent_mood.apply_reward(reward, epoch_data=self._epoch_data)
-                _LOG.debug("Persistent mood updated with reward: %.3f", reward)
+                _LOG.debug("Shared PersistentMood updated with reward: %.3f", reward)
             except Exception as e:
-                _LOG.warning("Failed to sync persistent mood: %s", e)
+                _LOG.warning("Failed to sync shared PersistentMood: %s", e)
 
             self._epoch_data_ready.set()
 

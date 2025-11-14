@@ -144,6 +144,21 @@ class RewardEngine:
             
         return new_aps, new_stations
 
+    def _safe_get_value(self, obj: Any, key: str, default: Any = None) -> Any:
+        """Safely get value from object whether it's a dict, Pydantic model, or has attributes."""
+        try:
+            if hasattr(obj, 'model_dump'):
+                # Handle Pydantic models
+                obj = obj.model_dump()
+            
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            else:
+                # Try to get as attribute
+                return getattr(obj, key, default)
+        except Exception:
+            return default
+
     def evaluate(self, state: Dict[str, Any]) -> float:
         """Evaluate current state and return reward [-1.0, 1.0]."""
         try:
@@ -151,19 +166,24 @@ class RewardEngine:
             elapsed_min = max(0.0, (now - self._last_eval_ts) / 60.0)
             self._last_eval_ts = now
 
-            # Handle Pydantic models
+            # Handle Pydantic models at the top level
             if hasattr(state, "model_dump"):
                 state = state.model_dump()
 
-            net = state.get("network", {}) or {}
-            metrics = state.get("metrics", {}) or {}
-            agents = state.get("agents", {}) or {}
+            net = self._safe_get_value(state, "network", {})
+            metrics = self._safe_get_value(state, "metrics", {})
+            agents = self._safe_get_value(state, "agents", {})
 
-            # Extract current state data
+            # Extract current state data with safe access
             num_aps = self._extract_ap_count(state)
             handshakes = self._extract_handshakes(agents)
-            uptime = float(metrics.get("uptime_seconds", 0.0) or 0.0)
-            current_channel = net.get("current_channel") or net.get("channel") or "--"
+            
+            # FIX: Use safe access for uptime - handle both dict and Pydantic objects
+            uptime = float(self._safe_get_value(metrics, "uptime_seconds", 0.0) or 0.0)
+            
+            # FIX: Use safe access for network data
+            current_channel = (self._safe_get_value(net, "current_channel") or 
+                             self._safe_get_value(net, "channel") or "--")
 
             # Track discoveries
             new_aps, new_stations = self._extract_new_discoveries(state)
@@ -181,8 +201,8 @@ class RewardEngine:
             channel_changed = 1.0 if current_channel != prev_channel else 0.0
 
             # Mood-based penalties (reduced severity)
-            mood_val = (state.get("agent_mood") or 
-                       (state.get("agent") or {}).get("mood", "") or 
+            mood_val = (self._safe_get_value(state, "agent_mood") or 
+                       self._safe_get_value(self._safe_get_value(state, "agent", {}), "mood", "") or 
                        "").lower()
             boredom_penalty = self.WEIGHTS.get("boredom", 0.0) if "bored" in mood_val else 0.0
             sadness_penalty = self.WEIGHTS.get("sadness", 0.0) if "sad" in mood_val else 0.0

@@ -73,6 +73,7 @@ class Manager:
         self._run_event = None
         self._bootstrap_done = False
         self._started = False
+        self._stopping = False  # NEW: Track if we're in shutdown process
 
     async def bootstrap(self) -> None:
         """Prepare configuration, logging, and all subsystems."""
@@ -174,7 +175,7 @@ class Manager:
         """Start the subsystems (ensuring single display)."""
         if not self._bootstrap_done:
             await self.bootstrap()
-        if self._started:
+        if self._started or self._stopping:  # NEW: Don't start if stopping
             return
 
         logger.info("Manager: starting subsystems")
@@ -226,11 +227,17 @@ class Manager:
 
         self._run_event = asyncio.Event()
         self._started = True
+        self._stopping = False  # NEW: Reset stopping flag
         logger.info("Manager: all subsystems started")
 
     async def stop(self) -> None:
         """Stop everything safely."""
+        if self._stopping:  # NEW: Prevent multiple stop calls
+            logger.debug("Manager: Already stopping, skipping duplicate stop")
+            return
+            
         logger.info("Manager: stopping subsystems")
+        self._stopping = True  # NEW: Mark as stopping
         self._started = False
 
         async def safe_stop(obj: Any, *methods: str):
@@ -246,17 +253,40 @@ class Manager:
                     except Exception:
                         logger.debug(f"Manager: {name}() failed", exc_info=True)
 
-        for obj, methods in [
-            (self.monitoring_agent, ("stop",)),
-            (self.agent, ("stop", "shutdown")),
-            (self.view, ("stop", "on_shutdown")),
-            (self._ticker, ("stop",)),
-            (self._epoch, ("stop",)),
-            (self._reward_engine, ("stop",)),
-            (self._automata, ("stop",)),
-        ]:
-            if obj:
-                await safe_stop(obj, *methods)
+        # NEW: Stop in reverse order with proper error handling
+        stop_tasks = []
+        
+        # Stop MonitoringAgent first (most dependent)
+        if self.monitoring_agent:
+            stop_tasks.append(safe_stop(self.monitoring_agent, ("stop",)))
+        
+        # Stop Agent second
+        if self.agent:
+            stop_tasks.append(safe_stop(self.agent, ("stop", "shutdown")))
+        
+        # Stop other subsystems
+        if self._ticker:
+            stop_tasks.append(safe_stop(self._ticker, ("stop",)))
+        if self._epoch:
+            stop_tasks.append(safe_stop(self._epoch, ("stop",)))
+        if self._reward_engine:
+            stop_tasks.append(safe_stop(self._reward_engine, ("stop",)))
+        if self._automata:
+            stop_tasks.append(safe_stop(self._automata, ("stop",)))
+        
+        # Stop View last (least dependent)
+        if self.view:
+            stop_tasks.append(safe_stop(self.view, ("stop", "on_shutdown")))
+
+        # Wait for all stop tasks to complete with timeout
+        if stop_tasks:
+            try:
+                await asyncio.wait_for(asyncio.gather(*stop_tasks, return_exceptions=True), timeout=15.0)
+                logger.info("Manager: all subsystems stopped")
+            except asyncio.TimeoutError:
+                logger.warning("Manager: some subsystems took too long to stop")
+            except Exception as e:
+                logger.error(f"Manager: error during subsystem shutdown: {e}")
 
         if self._run_event:
             self._run_event.set()

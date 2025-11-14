@@ -534,6 +534,7 @@ class PersistentNetwork:
         src_name: Optional[str] = None,
         analyze: bool = True,
     ) -> Optional[str]:
+        """Add PCAP file by copying from source - use add_pcap_record for existing files."""
         try:
             src = Path(src_path)
             if not src.exists():
@@ -542,6 +543,12 @@ class PersistentNetwork:
 
             filename = self._make_pcap_filename(src_name or src.stem, bssid)
             dst = Path(self.pcaps_dir) / filename
+            
+            # Check if file already exists to avoid duplicates
+            if dst.exists():
+                LOGGER.warning(f"PCAP file already exists: {dst}, skipping copy")
+                return str(dst)
+                
             shutil.copy2(src, dst)
 
             stat = dst.stat()
@@ -565,18 +572,25 @@ class PersistentNetwork:
             return None
 
     def add_pcap_record(self, path: Path, bssid: str, size: int, timestamp: str, analyze: bool = True) -> None:
+        """Register existing PCAP file without copying - for files already in storage."""
         try:
-            rel_path = str(path.relative_to(Path.cwd())) if path.exists() else str(path)
-            filename = os.path.basename(rel_path)
+            # Use absolute path to ensure consistency
+            abs_path = path.absolute()
+            filename = os.path.basename(str(abs_path))
+            
+            # Check if record already exists to avoid duplicates
+            if filename in self._data.get("pcaps", {}):
+                LOGGER.warning(f"PCAP record already exists for {filename}, updating instead")
+                
             record: Dict[str, Any] = {
                 "bssid": bssid.upper(),
                 "created": timestamp,
                 "size": size,
-                "path": rel_path,
+                "path": str(abs_path),
             }
 
-            if analyze and parse_pcap_comprehensive is not None and path.exists():
-                self._analyze_pcap_into_record(path, record)
+            if analyze and parse_pcap_comprehensive is not None and abs_path.exists():
+                self._analyze_pcap_into_record(abs_path, record)
 
             self._data.setdefault("pcaps", {})[filename] = record
             self.enforce_storage_limit()
