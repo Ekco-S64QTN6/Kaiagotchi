@@ -7,7 +7,7 @@ import time
 import shutil
 import re
 from typing import Any, Dict, Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 from kaiagotchi.ui import faces
 
 _LOG = logging.getLogger("kaiagotchi.ui.terminal_display")
@@ -68,6 +68,12 @@ class TerminalDisplay:
         self._message_colors: Dict[str, str] = {}
         self._config = config or {}
         self._cursor_hidden = False
+        self._current_mood_from_state = "neutral"
+        
+        # Status message tracking
+        self._current_status = "Monitoring signals..."
+        self._status_start_time = 0.0
+        self._min_status_display_time = 3.0  # Minimum seconds to show a status message
 
         self._max_visible_aps = int(self._config.get("max_visible_aps", 15))
         self._max_visible_stations = int(self._config.get("max_visible_stations", 10))
@@ -127,6 +133,9 @@ class TerminalDisplay:
         async with self._draw_lock:
             now = time.time()
             
+            # Update status with minimum display time logic
+            self._update_status(state, now)
+            
             # CRITICAL: Allow immediate updates for mood/face/status changes
             force_update = False
             if self._last_state:
@@ -154,14 +163,18 @@ class TerminalDisplay:
                 self._render_chatter_box(state)
                 self._last_state = state.copy()
                 self._last_draw_time = now
-            except Exception:
-                _LOG.exception("draw failed")
+            except Exception as e:
+                _LOG.error("draw failed: %s", e)
+                _LOG.exception("Full draw exception traceback")
 
     def render(self, state: Dict[str, Any]):
         if not self._enabled:
             return
         try:
             now = time.time()
+            
+            # Update status with minimum display time logic
+            self._update_status(state, now)
             
             # CRITICAL: Allow immediate updates for mood/face/status changes
             force_update = False
@@ -190,8 +203,29 @@ class TerminalDisplay:
             self._render_chatter_box(state)
             self._last_state = state.copy()
             self._last_draw_time = now
-        except Exception:
-            _LOG.exception("render failed")
+        except Exception as e:
+            _LOG.error("render failed: %s", e)
+            _LOG.exception("Full render exception traceback")
+
+    def _update_status(self, state: Dict[str, Any], current_time: float):
+        """Update current status with minimum display time logic."""
+        new_status = (state.get("status") or "").strip()
+        default_status = "Monitoring signals..."
+        
+        if not new_status:
+            # If no status in state, use default but respect minimum display time
+            if (self._current_status != default_status and 
+                current_time - self._status_start_time < self._min_status_display_time):
+                # Keep current status for minimum time
+                return
+            self._current_status = default_status
+            self._status_start_time = current_time
+        else:
+            # New status from state
+            if new_status != self._current_status:
+                self._current_status = new_status
+                self._status_start_time = current_time
+                _LOG.debug("Status changed to: %s", new_status)
 
     def update_table(self, aps: List[Dict[str, Any]], stations: Optional[List[Dict[str, Any]]] = None):
         try:
@@ -200,7 +234,8 @@ class TerminalDisplay:
                 key=lambda a: (self._parse_last_seen(a.get("last_seen", "")), int(a.get("power", -9999))),
                 reverse=True,
             )
-        except Exception:
+        except Exception as e:
+            _LOG.warning("AP sorting failed: %s", e)
             aps_sorted = aps or []
         try:
             stations_sorted = sorted(
@@ -208,15 +243,17 @@ class TerminalDisplay:
                 key=lambda s: int(s.get("packets", -1)),
                 reverse=True,
             )
-        except Exception:
+        except Exception as e:
+            _LOG.warning("Station sorting failed: %s", e)
             stations_sorted = stations or []
         self._ap_table = aps_sorted[: self._max_visible_aps]
         self._stations = stations_sorted[: self._max_visible_stations]
         try:
             if self._last_state:
                 self.render(self._last_state.copy())
-        except Exception:
-            _LOG.exception("update_table failed")
+        except Exception as e:
+            _LOG.error("update_table failed: %s", e)
+            _LOG.exception("Full update_table exception traceback")
 
     # ---- ANSI-aware helpers ----
     _ansi_re = re.compile(r"\x1b\[[0-9;]*m")
@@ -256,25 +293,24 @@ class TerminalDisplay:
     def _state_changed(self, prev: Dict[str, Any], new: Dict[str, Any]) -> bool:
         """
         Return True if the new state differs in important fields that affect UI.
+        Optimized for performance with early returns.
         """
         if not prev:
             return True
         
-        # DEBUG: Log mood changes to see what's happening
-        prev_mood = prev.get("agent_mood")
-        new_mood = new.get("agent_mood")
-        if prev_mood != new_mood:
-            _LOG.debug(f"Mood change detected: {prev_mood} -> {new_mood}")
-            return True
+        # Check high-priority fields first (most likely to change)
+        important_fields = [
+            "face", "status", "agent_mood", "mood",
+            "aps", "aps_max_seen", "pwnd", "mode", "uptime"
+        ]
         
-        if (prev.get("face") != new.get("face") or 
-            prev.get("status") != new.get("status")):
-            return True
+        for field in important_fields:
+            if prev.get(field) != new.get(field):
+                _LOG.debug("State change detected in field '%s': %s -> %s", 
+                          field, prev.get(field), new.get(field))
+                return True
         
-        if (prev.get("aps", 0) != new.get("aps", 0) or
-            prev.get("aps_max_seen", 0) != new.get("aps_max_seen", 0)):
-            return True
-        
+        # Check list lengths (quick check)
         prev_chatter = prev.get("chatter_log") or []
         new_chatter = new.get("chatter_log") or []
         if len(prev_chatter) != len(new_chatter):
@@ -285,6 +321,7 @@ class TerminalDisplay:
         if len(prev.get("stations_list", [])) != len(new.get("stations_list", [])):
             return True
         
+        # Force periodic refresh
         if time.time() - self._last_draw_time > 10.0:
             return True
             
@@ -292,26 +329,36 @@ class TerminalDisplay:
 
     # ---- Timestamp handling ----
     def _parse_last_seen(self, s: str) -> float:
-        """Robust timestamp parsing for multiple formats."""
+        """Robust timestamp parsing for multiple formats with improved midnight handling."""
         if not s or s == "--":
             return 0.0
             
         s = str(s).strip()
         
-        # Handle relative time (HH:MM:SS)
+        # Handle relative time (HH:MM:SS) with robust midnight crossover
         if ":" in s and "-" not in s and "T" not in s:
             try:
                 parts = s.split(":")
                 if len(parts) == 3:
                     hours, minutes, seconds = map(int, parts)
                     now = datetime.now()
-                    dt = now.replace(hour=hours, minute=minutes, second=seconds, microsecond=0)
-                    if dt > now:
-                        dt = dt.replace(day=dt.day - 1)
-                    return dt.timestamp()
-            except Exception:
-                pass
+                    parsed_time = now.replace(hour=hours, minute=minutes, second=seconds, microsecond=0)
+                    
+                    # Handle midnight crossover: if parsed time is more than 6 hours ahead,
+                    # assume it's from the previous day
+                    time_diff = (parsed_time - now).total_seconds()
+                    if time_diff > 6 * 3600:  # More than 6 hours ahead
+                        parsed_time = parsed_time - timedelta(days=1)
+                    # If it's more than 18 hours behind, assume it's from the next day
+                    # (unlikely but handles edge cases)
+                    elif time_diff < -18 * 3600:
+                        parsed_time = parsed_time + timedelta(days=1)
+                        
+                    return parsed_time.timestamp()
+            except Exception as e:
+                _LOG.debug("Failed to parse relative time '%s': %s", s, e)
         
+        # Handle absolute timestamp formats
         formats = [
             "%Y-%m-%dT%H:%M:%S",
             "%Y-%m-%d %H:%M:%S",
@@ -324,12 +371,20 @@ class TerminalDisplay:
             try:
                 dt = datetime.strptime(s, fmt)
                 if fmt == "%H:%M:%S":
+                    # Handle time-only format with midnight crossover
                     now = datetime.now()
                     dt = dt.replace(year=now.year, month=now.month, day=now.day)
+                    # Same midnight logic as above
+                    time_diff = (dt - now).total_seconds()
+                    if time_diff > 6 * 3600:
+                        dt = dt - timedelta(days=1)
+                    elif time_diff < -18 * 3600:
+                        dt = dt + timedelta(days=1)
                 return dt.timestamp()
             except ValueError:
                 continue
                 
+        _LOG.debug("Could not parse timestamp '%s' with any format", s)
         return 0.0
 
     def _format_timestamp(self, timestamp: float, default: str = "--") -> str:
@@ -345,30 +400,65 @@ class TerminalDisplay:
                 return dt.strftime("%H:%M:%S")
             else:
                 return dt.strftime("%m-%d %H:%M")
-        except Exception:
+        except Exception as e:
+            _LOG.debug("Failed to format timestamp %s: %s", timestamp, e)
             return default
 
     def _get_face(self, state: Dict[str, Any]) -> str:
-        """Get face from state, ensuring it's not hardcoded."""
-        face = state.get("face")
-        if face:
-            return face
-        mood = state.get("agent_mood") or state.get("mood")
-        if isinstance(mood, str):
-            return faces.get_face(mood)
-        if hasattr(mood, "name"):
-            return faces.get_face(mood.name)
-        # DEBUG: Log if we're falling back to neutral
-        _LOG.debug(f"Falling back to neutral face for mood: {mood}")
+        """Simplified face resolution with clear priority and better logging."""
+        # Priority 1: Explicit face from state
+        explicit_face = state.get("face")
+        if explicit_face:
+            _LOG.debug("Using explicit face: %s", explicit_face)
+            return explicit_face
+        
+        # Priority 2: Mood from state (agent_mood takes precedence)
+        mood = None
+        mood_source = None
+        
+        if "agent_mood" in state and state["agent_mood"]:
+            mood = state["agent_mood"]
+            mood_source = "agent_mood"
+        elif "mood" in state and state["mood"]:
+            mood = state["mood"]
+            mood_source = "mood"
+        
+        if mood:
+            try:
+                # Normalize mood string
+                mood_str = str(mood).lower()
+                self._current_mood_from_state = mood_str
+                face_result = faces.get_face(mood_str)
+                _LOG.debug("Resolved face from %s '%s': %s", mood_source, mood_str, face_result)
+                return face_result
+            except Exception as e:
+                _LOG.warning("Failed to get face for mood '%s': %s", mood, e)
+        
+        # Priority 3: Fallback to current tracked mood
+        try:
+            face_result = faces.get_face(self._current_mood_from_state)
+            _LOG.debug("Using fallback face for mood '%s': %s", 
+                      self._current_mood_from_state, face_result)
+            return face_result
+        except Exception as e:
+            _LOG.error("Failed to get fallback face for mood '%s': %s", 
+                      self._current_mood_from_state, e)
+        
+        # Final emergency fallback
+        _LOG.warning("All face resolution failed, using neutral")
         return faces.get_face("neutral")
 
     # ---- Renderers ----
     def _render_header(self, state: Dict[str, Any]):
         try:
+            # Track current mood from state for fallback use
+            current_mood = state.get("agent_mood") or state.get("mood") or "neutral"
+            self._current_mood_from_state = str(current_mood).lower()
+            
             cols, _ = self._term_size()
             inner = max(60, cols - 2)
             
-            # Get dynamic face and mood - ensure they're not hardcoded
+            # Get dynamic face - use the improved method
             face = self._get_face(state)
             face_colored = f"{BOX_PINK}{face}{RESET}"
             
@@ -377,7 +467,9 @@ class TerminalDisplay:
             mood_str = getattr(mood, "name", str(mood)).lower() if mood else "neutral"
             mood_text = mood_str.capitalize()  # "neutral" -> "Neutral"
             
-            status_msg = (state.get("status") or "").strip() or "Monitoring signals..."
+            # Use the tracked status with minimum display time
+            status_msg = self._current_status
+            
             aps_val = state.get("aps", "--")
             aps_max_val = state.get("aps_max_seen")
             aps_str = str(aps_val)
@@ -420,8 +512,9 @@ class TerminalDisplay:
             self._out.write(f"{BOX_GREEN}│{RESET} {self._make_line(info, inner - 2)} {BOX_GREEN}│{RESET}\n")
             self._out.write(bot + "\n")
             self._out.flush()
-        except Exception:
-            _LOG.exception("_render_header failed")
+        except Exception as e:
+            _LOG.error("_render_header failed: %s", e)
+            _LOG.exception("Full header render exception")
 
     def _render_tables(self, aps: List[Dict[str, Any]], stations: List[Dict[str, Any]]):
         try:
@@ -590,8 +683,9 @@ class TerminalDisplay:
                 self._out.write(r + "\n")
             self._out.write(bot_sta + "\n")
             self._out.flush()
-        except Exception:
-            _LOG.exception("_render_tables failed")
+        except Exception as e:
+            _LOG.error("_render_tables failed: %s", e)
+            _LOG.exception("Full tables render exception")
 
     def _render_chatter_box(self, state: Dict[str, Any]):
         try:
@@ -648,8 +742,9 @@ class TerminalDisplay:
                 self._out.write(r + "\n")
             self._out.write(bot + "\n")
             self._out.flush()
-        except Exception:
-            _LOG.debug("_render_chatter_box failed", exc_info=True)
+        except Exception as e:
+            _LOG.error("_render_chatter_box failed: %s", e)
+            _LOG.exception("Full chatter box render exception")
 
     def force_redraw(self):
         try:
@@ -657,5 +752,6 @@ class TerminalDisplay:
             self._render_header(self._last_state or {})
             self._render_tables(self._ap_table, self._stations)
             self._render_chatter_box(self._last_state or {})
-        except Exception:
-            _LOG.exception("force_redraw failed")
+        except Exception as e:
+            _LOG.error("force_redraw failed: %s", e)
+            _LOG.exception("Full force_redraw exception")

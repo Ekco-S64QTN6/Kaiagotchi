@@ -140,42 +140,45 @@ class View:
         async with self._update_lock:
             now = time.time()
 
-            # FIXED: Proper mood change detection with debouncing
-            incoming_mood = state.get("agent_mood")
+            # CRITICAL: Extract mood BEFORE any merging to avoid race conditions
+            incoming_mood = state.get("agent_mood") or state.get("mood")
             mood_changed = False
-            
             if incoming_mood and incoming_mood != self._current_mood:
-                # Debounce mood changes
+                mood_name = getattr(incoming_mood, "name", str(incoming_mood)).lower()
+                # Only debounce if we're not in a forced update scenario
                 if now - self._last_mood_update >= self._mood_debounce_interval:
-                    _log.info(f"🎭 View detected mood change: {self._current_mood} -> {incoming_mood}")
-                    self._current_mood = incoming_mood
+                    _log.info(f"🎭 View async_update: Updating mood to {mood_name} from state")
+                    self._current_mood = mood_name
                     self._last_mood_update = now
                     mood_changed = True
+
+            # Store current mood before merge to prevent overwrite
+            current_mood_before_merge = self._current_mood
             
+            # Force update for important changes
             face_changed = (state.get("face") != self.state.get("face"))
             status_changed = (state.get("status") != self.state.get("status"))
+            recent_captures_changed = "recent_captures" in state
             
-            # Force update for mood/face/status changes or recent captures
-            force_update = mood_changed or face_changed or status_changed or "recent_captures" in state
+            force_update = mood_changed or face_changed or status_changed or recent_captures_changed
 
-            # Reduce minimum interval for mood changes to ensure responsiveness
-            if force_update:
-                self._min_interval = 0.1  # Very fast for mood/face/status changes
-            else:
-                self._min_interval = 1.0  # Normal speed for other updates
+            # Reduce minimum interval for important updates
+            self._min_interval = 0.1 if force_update else 1.0
 
             if not force_update and now - self._last_draw_time < self._min_interval:
                 return
 
-            # Deep merge incoming state into persistent self.state to avoid clobbering complex fields
+            # Deep merge with mood preservation
             try:
                 if not isinstance(self.state, dict):
                     self.state = {}
+                
                 _deep_merge(self.state, state)
                 
-                # FIXED: Ensure mood state is consistent
-                if self._current_mood:
-                    self.state["agent_mood"] = self._current_mood
+                # CRITICAL: Ensure mood state is consistent after merge
+                # Don't let merged state overwrite our tracked mood
+                self.state["agent_mood"] = current_mood_before_merge
+                self.state["mood"] = current_mood_before_merge
                     
             except Exception:
                 _log.exception("View.async_update: merge failed")

@@ -180,24 +180,38 @@ class Automata:
 
                 _LOG.info("💫 Mood transition: %s → %s", old_mood.name, new_mood.name)
 
-                # Update view state
+                # CRITICAL: Update view with comprehensive state
                 if self._view:
                     try:
-                        # Use view's update method if available
+                        # Use both update methods to ensure propagation
+                        mood_value = new_mood.value
+                        
+                        # Method 1: Direct mood update (preferred)
                         if hasattr(self._view, "update_mood"):
-                            if asyncio.iscoroutinefunction(self._view.update_mood):
-                                await self._view.update_mood(new_mood.value, reason="automata")
-                            else:
-                                self._view.update_mood(new_mood.value, reason="automata")
-                        elif hasattr(self._view, "async_update"):
-                            # Fallback to general update
-                            await self._view.async_update({
-                                "agent_mood": new_mood.value,
-                                "face": faces.get_face(new_mood.value),
-                                "status": self._voice.get_mood_line(new_mood.value),
-                            })
+                            try:
+                                if asyncio.iscoroutinefunction(self._view.update_mood):
+                                    await self._view.update_mood(mood_value, reason="automata")
+                                else:
+                                    self._view.update_mood(mood_value, reason="automata")
+                                _LOG.debug(f"Automata: Successfully updated view mood to {mood_value}")
+                            except Exception as e:
+                                _LOG.warning(f"Direct mood update failed, using fallback: {e}")
+                        
+                        # Method 2: General state update (fallback)
+                        if hasattr(self._view, "async_update"):
+                            try:
+                                await self._view.async_update({
+                                    "agent_mood": mood_value,
+                                    "mood": mood_value,  # Set both for compatibility
+                                    "face": faces.get_face(mood_value),
+                                    "status": self._voice.get_mood_line(mood_value),
+                                })
+                                _LOG.debug(f"Automata: Successfully updated view state with mood {mood_value}")
+                            except Exception as e:
+                                _LOG.warning(f"State update fallback also failed: {e}")
+                        
                     except Exception as e:
-                        _LOG.error("Failed to update view mood: %s", e)
+                        _LOG.error(f"Failed to update view mood: {e}", exc_info=True)
 
                 # Notify plugins
                 try:

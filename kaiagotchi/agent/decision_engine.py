@@ -116,7 +116,8 @@ class DecisionEngine:
         if len(self._state_history) > 100:
             self._state_history.pop(0)
 
-        log.info("State: %s → %s (%s)", old_state.name, new_state.name, reason)
+        # Change from INFO to DEBUG to reduce log spam
+        log.debug("State: %s → %s (%s)", old_state.name, new_state.name, reason)
         
         # Emit state change event
         asyncio.create_task(self._safe_emit("state_changed", {
@@ -240,9 +241,13 @@ class DecisionEngine:
                     # Use the property accessor from the updated automata
                     current_mood = self.automata.current_mood.value
                 except (AttributeError, ValueError):
-                    # Fallback to direct attribute access
+                    # Fallback to direct attribute access with string default
                     try:
-                        current_mood = getattr(self.automata, '_current_mood', AgentMood.CALM).value
+                        mood_obj = getattr(self.automata, '_current_mood', None)
+                        if mood_obj and hasattr(mood_obj, 'value'):
+                            current_mood = mood_obj.value
+                        else:
+                            current_mood = "calm"
                     except (AttributeError, ValueError):
                         current_mood = "calm"
 
