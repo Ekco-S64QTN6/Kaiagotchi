@@ -227,8 +227,8 @@ class Epoch:
                 self.bored_for = 0
 
             # Emotional thresholds
-            sad_thresh = self.config.get("personality", {}).get("sad_num_epochs", 10)
-            bored_thresh = self.config.get("personality", {}).get("bored_num_epochs", 5)
+            sad_thresh = self.config.get("personality", {}).get("sad_num_epochs", 5)
+            bored_thresh = self.config.get("personality", {}).get("bored_num_epochs", 3)
 
             mood = "neutral"
             if self.inactive_for >= sad_thresh:

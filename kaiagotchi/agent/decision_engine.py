@@ -195,7 +195,21 @@ class DecisionEngine:
             # Recon Scan state
             elif self.current_state == AgentState.RECON_SCAN:
                 # Channel hopping
-                if (time.time() - self._last_channel_hop) > self.hop_interval:
+                # Adjust hop interval based on mood
+                current_interval = self.hop_interval
+                if self.automata:
+                    try:
+                        mood = self.automata.current_mood.value
+                        if mood == "bored":
+                            current_interval *= 0.5  # Scan faster if bored
+                        elif mood in ("happy", "confident"):
+                            current_interval *= 1.5  # Linger if happy/confident
+                        elif mood == "frustrated":
+                            current_interval *= 0.8  # Erratic/fast if frustrated
+                    except Exception:
+                        pass
+
+                if (time.time() - self._last_channel_hop) > current_interval:
                     if action_manager and hasattr(action_manager, "hop_channel"):
                         self._safe_schedule_coro(lambda: action_manager.hop_channel(), name="hop_channel")
                         self._last_channel_hop = time.time()

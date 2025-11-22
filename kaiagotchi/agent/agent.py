@@ -21,10 +21,11 @@ from typing import Dict, Any, Optional, Tuple, Any as AnyType
 from kaiagotchi.network.action_manager import InterfaceActionManager
 from kaiagotchi.core.events import EventEmitter
 from kaiagotchi.storage.last_session import LastSession
-from kaiagotchi.data.system_types import SystemState, GlobalSystemState, AgentMood
+from kaiagotchi.data.system_types import SystemState, GlobalSystemState, AgentMood, AgentState
 from kaiagotchi.core.automata import Automata
 from kaiagotchi.ui.view import View
 from kaiagotchi.ui.terminal_display import TerminalDisplay
+from kaiagotchi.plugins.manager import PluginManager
 
 # Persistence systems
 from kaiagotchi.storage.persistent_mood import PersistentMood
@@ -36,7 +37,9 @@ from kaiagotchi.ai.reward import RewardEngine
 
 from .base import kaiagotchiBase
 from .monitoring_agent import MonitoringAgent
+from .monitoring_agent import MonitoringAgent
 from kaiagotchi.agent.decision_engine import DecisionEngine
+from kaiagotchi.core.hardware import get_interface_model
 
 _log = logging.getLogger("kaiagotchi.agent.agent")
 
@@ -121,8 +124,13 @@ class Agent(kaiagotchiBase):
         self.logger.info("All persistence systems connected to MonitoringAgent.")
 
         # Initialize Automata for emotional state
-        self.automata = Automata(self.config, self._view)
+        self.automata = Automata(self.config, self._view, on_thought=self._handle_thought)
         self.logger.info("Automata emotional engine initialized.")
+
+        # Initialize PluginManager
+        self.plugin_manager = PluginManager()
+        self.plugin_manager.discover_and_load(self.config.get("plugins", {}))
+        self.logger.info("PluginManager initialized and plugins loaded.")
 
         # NOW set automata in DecisionEngine since it exists
         self.decision_engine.set_automata(self.automata)
@@ -158,7 +166,9 @@ class Agent(kaiagotchiBase):
             iface_name = getattr(self, "interface_name", None) or getattr(self, "interface", "unknown")
         except Exception:
             iface_name = "unknown"
-        self.logger.info(f"Agent initialized with interface: {iface_name}")
+        
+        self.interface_model = get_interface_model(iface_name)
+        self.logger.info(f"Agent initialized with interface: {iface_name} ({self.interface_model})")
         self.logger.info(f"View provided: {view is not None}")
 
         self._update_task = None
@@ -185,6 +195,9 @@ class Agent(kaiagotchiBase):
                         "status": "Monitoring Wi-Fi traffic...",
                         "mode": "MONITORING",
                         "substatus": "Live scanning active.",
+                        "substatus": "Live scanning active.",
+                        "interface": iface_name,
+                        "interface_model": self.interface_model,
                     })
 
                 # Start emotional loop once monitoring is live
@@ -204,11 +217,19 @@ class Agent(kaiagotchiBase):
             except Exception:
                 pass
         
-        return {
-            "current_system_state": getattr(self.system_state, "current_system_state", None),
+        # Gather state from subsystems
+        current_state = {
+            "agent": self,
+            "agent_obj": self,
+            "system_state": self.system_state.current_system_state,
+            "current_system_state": self.system_state.current_system_state.name if self.system_state.current_system_state else None,
+            "current_system_state": self.system_state.current_system_state.name if self.system_state.current_system_state else None,
+            "interface": getattr(self, "interface_name", "unknown"),
+            "interface_model": getattr(self, "interface_model", "Unknown"),
             "network": {
                 "access_points": getattr(self.system_state.network, "access_points", {}),
                 "interfaces": getattr(self.system_state.network, "interfaces", {}),
+                "current_channel": getattr(self.system_state.network, "current_channel", 1),
             },
             "metrics": getattr(self.system_state, "metrics", {}),
             "session_metrics": getattr(self.system_state, "session_metrics", {}),
@@ -452,3 +473,42 @@ class Agent(kaiagotchiBase):
                 self.logger.error(f"View.on_shutdown() failed: {e}")
 
         self.logger.info("Kaiagotchi agent stopped cleanly.")
+
+    async def _handle_thought(self, thought: str):
+        """Callback for Automata to inject thoughts into the main chatter log."""
+        try:
+            now_str = time.strftime("%H:%M:%S")
+            new_entry = {"timestamp": now_str, "message": thought, "type": "thought"}
+
+            async with self.state_lock:
+                # Ensure lists exist
+                if isinstance(self.system_state, dict):
+                    self.system_state.setdefault("recent_captures", [])
+                    self.system_state.setdefault("chatter_log", [])
+                    captures = self.system_state["recent_captures"]
+                else:
+                    if not hasattr(self.system_state, "recent_captures"):
+                        setattr(self.system_state, "recent_captures", [])
+                    captures = getattr(self.system_state, "recent_captures")
+
+                captures.append(new_entry)
+                if len(captures) > 20:
+                    captures[:] = captures[-20:]
+
+                # Sync chatter log
+                if isinstance(self.system_state, dict):
+                    self.system_state["chatter_log"] = list(captures)
+                else:
+                    setattr(self.system_state, "chatter_log", list(captures))
+
+            # Push immediate update to view
+            if self._view:
+                await self._view.async_update({
+                    "recent_captures": list(captures),
+                    "chatter_log": list(captures)
+                })
+            
+            self.logger.debug(f"Thought injected into system state: {thought}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to handle thought: {e}")

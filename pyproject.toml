@@ -82,11 +82,13 @@ dependencies = [
     # "colorama",                     # Cross-platform terminal colors for enhanced UI
     # "tabulate",                     # Beautiful table formatting for reports and data display
     # "progress",                     # Rich progress bars for long-running operations
+    "pillow>=10.0.0",                 # Image processing for splash screen
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "pytest-asyncio",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",

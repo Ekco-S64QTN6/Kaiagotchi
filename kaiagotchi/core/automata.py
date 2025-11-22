@@ -52,16 +52,17 @@ class AgentMood(Enum):
 
 
 class Automata:
-    def __init__(self, config: Dict[str, Any], view: Any, reward_engine: Optional[Any] = None, epoch_tracker: Optional[Any] = None):
+    def __init__(self, config: Dict[str, Any], view: Any, reward_engine: Optional[Any] = None, epoch_tracker: Optional[Any] = None, on_thought: Optional[Any] = None):
         self._config = config or {}
         self._view = view
+        self._on_thought = on_thought
 
         # Initialize reward + epoch subsystems
         self._reward = reward_engine
         self._epoch = epoch_tracker  # Use provided epoch tracker
 
         # Mood / reward smoothing
-        self._alpha = float(self._config.get("personality", {}).get("reward_alpha", 0.25))
+        self._alpha = float(self._config.get("personality", {}).get("reward_alpha", 0.5))
         self._ema_reward: Optional[float] = None
         self._last_reward: Optional[float] = None
 
@@ -74,7 +75,7 @@ class Automata:
         self._last_mood_change = time.time()
         self._last_drift_time = time.time()
         self._min_mood_duration = float(self._config.get("personality", {}).get("min_mood_duration", 15.0))
-        self._hysteresis = float(self._config.get("personality", {}).get("mood_hysteresis", 0.15))
+        self._hysteresis = float(self._config.get("personality", {}).get("mood_hysteresis", 0.05))
 
         # UI / voice bridge
         self._voice = Voice()
@@ -330,6 +331,11 @@ class Automata:
             _LOG.debug("Automata.tick: final reward %.4f", reward_val)
             self.process_reward(reward_val)
             await self._maybe_drift()
+            
+            # Randomly generate a thought
+            if random.random() < 0.1:  # 10% chance per tick
+                await self.generate_thought()
+                
             return self._current_mood
             
         except Exception as e:
@@ -419,3 +425,36 @@ class Automata:
             "hysteresis": self._hysteresis,
             "available_moods": [mood.value for mood in AgentMood],
         }
+
+    async def generate_thought(self):
+        """Generate a thought based on current mood and inject into chatter."""
+        if not self._view:
+            return
+
+        try:
+            thought = self._voice.get_mood_line(self._current_mood)
+            
+            # Use callback if available (preferred for persistence)
+            if self._on_thought and callable(self._on_thought):
+                if asyncio.iscoroutinefunction(self._on_thought):
+                    await self._on_thought(f"💭 {thought}")
+                else:
+                    self._on_thought(f"💭 {thought}")
+                _LOG.debug(f"Generated thought (via callback): {thought}")
+                return
+
+            # Fallback to direct view injection (legacy)
+            # Create a synthetic capture event for the thought
+            event = {
+                "timestamp": time.strftime("%H:%M:%S"),
+                "message": f"💭 {thought}",  # Use bubble to distinguish thoughts
+                "type": "thought"
+            }
+            
+            await self._view.async_update({
+                "recent_captures": [event]
+            })
+            _LOG.debug(f"Generated thought (direct): {thought}")
+            
+        except Exception as e:
+            _LOG.error(f"Failed to generate thought: {e}")

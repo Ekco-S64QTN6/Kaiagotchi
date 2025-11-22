@@ -78,6 +78,7 @@ class TerminalDisplay:
         self._max_visible_aps = int(self._config.get("max_visible_aps", 15))
         self._max_visible_stations = int(self._config.get("max_visible_stations", 10))
         self._max_visible_chatter = int(self._config.get("max_visible_chatter", 6))
+        self._version = self._config.get("version", "1.0.0")
 
         try:
             self._out.write("\033[?1049h")
@@ -282,12 +283,12 @@ class TerminalDisplay:
             return " " * left + s + " " * right
         return s
 
-    def _make_line(self, text: str = "", width: Optional[int] = None) -> str:
+    def _make_line(self, text: str = "", width: Optional[int] = None, align: str = "left") -> str:
         """Create a line padded to the specified width."""
         if width is None:
             cols, _ = self._term_size()
             width = max(60, cols - 2)
-        return self._pad(text or "", width, align="left")
+        return self._pad(text or "", width, align=align)
 
     # ---- State change detection ----
     def _state_changed(self, prev: Dict[str, Any], new: Dict[str, Any]) -> bool:
@@ -451,77 +452,82 @@ class TerminalDisplay:
     # ---- Renderers ----
     def _render_header(self, state: Dict[str, Any]):
         try:
-            # Track current mood from state for fallback use
+            # Track current mood
             current_mood = state.get("agent_mood") or state.get("mood") or "neutral"
             self._current_mood_from_state = str(current_mood).lower()
             
             cols, _ = self._term_size()
             inner = max(60, cols - 2)
             
-            # Get dynamic face - use the improved method
+            # Get dynamic face
             face = self._get_face(state)
             face_colored = f"{BOX_PINK}{face}{RESET}"
             
-            # Get mood from state, handle both "NEUTRAL" and "neutral" formats
+            # Mood text
             mood = state.get("agent_mood") or state.get("mood") or "neutral"
             mood_str = getattr(mood, "name", str(mood)).lower() if mood else "neutral"
-            mood_text = mood_str.capitalize()  # "neutral" -> "Neutral"
+            mood_text = mood_str.capitalize()
             
-            # Use the tracked status with minimum display time
+            # Interface info
+            iface = state.get("interface", "unknown")
+            model = state.get("interface_model", "")
+            iface_str = f"{iface}"
+            if model:
+                iface_str += f" [{model}]"
+            
+            # Status
             status_msg = self._current_status
             
+            # Metrics
             aps_val = state.get("aps", "--")
-            aps_max_val = state.get("aps_max_seen")
-            aps_str = str(aps_val)
-            if aps_max_val and aps_max_val != aps_val:
-                aps_str = f"{aps_val} ({aps_max_val})"
             pwnd = state.get("pwnd", "0")
-            mode = state.get("mode", "") or ""
+            mode = state.get("mode", "AUTO")
             uptime = state.get("uptime", "--:--:--")
+
+            # HTOP-style Header
+            # Line 1: Title + Interface (Right aligned)
+            title = f"{BOLD}{CYAN}Kaiagotchi{RESET} v{self._version}"
+            iface_display = f"{BOLD}{GREEN}{iface_str}{RESET}"
+            line1_padding = inner - self._visible_len(title) - self._visible_len(iface_display) - 2
+            line1 = f" {title}{' ' * max(1, line1_padding)}{iface_display} "
+            
+            # Line 2: Face + Status
+            line2 = f" {face_colored}  {status_msg}"
+            
+            # Line 3: Metrics (Bar style)
+            # MOOD [|||||     ] Happy
+            # APS  [||        ] 12
+            
+            def make_bar(label, value, color, width=20):
+                return f"{CYAN}{label:<5}{RESET} [{color}{value:<{width}}{RESET}]"
+
+            metrics_line = (
+                f" {CYAN}MOOD:{RESET} {mood_text:<10} "
+                f"{CYAN}MODE:{RESET} {mode:<8} "
+                f"{CYAN}APS:{RESET} {str(aps_val):<5} "
+                f"{CYAN}PWND:{RESET} {pwnd:<5} "
+                f"{CYAN}UPTIME:{RESET} {uptime}"
+            )
 
             top = f"{BOX_GREEN}┌" + "─" * inner + "┐" + RESET
             bot = f"{BOX_GREEN}└" + "─" * inner + "┘" + RESET
 
-            # LEFT-ALIGNED face and status (original position)
-            face_status = f"  {face_colored}  < {status_msg} >"
-            
-            # Info line - left aligned
-            info = (
-                f"  {CYAN}APs:{RESET} {aps_str} "
-                f"{CYAN}PWND:{RESET} {pwnd} "
-                f"{CYAN}MOOD:{RESET} {mood_text} "
-                f"{CYAN}MODE:{RESET} {mode} "
-                f"{CYAN}Uptime:{RESET} {uptime}"
-            )
-            
-            # Ensure info fits
-            info_plain = self._strip_ansi(info)
-            if len(info_plain) > (inner - 2):
-                info = (
-                    f"  {CYAN}APs:{RESET} {aps_str} "
-                    f"{CYAN}MOOD:{RESET} {mood_text} "
-                    f"{CYAN}MODE:{RESET} {mode}"
-                )
-                info_plain = self._strip_ansi(info)
-                if len(info_plain) > (inner - 2):
-                    info = info_plain[:(inner - 2)]
-
-            self._out.write("\033[H")
+            self._out.write("\033[H") # Home
             self._out.write(top + "\n")
-            self._out.write(f"{BOX_GREEN}│{RESET} {self._make_line(face_status, inner - 2)} {BOX_GREEN}│{RESET}\n")
-            self._out.write(f"{BOX_GREEN}│{RESET} {self._make_line(info, inner - 2)} {BOX_GREEN}│{RESET}\n")
+            self._out.write(f"{BOX_GREEN}│{RESET}{self._make_line(line1, inner)}{BOX_GREEN}│{RESET}\n")
+            self._out.write(f"{BOX_GREEN}│{RESET}{self._make_line(line2, inner)}{BOX_GREEN}│{RESET}\n")
+            self._out.write(f"{BOX_GREEN}│{RESET}{self._make_line(metrics_line, inner)}{BOX_GREEN}│{RESET}\n")
             self._out.write(bot + "\n")
             self._out.flush()
         except Exception as e:
             _LOG.error("_render_header failed: %s", e)
-            _LOG.exception("Full header render exception")
 
     def _render_tables(self, aps: List[Dict[str, Any]], stations: List[Dict[str, Any]]):
         try:
             cols, term_rows = self._term_size()
             inner = max(60, cols - 2)
 
-            header_rows = 4
+            header_rows = 5 # Increased for new header
             reserved_chatter = 1
             remaining = max(3, term_rows - header_rows - reserved_chatter)
 
@@ -531,161 +537,121 @@ class TerminalDisplay:
             ap_draw = min(len(aps or []), ap_budget)
             sta_draw = min(len(stations or []), sta_budget)
 
-            # AP Table - YELLOW BOX
-            top_ap = f"{BOX_YELLOW}┌" + "─" * inner + "┐" + RESET
-            bot_ap = f"{BOX_YELLOW}└" + "─" * inner + "┘" + RESET
+            # Helper for htop-style bars
+            def draw_bar(val, max_val=100, width=5, color=GREEN):
+                try:
+                    pct = max(0.0, min(1.0, float(val) / float(max_val)))
+                    filled = int(pct * width)
+                    bar = "|" * filled
+                    return f"{color}{bar:<{width}}{RESET}"
+                except:
+                    return " " * width
 
-            fixed_ap_cols = (
-                COL_BSSID + 2
-                + COL_CH + 2
-                + COL_PWR + 3
-                + COL_AES + 2
-                + COL_BEACON + 2
-                + COL_FIRST + 2
-                + COL_LAST + 2
-            )
-            essid_width = max(8, inner - fixed_ap_cols - 2)
-
-            # CENTERED headers for AP table
+            # AP Table
+            # Header with background color
+            # BSSID | CH | PWR | ENC | ESSID
+            
+            # Clean layout - no vertical bars
             head_ap = (
                 f"{BOLD}{YELLOW}"
-                f"{self._pad('BSSID', COL_BSSID, 'center')}  "
-                f"{self._pad('Channel', COL_CH, 'center')}  "
-                f"{self._pad('Power', COL_PWR, 'center')}   "
-                f"{self._pad('Encryption', COL_AES, 'center')}  "  # Fixed full "Encryption"
-                f"{self._pad('Beacons', COL_BEACON, 'center')}  "
-                f"{self._pad('First Seen', COL_FIRST, 'center')}  "
-                f"{self._pad('Last Seen', COL_LAST, 'center')}  "
-                f"{self._pad('ESSID', essid_width, 'left')}"
+                f"{'BSSID':<19} "
+                f"{'CH':<4} "
+                f"{'PWR':<6} "
+                f"{'ENC':<5} "
+                f"{'ESSID'}"
                 f"{RESET}"
             )
-
-            header_line = f"{BOX_YELLOW}│{RESET} {self._make_line(head_ap, inner - 2)} {BOX_YELLOW}│{RESET}"
-            ap_rows_out: List[str] = []
+            
+            # Fix box header drawing
+            title_ap = " Access Points "
+            pad_len = inner - len(title_ap)
+            left_pad = pad_len // 2
+            right_pad = pad_len - left_pad
+            header_top = f"{BOX_YELLOW}┌{'─' * left_pad}{title_ap}{'─' * right_pad}┐{RESET}"
+            
+            self._out.write(header_top + "\n")
+            self._out.write(f"{BOX_YELLOW}│{RESET} {self._make_line(head_ap, inner - 2)} {BOX_YELLOW}│{RESET}\n")
 
             for ap in (aps or [])[:ap_draw]:
-                bssid = self._pad(str(ap.get("bssid", "")), COL_BSSID, "left")
-                ch = self._pad(str(ap.get("channel", "--")), COL_CH, "center")
-                pwr_val = ap.get("power", "--")
+                bssid = str(ap.get("bssid", ""))
+                ch = str(ap.get("channel", "--"))
+                pwr = ap.get("power", "-99")
                 try:
-                    pval = int(pwr_val)
-                    pcolor = GREEN if pval >= -50 else YELLOW if pval >= -70 else RED
-                except Exception:
-                    pcolor = GRAY
-                    
-                enc = (ap.get("privacy", "--") or "--").upper()
-                enc_color = (
-                    RED if "WEP" in enc else
-                    GREEN if "WPA3" in enc or "WPA2" in enc else
-                    YELLOW if "WPA" in enc else
-                    GRAY if "OPEN" in enc or "OPN" in enc else CYAN
-                )
-                # CENTERED beacons count
-                beacons = self._pad(str(ap.get("beacons", "--")), COL_BEACON, "center")
-
-                first_raw = ap.get("first_seen", "--")
-                last_raw = ap.get("last_seen", "--")
-                first_ts = self._parse_last_seen(first_raw)
-                last_ts = self._parse_last_seen(last_raw)
+                    pwr_int = int(pwr)
+                    # Map -100 to -30 range to 0-100 quality
+                    qual = max(0, min(100, (pwr_int + 100) * 2))
+                    pwr_bar = draw_bar(qual, 100, 5, GREEN if pwr_int > -60 else YELLOW if pwr_int > -80 else RED)
+                except:
+                    pwr_bar = "     "
                 
-                first_display = self._format_timestamp(first_ts, "--")
-                last_display = self._format_timestamp(last_ts, "--")
+                enc = (ap.get("privacy", "") or "OPN")[:3].upper()
+                essid = str(ap.get("essid", ""))[:30]
                 
-                if last_ts and first_ts and (last_ts - first_ts) <= 2.0:
-                    last_display = "new"
-
-                first_seen = self._pad(first_display, COL_FIRST, "center")
-                last_seen = self._pad(last_display, COL_LAST, "center")
-                essid = self._pad(str(ap.get("essid", "")), essid_width, "left")
-
-                # CENTERED power and encryption
-                pwr_text = f"{pcolor}{self._pad(str(pwr_val), COL_PWR, 'center')}{RESET}"
-                enc_text = f"{enc_color}{self._pad(enc, COL_AES, 'center')}{RESET}"  # Centered WPA2 etc.
-
                 row = (
-                    f"{bssid}  "
-                    f"{CYAN}{ch}{RESET}  "
-                    f"{pwr_text}   "
-                    f"{enc_text}  "
-                    f"{beacons}  "
-                    f"{first_seen}  "
-                    f"{last_seen}  "
+                    f"{bssid:<19} "
+                    f"{ch:<4} "
+                    f"{pwr_bar} "
+                    f"{enc:<5} "
                     f"{essid}"
                 )
-                ap_rows_out.append(f"{BOX_YELLOW}│{RESET} {self._make_line(row, inner - 2)} {BOX_YELLOW}│{RESET}")
+                self._out.write(f"{BOX_YELLOW}│{RESET} {self._make_line(row, inner - 2)} {BOX_YELLOW}│{RESET}\n")
+            
+            if not ap_draw:
+                 self._out.write(f"{BOX_YELLOW}│{RESET} {self._make_line('No APs', inner - 2)} {BOX_YELLOW}│{RESET}\n")
 
-            if not ap_rows_out:
-                ap_rows_out.append(f"{BOX_YELLOW}│{RESET} {self._make_line('No Access Points detected', inner - 2)} {BOX_YELLOW}│{RESET}")
+            self._out.write(f"{BOX_YELLOW}└" + "─" * inner + "┘" + RESET + "\n")
 
-            # Station Table - CYAN BOX
-            top_sta = f"{BOX_CYAN}┌" + "─" * inner + "┐" + RESET
-            bot_sta = f"{BOX_CYAN}└" + "─" * inner + "┘" + RESET
-
-            fixed_sta_cols = (
-                COL_STA_MAC + 2
-                + COL_STA_PWR + 2
-                + COL_STA_PKT + 2
-                + COL_STA_BSSID + 2
-            )
-            probed_width = max(8, inner - fixed_sta_cols - 2)
-
+            # Station Table
             head_sta = (
                 f"{BOLD}{CYAN}"
-                f"{self._pad('Station MAC', COL_STA_MAC, 'center')}  "
-                f"{self._pad('Power', COL_STA_PWR, 'center')}  "
-                f"{self._pad('Packets', COL_STA_PKT, 'center')}  "  # Centered header
-                f"{self._pad('BSSID', COL_STA_BSSID, 'center')}  "
-                f"{self._pad('Probed', probed_width, 'left')}"
+                f"{'STATION':<19} "
+                f"{'PWR':<6} "
+                f"{'PKTS':<6} "
+                f"{'BSSID':<19} "
+                f"{'PROBED'}"
                 f"{RESET}"
             )
-            header_sta = f"{BOX_CYAN}│{RESET} {self._make_line(head_sta, inner - 2)} {BOX_CYAN}│{RESET}"
-            sta_rows_out: List[str] = []
+
+            title_sta = " Stations "
+            pad_len = inner - len(title_sta)
+            left_pad = pad_len // 2
+            right_pad = pad_len - left_pad
+            header_sta_top = f"{BOX_CYAN}┌{'─' * left_pad}{title_sta}{'─' * right_pad}┐{RESET}"
+
+            self._out.write(header_sta_top + "\n")
+            self._out.write(f"{BOX_CYAN}│{RESET} {self._make_line(head_sta, inner - 2)} {BOX_CYAN}│{RESET}\n")
 
             for s in (stations or [])[:sta_draw]:
-                mac = self._pad(str(s.get("station_mac", "")), COL_STA_MAC, "left")
-                pwr_val = s.get("power", "--")
-                pkts = s.get("packets", "--")
-                bssid = self._pad(str(s.get("bssid", "--")), COL_STA_BSSID, "left")
-                probed = self._pad(str(s.get("essids", "")), probed_width, "left")
-                
+                mac = str(s.get("station_mac", ""))
+                pwr = s.get("power", "-99")
                 try:
-                    pval = int(pwr_val)
-                    pcolor = GREEN if pval >= -50 else YELLOW if pval >= -70 else RED
-                except Exception:
-                    pcolor = GRAY
+                    pwr_int = int(pwr)
+                    qual = max(0, min(100, (pwr_int + 100) * 2))
+                    pwr_bar = draw_bar(qual, 100, 5, GREEN if pwr_int > -60 else YELLOW if pwr_int > -80 else RED)
+                except:
+                    pwr_bar = "     "
+                
+                pkts = str(s.get("packets", "0"))
+                bssid = str(s.get("bssid", ""))
+                probed = str(s.get("probed_essids", ""))[:20]
 
-                # CENTERED power and packets
-                pwr_text = f"{pcolor}{self._pad(str(pwr_val), COL_STA_PWR, 'center')}{RESET}"
-                pkts_text = self._pad(str(pkts), COL_STA_PKT, 'center')  # Centered packet numbers
-
-                line = (
-                    f"{mac}  "
-                    f"{pwr_text}  "
-                    f"{pkts_text}  "
-                    f"{bssid}  "
+                row = (
+                    f"{mac:<19} "
+                    f"{pwr_bar} "
+                    f"{pkts:<6} "
+                    f"{bssid:<19} "
                     f"{probed}"
                 )
-                sta_rows_out.append(f"{BOX_CYAN}│{RESET} {self._make_line(line, inner - 2)} {BOX_CYAN}│{RESET}")
+                self._out.write(f"{BOX_CYAN}│{RESET} {self._make_line(row, inner - 2)} {BOX_CYAN}│{RESET}\n")
 
-            if not sta_rows_out:
-                sta_rows_out.append(f"{BOX_CYAN}│{RESET} {self._make_line('No Stations detected', inner - 2)} {BOX_CYAN}│{RESET}")
+            if not sta_draw:
+                 self._out.write(f"{BOX_CYAN}│{RESET} {self._make_line('No Stations', inner - 2)} {BOX_CYAN}│{RESET}\n")
 
-            # Output blocks
-            self._out.write(top_ap + "\n")
-            self._out.write(header_line + "\n")
-            for r in ap_rows_out:
-                self._out.write(r + "\n")
-            self._out.write(bot_ap + "\n")
-
-            self._out.write(top_sta + "\n")
-            self._out.write(header_sta + "\n")
-            for r in sta_rows_out:
-                self._out.write(r + "\n")
-            self._out.write(bot_sta + "\n")
+            self._out.write(f"{BOX_CYAN}└" + "─" * inner + "┘" + RESET + "\n")
             self._out.flush()
+
         except Exception as e:
             _LOG.error("_render_tables failed: %s", e)
-            _LOG.exception("Full tables render exception")
 
     def _render_chatter_box(self, state: Dict[str, Any]):
         try:
@@ -705,22 +671,36 @@ class TerminalDisplay:
             cols, term_rows = self._term_size()
             inner = max(60, cols - 2)
 
-            header_used = 4
-            ap_used = 3 + min(len(self._ap_table), self._max_visible_aps)
-            sta_used = 3 + min(len(self._stations), self._max_visible_stations)
-            used = header_used + ap_used + sta_used
-            remaining = max(1, term_rows - used - 1)
+            # Calculate remaining space dynamically
+            # Header (5) + AP Table (variable) + Station Table (variable) + Chatter Header (2) + Chatter Footer (1)
+            header_rows = 5
+            
+            # Estimate table heights based on current content (clamped by max settings)
+            ap_count = len(self._ap_table)
+            sta_count = len(self._stations)
+            
+            # Tables have header(2) + footer(1) + content
+            ap_height = 3 + (1 if ap_count == 0 else ap_count)
+            sta_height = 3 + (1 if sta_count == 0 else sta_count)
+            
+            used_height = header_rows + ap_height + sta_height
+            remaining = max(3, term_rows - used_height - 2) # -2 for chatter borders
 
             actual_messages = len(lines)
             visible_count = min(self._max_visible_chatter, max(1, min(remaining, max(1, actual_messages))))
 
-            top = f"{BOX_PINK}┌" + "─" * inner + "┐" + RESET
+            title_chat = " System Chatter "
+            pad_len = inner - len(title_chat)
+            left_pad = pad_len // 2
+            right_pad = pad_len - left_pad
+            top = f"{BOX_PINK}┌{'─' * left_pad}{title_chat}{'─' * right_pad}┐{RESET}"
+            
             bot = f"{BOX_PINK}└" + "─" * inner + "┘" + RESET
-            header_title = f"{BOLD}{PINK}System Chatter{RESET}"
-            header_line = f"{BOX_PINK}│{RESET} {self._make_line(header_title, inner - 2)} {BOX_PINK}│{RESET}"
 
             chatter_rows: List[str] = []
             recent = lines[-visible_count:] if lines else []
+            
+            # Fill from bottom
             pad = max(0, visible_count - len(recent))
 
             for _ in range(pad):
@@ -733,11 +713,10 @@ class TerminalDisplay:
                 rendered = f"{color}{raw_line}{RESET}"
                 chatter_rows.append(f"{BOX_PINK}│{RESET} {self._make_line(rendered, inner - 2)} {BOX_PINK}│{RESET}")
 
-            if not chatter_rows:
+            if not chatter_rows and not pad:
                 chatter_rows.append(f"{BOX_PINK}│{RESET} {self._make_line('Awaiting events...', inner - 2)} {BOX_PINK}│{RESET}")
 
             self._out.write(top + "\n")
-            self._out.write(header_line + "\n")
             for r in chatter_rows:
                 self._out.write(r + "\n")
             self._out.write(bot + "\n")
@@ -755,3 +734,26 @@ class TerminalDisplay:
         except Exception as e:
             _LOG.error("force_redraw failed: %s", e)
             _LOG.exception("Full force_redraw exception")
+
+    def show_goodbye(self):
+        """Show a clean exit message."""
+        try:
+            self.clear()
+            cols, rows = self._term_size()
+            msg = " Kaiagotchi Shutdown Complete "
+            sub = " See you next time! "
+            
+            # Center vertically
+            padding = (rows // 2) - 2
+            self._out.write("\n" * padding)
+            
+            # Center horizontally
+            line1 = self._make_line(msg, cols, align="center").strip()
+            line2 = self._make_line(sub, cols, align="center").strip()
+            
+            self._out.write(f"{BOLD}{CYAN}{line1}{RESET}\n")
+            self._out.write(f"{GRAY}{line2}{RESET}\n")
+            self._out.write("\n" * 2)
+            self._out.flush()
+        except Exception:
+            pass

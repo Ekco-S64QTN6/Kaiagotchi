@@ -18,11 +18,11 @@ logger = logging.getLogger("kaiagotchi.ai.reward")
 
 DEFAULT_WEIGHTS = {
     "handshakes": 2.0,
-    "ap_discovery": 0.3,
+    "ap_discovery": 0.5,
     "station_discovery": 0.1,
     "ap_growth": 0.5,
     "channel_diversity": 0.2,
-    "activity": 0.1,
+    "activity": 0.3,
     "boredom": -0.1,
     "sadness": -0.2,
     "idle_decay": -0.02,

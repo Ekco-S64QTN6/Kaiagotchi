@@ -19,4 +19,5 @@ async def main():
     await asyncio.sleep(2)
     await view.on_shutdown()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())

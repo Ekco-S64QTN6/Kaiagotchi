@@ -90,6 +90,9 @@ class View:
             self.display = TerminalDisplay(self._config)
 
         _log.debug("View initialized (display linked: %s)", bool(self.display))
+        
+        # Flag to suppress rendering (e.g. during splash screen)
+        self.suppress_output = False
 
     # ------------------------------------------------------------------
     def set_agent(self, agent):
@@ -204,7 +207,7 @@ class View:
             normalized_state = self._ensure_normalized(self.state)
 
         # Draw/update outside of lock - CRITICAL: Always draw when force_update is True
-        if self.display and force_update:
+        if self.display and force_update and not self.suppress_output:
             try:
                 # Use render instead of draw for immediate updates
                 maybe = self.display.render(normalized_state)
@@ -365,7 +368,7 @@ class View:
                     time.time() - self._last_draw_time > 10.0
                 )
 
-                if self.display and needs_update:
+                if self.display and needs_update and not self.suppress_output:
                     try:
                         maybe = self.display.render(normalized_state)
                         if asyncio.iscoroutine(maybe):
