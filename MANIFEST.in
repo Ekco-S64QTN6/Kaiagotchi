@@ -1,0 +1,6 @@
+exclude *.pyc .gitignore MANIFEST.in
+include README.md
+include LICENSE
+recursive-include kaiagotchi *.py
+recursive-include kaiagotchi *.yml
+recursive-include kaiagotchi .

@@ -1,0 +1,70 @@
+################################################################################
+# Configuration File for Kaiagotchi - Default Settings
+################################################################################
+
+# This file contains the default settings for the Kaiagotchi application.
+# It is loaded by the Manager on startup.
+
+# --- [main] Core Application Settings ---
+
+[main]
+
+# The name of your Kaiagotchi instance (used for display and state filenames)
+name = "Kaiagotchi"
+
+# Base directory for all application data (state, captured files, etc.).
+# Note: /var/lib/kaiagotchi is the default base_dir set in utils.py.
+# If you change this, ensure the path exists and the user running the process
+# has write permissions.
+base_dir = "/var/lib/kaiagotchi"
+
+# List of paths where the Manager will look for custom plugins to load
+plugin_dirs = [
+    "/etc/kaiagotchi/plugins",
+    "/opt/kaiagotchi/plugins"
+]
+
+# --- [log] Logging Configuration ---
+
+[main.log]
+
+# Minimum severity level for messages to be logged (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+level = "INFO"
+
+# Path to the log file. If set to an empty string, file logging is disabled.
+# Note: The directory for this file (e.g., /var/log/kaiagotchi) must be writable.
+file = "/var/log/kaiagotchi/kaiagotchi.log"
+
+# Enable or disable console (stdout) logging.
+console = true
+
+# --- [ui] User Interface Settings (for later) ---
+path = "/var/log/kaiagotchi/kaiagotchi.log"
+
+[ui]
+
+# Enable the web-based user interface (This will rely on a future Flask component)
+enabled = true
+
+# The IP address and port the web UI server should bind to
+bind_host = "0.0.0.0"
+bind_port = 8080
+
+# The default face expression shown when the agent is idle or content
+default_face = "(>_<)"
+
+# The style of the UI (e.g., 'terminal', 'epaper', 'web')
+# This helps components know what kind of display they are outputting to.
+display_type = "web"
+
+[ui.web]
+enabled = false
+address = "::"
+port = 8080
+auth = false
+username = "kaiagotchi"
+password = "kaiagotchi"
+
+[ui.display]
+enabled = true
+type = "terminal"

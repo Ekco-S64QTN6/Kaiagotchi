@@ -1,0 +1,33 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="kaiagotchi",
+    version="0.1.0",
+    packages=find_packages(include=['kaiagotchi', 'kaiagotchi.*']),
+    install_requires=[
+        "PyYAML",
+        "tomlkit",
+        "flask",
+        "flask-cors",
+        "flask-wtf",
+        "websockets",
+        "requests>=2.32.3",
+        "dbus-python",
+        "file-read-backwards",
+        "python-prctl>=1.8.1",
+        "pycryptodome>=3.17",
+        "cryptography>=42.0.8",
+        "numpy",
+        "python-dateutil",
+        "pydrive2",
+        "tweepy",
+        "scapy>=2.5.0",
+        "pydantic>=2.7.4",
+        "pydantic-settings>=2.2.1",
+        "psutil>=5.9.0",
+        "gast",
+        "shimmy",
+        "toml",
+    ],
+    python_requires=">=3.11",
+)

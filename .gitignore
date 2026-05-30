@@ -1,0 +1,127 @@
+# =============================================================================
+# Kaiagotchi .gitignore
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# CAPTURED NETWORK DATA — never commit, contains real MAC addresses / traffic
+# -----------------------------------------------------------------------------
+*.pcap
+*.pcapng
+*.cap
+*.hccapx
+*.hc22000
+*.handshake
+kaiagotchi/storage/pcaps/
+kaiagotchi/storage/pcaps/*
+!kaiagotchi/storage/pcaps/.gitkeep
+
+# -----------------------------------------------------------------------------
+# RUNTIME STATE — generated at runtime, contains device fingerprints / moods
+# -----------------------------------------------------------------------------
+kaiagotchi/storage/mood_state.json
+kaiagotchi/storage/network_history.json
+kaiagotchi/storage/last_session.json
+*.state.json
+
+# -----------------------------------------------------------------------------
+# CREDENTIALS & SECRETS — API keys, OAuth tokens, passwords
+# -----------------------------------------------------------------------------
+config.toml
+!kaiagotchi/config/examples/config.toml
+!kaiagotchi/config/defaults.toml
+client_secrets.json
+.api-report.json
+settings.yaml
+*.api_key
+*.secret
+.env
+.env.*
+.secrets
+secrets.toml
+
+# -----------------------------------------------------------------------------
+# LOGS — may contain BSSIDs, MACs, captured data fragments
+# -----------------------------------------------------------------------------
+logs/
+*.log
+log/
+
+# -----------------------------------------------------------------------------
+# PYTHON ARTIFACTS
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# -----------------------------------------------------------------------------
+# VIRTUAL ENVIRONMENTS
+# -----------------------------------------------------------------------------
+venv/
+env/
+ENV/
+.venv/
+.env/
+virtualenv/
+
+# -----------------------------------------------------------------------------
+# TESTING & COVERAGE
+# -----------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+nosetests.xml
+test-results/
+*.test.json
+
+# -----------------------------------------------------------------------------
+# IDE & EDITOR
+# -----------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# -----------------------------------------------------------------------------
+# TEMPORARY FILES
+# -----------------------------------------------------------------------------
+/tmp/
+*.tmp
+*.bak
+*.orig
+
+# -----------------------------------------------------------------------------
+# BACKUPS (auto_backup plugin output)
+# -----------------------------------------------------------------------------
+backups/
+*.backup.tar
+*.backup.tar.gz
+kaiagotchi/storage/handshakes_summary.json
+kaiagotchi/storage/handshakes_summary.md

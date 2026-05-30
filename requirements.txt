@@ -1,0 +1,12 @@
+rich
+loguru
+click
+tomlkit
+asyncio
+aioconsole
+colorama
+jinja2
+requests
+scapy
+pydbus
+pyqt6
