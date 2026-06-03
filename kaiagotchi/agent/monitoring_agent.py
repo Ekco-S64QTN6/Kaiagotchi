@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, Optional, List
+import shutil
 
 from kaiagotchi.storage.persistent_network import PersistentNetwork
 from kaiagotchi.storage.persistent_mood import PersistentMood
@@ -219,23 +220,49 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def _set_monitor_mode(self):
-        import subprocess
-        # Set unmanaged in NetworkManager first to prevent interference
-        subprocess.run(["nmcli", "device", "set", self.interface, "managed", "no"], check=False)
-        subprocess.run(["ip", "link", "set", self.interface, "down"], check=False)
-        subprocess.run(["iwconfig", self.interface, "mode", "monitor"], check=False)
-        subprocess.run(["ip", "link", "set", self.interface, "up"], check=False)
+        cmds = [
+            ["nmcli", "device", "set", self.interface, "managed", "no"],
+            ["ip", "link", "set", self.interface, "down"],
+            ["iwconfig", self.interface, "mode", "monitor"],
+            ["ip", "link", "set", self.interface, "up"],
+        ]
+        for cmd in cmds:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                )
+                await proc.wait()
+            except FileNotFoundError:
+                _LOG.debug("[monitoring] Command not found: %s", cmd[0])
+            except Exception as e:
+                _LOG.debug("[monitoring] %s failed: %s", cmd[0], e)
 
     async def _restore_managed_mode(self):
-        import subprocess
-        subprocess.run(["ip", "link", "set", self.interface, "down"], check=False)
-        subprocess.run(["iwconfig", self.interface, "mode", "managed"], check=False)
-        subprocess.run(["ip", "link", "set", self.interface, "up"], check=False)
-        # Restore NetworkManager management
-        subprocess.run(["nmcli", "device", "set", self.interface, "managed", "yes"], check=False)
+        cmds = [
+            ["ip", "link", "set", self.interface, "down"],
+            ["iwconfig", self.interface, "mode", "managed"],
+            ["ip", "link", "set", self.interface, "up"],
+            ["nmcli", "device", "set", self.interface, "managed", "yes"],
+        ]
+        for cmd in cmds:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                )
+                await proc.wait()
+            except FileNotFoundError:
+                _LOG.debug("[monitoring] Command not found: %s", cmd[0])
+            except Exception as e:
+                _LOG.debug("[monitoring] %s failed: %s", cmd[0], e)
 
     # ------------------------------------------------------------------
     async def _launch_airodump(self):
+        # Check if airodump-ng is installed
+        if not shutil.which("airodump-ng"):
+            raise RuntimeError(
+                "airodump-ng not found. Install aircrack-ng: sudo pacman -S aircrack-ng"
+            )
+
         session_time = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
         base_name = f"{session_time}_session"
         self._base_path = Path("/tmp") / f"kaiagotchi_{os.getpid()}"
@@ -384,9 +411,21 @@ class MonitoringAgent:
                 if self.persistent_network:
                     try:
                         for ap in aps:
-                            self.persistent_network.add_bssid(ap["bssid"], ap)
+                            self.persistent_network.update_bssid(
+                                bssid=ap["bssid"],
+                                essid=ap.get("essid", ""),
+                                packets=int(ap.get("beacons", 0) or 0),
+                                beacons=int(ap.get("beacons", 0) or 0),
+                                channel=ap.get("channel", ""),
+                                encryption=ap.get("privacy", ""),
+                            )
                         for station in stations:
-                            self.persistent_network.add_station(station["station_mac"], station)
+                            self.persistent_network.update_station(
+                                sta_mac=station["station_mac"],
+                                associated_bssid=station.get("bssid", ""),
+                                packets=int(station.get("packets", 0) or 0),
+                                essids=station.get("probed_essids", ""),
+                            )
                     except Exception as e:
                         _LOG.debug("Failed to update persistent network: %s", e)
 

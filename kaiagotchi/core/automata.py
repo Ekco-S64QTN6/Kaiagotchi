@@ -300,7 +300,8 @@ class Automata:
             # Priority 1: Use Epoch system if available (primary reward source)
             if self._epoch and hasattr(self._epoch, 'next'):
                 try:
-                    self._epoch.next()
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, self._epoch.next)
                     epoch_data = self._epoch.data()
                     reward_val = float(epoch_data.get("reward", 0.0))
                     _LOG.debug("Automata.tick: using epoch reward %.4f", reward_val)

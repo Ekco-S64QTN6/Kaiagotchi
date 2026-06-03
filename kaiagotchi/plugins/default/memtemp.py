@@ -107,7 +107,14 @@ class MemTemp(plugins.Plugin):
 
     def mem_usage(self) -> str:
         if self._should_update() or 'mem' not in self._cached_values:
-            self._cached_values['mem'] = f"{int(kaiagotchi.mem_usage() * 100)}%"
+            try:
+                info = kaiagotchi.mem_usage()
+                total = float(info.get("MemTotal", "0 kB").split()[0])
+                available = float(info.get("MemAvailable", "0 kB").split()[0])
+                pct = int((1 - available / total) * 100) if total > 0 else 0
+            except Exception:
+                pct = 0
+            self._cached_values['mem'] = f"{pct}%"
         return self._cached_values['mem']
 
     def cpu_load(self) -> str:

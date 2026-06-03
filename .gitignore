@@ -14,6 +14,8 @@
 kaiagotchi/storage/pcaps/
 kaiagotchi/storage/pcaps/*
 !kaiagotchi/storage/pcaps/.gitkeep
+kaiagotchi/storage/handshakes_summary.json
+kaiagotchi/storage/handshakes_summary.md
 
 # -----------------------------------------------------------------------------
 # RUNTIME STATE — generated at runtime, contains device fingerprints / moods
@@ -116,6 +118,7 @@ Thumbs.db
 *.tmp
 *.bak
 *.orig
+kaiagotchi_review.md
 
 # -----------------------------------------------------------------------------
 # BACKUPS (auto_backup plugin output)
@@ -123,5 +126,5 @@ Thumbs.db
 backups/
 *.backup.tar
 *.backup.tar.gz
-kaiagotchi/storage/handshakes_summary.json
-kaiagotchi/storage/handshakes_summary.md
+
+

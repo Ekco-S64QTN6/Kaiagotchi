@@ -232,8 +232,7 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
     try:
         if use_streaming and os.path.getsize(filepath) > 50 * 1024 * 1024:  # 50MB
             parser_logger.info("Using streaming mode for large file")
-            packets_reader = PcapReader(filepath)
-            packets = packets_reader
+            packets = list(PcapReader(filepath))
         else:
             packets = rdpcap(filepath)
             
@@ -408,8 +407,7 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
             continue
 
     # Close reader if we used streaming mode
-    if use_streaming and 'packets_reader' in locals():
-        packets_reader.close()
+    # (No longer needed since we collect into list, but kept for safety)
 
     parser_logger.info(
         f"Comprehensive analysis complete: {len(bssids)} BSSIDs, "
@@ -457,8 +455,7 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> List[CaptureData]:
     try:
         if use_streaming and os.path.getsize(filepath) > 50 * 1024 * 1024:  # 50MB
             parser_logger.info("Using streaming mode for large file")
-            packets_reader = PcapReader(filepath)
-            packets = packets_reader
+            packets = list(PcapReader(filepath))
         else:
             packets = rdpcap(filepath)
             
@@ -548,8 +545,7 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> List[CaptureData]:
             continue
 
     # Close reader if we used streaming mode
-    if use_streaming and 'packets_reader' in locals():
-        packets_reader.close()
+    # (No longer needed since we collect into list, but kept for safety)
 
     parser_logger.info(f"Finished parsing {filepath}. Found {len(captures)} unique valid captures.")
     return captures
@@ -588,7 +584,10 @@ def export_to_hashcat(captures: List[CaptureData], output_dir: str = ".") -> Dic
     pmkid_entries = []
     for capture in captures:
         if capture.pmkid:
-            entry = f"{capture.bssid.replace(':', '')}*{capture.client_mac.replace(':', '') if capture.client_mac else 'ffffffffffff'}*{capture.ssid}*{capture.pmkid}"
+            bssid_clean = capture.bssid.replace(':', '') if capture.bssid else 'ffffffffffff'
+            client_clean = capture.client_mac.replace(':', '') if capture.client_mac else 'ffffffffffff'
+            ssid_hex = capture.ssid.encode('utf-8', errors='ignore').hex() if capture.ssid else ''
+            entry = f"{capture.pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
             pmkid_entries.append(entry)
     
     if pmkid_entries:

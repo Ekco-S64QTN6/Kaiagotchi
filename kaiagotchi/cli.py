@@ -195,6 +195,11 @@ async def run_agent() -> int:
             os._exit(0)
         logger.info("Signal received, initiating shutdown...")
         _shutdown_event.set()
+        if view and view.display:
+            try:
+                view.display.stop()
+            except Exception:
+                pass
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -203,6 +208,7 @@ async def run_agent() -> int:
             # Windows support or non-main thread
             signal.signal(sig, lambda s, f: handle_signal())
 
+    display_monitor_task = None
     try:
         # Load configuration
         config = load_config(args.config)
@@ -227,6 +233,16 @@ async def run_agent() -> int:
         # Initialize View (do not call start_rotation here; Manager/Agent will control lifecycle)
         view = View(config)
         view.suppress_output = True  # Suppress output during splash
+
+        async def monitor_display_quit():
+            while not _shutdown_event.is_set():
+                if view and view.display and getattr(view.display, "should_quit", False):
+                    logger.info("Shutdown requested via UI (Q key)")
+                    _shutdown_event.set()
+                    break
+                await asyncio.sleep(0.1)
+
+        display_monitor_task = asyncio.create_task(monitor_display_quit())
 
         # Show splash screen (after View init so it clears screen first)
         splash = None
@@ -473,8 +489,16 @@ async def run_agent() -> int:
     finally:
         # Clean shutdown for Manager/Agent/View with proper timeout
         try:
+            # Cancel display monitor task
+            if display_monitor_task and not display_monitor_task.done():
+                display_monitor_task.cancel()
+                try:
+                    await display_monitor_task
+                except asyncio.CancelledError:
+                    pass
+
             # Give shutdown process time to complete
-            shutdown_timeout = 10.0  # Increased timeout for proper PCAP archiving
+            shutdown_timeout = 5.0  # Reduced to 5s max hard timeout
             
             # If manager has a stop/shutdown coroutine, await it
             if mgr is not None:

@@ -5,6 +5,6 @@ AI Subsystems for Kaiagotchi:
 - RewardEngine: reward modeling
 """
 from .reward import RewardEngine
-from .epoch import EpochTracker
+from .epoch import Epoch as EpochTracker
 
 __all__ = ["RewardEngine", "EpochTracker"]

@@ -306,12 +306,13 @@ class Agent(kaiagotchiBase):
                         "metrics": getattr(self.system_state, "metrics", {}),
                         "session_metrics": getattr(self.system_state, "session_metrics", {}),
                     }
-                    result = self.decision_engine.process_state(state_dict, self.action_manager)
+                    result = await self.decision_engine.process_state(state_dict, self.action_manager)
                     if hasattr(result, "name"):
                         self.logger.debug("DecisionEngine state: %s", result.name)
                 
                 if self.epoch_tracker:
-                    await self.epoch_tracker.next()
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, self.epoch_tracker.next)
                     self.logger.debug("Epoch advanced with shared RewardEngine")
 
             except asyncio.CancelledError:

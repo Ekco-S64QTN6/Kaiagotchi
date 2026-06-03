@@ -1,12 +1,9 @@
-rich
-loguru
-click
-tomlkit
-asyncio
-aioconsole
-colorama
-jinja2
-requests
-scapy
-pydbus
-pyqt6
+# Kaiagotchi dependencies are managed via pyproject.toml
+#
+# Install via:
+#   pip install -e .          # core dependencies
+#   pip install -e ".[full]"  # all optional dependencies
+#
+# System prerequisites (not pip-installable):
+#   sudo pacman -S aircrack-ng    # includes airodump-ng
+#   # hcxpcapngtool: https://github.com/ZerBea/hcxdumptool

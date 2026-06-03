@@ -1,7 +1,7 @@
 [main]
 name = "kaiagotchi"
 lang = "en"
-iface = "wlan1"
+iface = "wlan0"
 mon_start_cmd = "/usr/bin/monstart"
 mon_stop_cmd = "/usr/bin/monstop"
 mon_max_blind_epochs = 5
