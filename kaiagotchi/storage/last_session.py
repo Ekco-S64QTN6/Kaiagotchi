@@ -1,10 +1,11 @@
 # kaiagotchi/storage/last_session.py
-import os
 import json
 import logging
-import tempfile
+import os
 import stat
-from typing import Dict, Any
+import tempfile
+from typing import Any
+
 
 class LastSession:
     """
@@ -21,7 +22,7 @@ class LastSession:
         self.logger = logging.getLogger(__name__)
         self.session_dir = os.path.expanduser("~/.kaiagotchi")
         self.session_file = os.path.join(self.session_dir, "last_session.json")
-        self.data: Dict[str, Any] = {}
+        self.data: dict[str, Any] = {}
 
         # Ensure directory exists and is writable by the user
         try:
@@ -35,7 +36,7 @@ class LastSession:
         """Load last session data from JSON file."""
         try:
             if os.path.exists(self.session_file):
-                with open(self.session_file, "r", encoding="utf-8") as f:
+                with open(self.session_file, encoding="utf-8") as f:
                     self.data = json.load(f)
                 self.logger.info(f"Loaded session data from {self.session_file}")
             else:
@@ -113,6 +114,6 @@ class LastSession:
         """Set a single key/value pair in session data."""
         self.data[key] = value
 
-    def update(self, updates: Dict[str, Any]) -> None:
+    def update(self, updates: dict[str, Any]) -> None:
         """Update multiple key/value pairs in session data."""
         self.data.update(updates)

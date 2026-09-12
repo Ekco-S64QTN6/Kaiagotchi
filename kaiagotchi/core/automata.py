@@ -10,13 +10,14 @@ Enhanced with proper mood mapping to available faces and robust reward handling:
 """
 
 from __future__ import annotations
-import time
-import logging
+
 import asyncio
 import inspect
+import logging
 import random
-from typing import Any, Dict, Optional
+import time
 from enum import Enum
+from typing import Any
 
 import kaiagotchi.plugins as plugins
 
@@ -30,8 +31,8 @@ try:
 except Exception:
     Epoch = None
 
-from kaiagotchi.ui.voice import Voice
 from kaiagotchi.ui import faces
+from kaiagotchi.ui.voice import Voice
 
 _LOG = logging.getLogger("kaiagotchi.core.automata")
 
@@ -53,7 +54,7 @@ class AgentMood(Enum):
 
 
 class Automata:
-    def __init__(self, config: Dict[str, Any], view: Any, reward_engine: Optional[Any] = None, epoch_tracker: Optional[Any] = None, on_thought: Optional[Any] = None):
+    def __init__(self, config: dict[str, Any], view: Any, reward_engine: Any | None = None, epoch_tracker: Any | None = None, on_thought: Any | None = None):
         self._config = config or {}
         self._view = view
         self._on_thought = on_thought
@@ -64,8 +65,8 @@ class Automata:
 
         # Mood / reward smoothing
         self._alpha = float(self._config.get("personality", {}).get("reward_alpha", 0.5))
-        self._ema_reward: Optional[float] = None
-        self._last_reward: Optional[float] = None
+        self._ema_reward: float | None = None
+        self._last_reward: float | None = None
 
         # Emotional logic
         self._current_mood: AgentMood = getattr(
@@ -81,7 +82,7 @@ class Automata:
         # UI / voice bridge
         self._voice = Voice()
         self._running = False
-        self._loop_task: Optional[asyncio.Task] = None
+        self._loop_task: asyncio.Task | None = None
         self._state_getter = None
 
         # Mood coordination and debouncing
@@ -162,14 +163,14 @@ class Automata:
             if self._mood_update_in_progress:
                 _LOG.debug("Mood update already in progress, skipping")
                 return
-                
+
             self._mood_update_in_progress = True
-            
+
             try:
                 now = time.time()
                 if new_mood == self._current_mood:
                     return
-                    
+
                 since_change = now - self._last_mood_change
                 if since_change < self._min_mood_duration:
                     _LOG.debug("Mood change suppressed (%.1fs < %.1fs)", since_change, self._min_mood_duration)
@@ -187,7 +188,7 @@ class Automata:
                     try:
                         # Use both update methods to ensure propagation
                         mood_value = new_mood.value
-                        
+
                         # Method 1: Direct mood update (preferred)
                         if hasattr(self._view, "update_mood"):
                             try:
@@ -198,7 +199,7 @@ class Automata:
                                 _LOG.debug(f"Automata: Successfully updated view mood to {mood_value}")
                             except Exception as e:
                                 _LOG.warning(f"Direct mood update failed, using fallback: {e}")
-                        
+
                         # Method 2: General state update (fallback)
                         if hasattr(self._view, "async_update"):
                             try:
@@ -211,7 +212,7 @@ class Automata:
                                 _LOG.debug(f"Automata: Successfully updated view state with mood {mood_value}")
                             except Exception as e:
                                 _LOG.warning(f"State update fallback also failed: {e}")
-                        
+
                     except Exception as e:
                         _LOG.error(f"Failed to update view mood: {e}", exc_info=True)
 
@@ -220,7 +221,7 @@ class Automata:
                     plugins.on("mood_change", self, old_mood, new_mood)
                 except Exception as e:
                     _LOG.debug("Plugin mood change notification failed: %s", e)
-                    
+
             except Exception as e:
                 _LOG.error("Automata._apply_mood failed: %s", e, exc_info=True)
             finally:
@@ -234,17 +235,17 @@ class Automata:
             current_time = time.time()
             if current_time - self._last_mood_check < self._mood_check_interval:
                 return self._current_mood
-                
+
             self._last_mood_check = current_time
-            
+
             smoothed = self._smooth_reward(reward)
             _LOG.debug("Automata: reward=%.4f smoothed=%.4f", reward, smoothed)
             target = self._map_reward_to_mood(smoothed)
-            
+
             # Only create task if mood actually changed
             if target != self._current_mood:
                 asyncio.create_task(self._apply_mood(target))
-                
+
             self._last_reward = smoothed
             return self._current_mood
         except Exception as e:
@@ -257,12 +258,12 @@ class Automata:
         current_time = time.time()
         if current_time - self._last_mood_check < self._mood_check_interval:
             return
-            
+
         if current_time - self._last_mood_change < (self._min_mood_duration * 2):
             return
         if self._ema_reward is None or self._last_reward is None:
             return
-            
+
         drift_interval = 120.0  # 2 minutes neutral window before drift
         if current_time - self._last_drift_time < drift_interval:
             return
@@ -275,28 +276,28 @@ class Automata:
             if random.random() < 0.4:  # Reduced probability to avoid excessive drifting
                 # Base drift options for neutral state
                 drift_options = [AgentMood.BORED, AgentMood.CURIOUS, AgentMood.SLEEPY]
-                
+
                 # Weight the options based on current state
                 if self._ema_reward < -0.05:
                     drift_options = [AgentMood.BORED, AgentMood.SAD, AgentMood.FRUSTRATED]
                 elif self._ema_reward > 0.05:
                     drift_options = [AgentMood.CURIOUS, AgentMood.HAPPY, AgentMood.CONFIDENT]
-                    
+
                 drift_mood = random.choice(drift_options)
                 _LOG.info("🌊 Mood drift triggered: %s → %s", self._current_mood.name, drift_mood.name)
                 await self._apply_mood(drift_mood)
 
     # -----------------------------------------------------
-    async def tick(self, state: Dict[str, Any]) -> AgentMood:
+    async def tick(self, state: dict[str, Any]) -> AgentMood:
         """Async tick: evaluate reward and update mood."""
         try:
             # Debounce mood checks
             current_time = time.time()
             if current_time - self._last_mood_check < self._mood_check_interval:
                 return self._current_mood
-                
+
             reward_val = 0.0
-            
+
             # Priority 1: Use Epoch system if available (primary reward source)
             if self._epoch and hasattr(self._epoch, 'next'):
                 try:
@@ -308,7 +309,7 @@ class Automata:
                 except Exception as e:
                     _LOG.warning("Epoch reward failed, falling back: %s", e)
                     reward_val = 0.0
-            
+
             # Priority 2: Use RewardEngine directly if Epoch failed or unavailable
             if reward_val == 0.0 and self._reward and hasattr(self._reward, 'evaluate'):
                 try:
@@ -317,7 +318,7 @@ class Automata:
                 except Exception as e:
                     _LOG.warning("Direct reward evaluation failed: %s", e)
                     reward_val = 0.0
-            
+
             # Priority 3: Fallback to simple AP-based reward
             if reward_val == 0.0:
                 try:
@@ -333,13 +334,13 @@ class Automata:
             _LOG.debug("Automata.tick: final reward %.4f", reward_val)
             self.process_reward(reward_val)
             await self._maybe_drift()
-            
+
             # Randomly generate a thought
             if random.random() < 0.1:  # 10% chance per tick
                 await self.generate_thought()
-                
+
             return self._current_mood
-            
+
         except Exception as e:
             _LOG.error("Automata.tick failed: %s", e, exc_info=True)
             return self._current_mood
@@ -395,7 +396,7 @@ class Automata:
         """Get current mood (read-only)."""
         return self._current_mood
 
-    @property 
+    @property
     def last_reward(self) -> float:
         """Get last smoothed reward value."""
         return self._last_reward or 0.0
@@ -416,7 +417,7 @@ class Automata:
     async def set_angry(self): await self._apply_mood(AgentMood.ANGRY)
     async def set_neutral(self): await self._apply_mood(AgentMood.NEUTRAL)
 
-    def get_emotional_state(self) -> Dict[str, Any]:
+    def get_emotional_state(self) -> dict[str, Any]:
         """Get comprehensive emotional state for debugging."""
         return {
             "current_mood": self._current_mood.value,
@@ -435,7 +436,7 @@ class Automata:
 
         try:
             thought = self._voice.get_mood_line(self._current_mood)
-            
+
             # Use callback if available (preferred for persistence)
             if self._on_thought and callable(self._on_thought):
                 if inspect.iscoroutinefunction(self._on_thought):
@@ -452,11 +453,11 @@ class Automata:
                 "message": f"💭 {thought}",  # Use bubble to distinguish thoughts
                 "type": "thought"
             }
-            
+
             await self._view.async_update({
                 "recent_captures": [event]
             })
             _LOG.debug(f"Generated thought (direct): {thought}")
-            
+
         except Exception as e:
             _LOG.error(f"Failed to generate thought: {e}")

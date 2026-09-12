@@ -2,6 +2,7 @@
 import importlib
 import unittest
 
+
 class TestImports(unittest.TestCase):
     """Test suite to verify all critical modules can be imported."""
 
@@ -10,7 +11,7 @@ class TestImports(unittest.TestCase):
         modules = [
             "kaiagotchi.agent.agent",
             "kaiagotchi.agent.decision_engine",
-            "kaiagotchi.ui.terminal_display", 
+            "kaiagotchi.ui.terminal_display",
             "kaiagotchi.ui.voice.voice",
             "kaiagotchi.ui.view",
             "kaiagotchi.core.automata",
@@ -24,6 +25,6 @@ class TestImports(unittest.TestCase):
                 self.assertIsNotNone(module, f"Failed to import {module_name}")
             except Exception as e:
                 self.fail(f"Failed to import {module_name}: {str(e)}")
-                
+
 if __name__ == '__main__':
     unittest.main()

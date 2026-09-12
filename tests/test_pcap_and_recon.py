@@ -2,7 +2,9 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+
 from kaiagotchi.storage.persistent_network import PersistentNetwork
+
 
 class TestPcapAndRecon(unittest.TestCase):
     def setUp(self):
@@ -38,12 +40,12 @@ class TestPcapAndRecon(unittest.TestCase):
             channel="6",
             encryption="WPA2"
         )
-        
+
         # Add mock PCAP record with analysis
         pcap_path = Path(self.network.pcaps_dir) / "2026-05-30T12-00-00_airodump.pcap"
         # Create dummy file
         pcap_path.touch()
-        
+
         # Register mock PCAP record with analysis containing a PMKID handshake
         self.network._data["pcaps"]["2026-05-30T12-00-00_airodump.pcap"] = {
             "bssid": "00:11:22:33:44:55",
@@ -61,34 +63,34 @@ class TestPcapAndRecon(unittest.TestCase):
                 }
             ]
         }
-        
+
         # Save triggers report generation
         self.network.save()
 
         # Verify output files exist
         json_path = os.path.join(self.test_dir.name, "handshakes_summary.json")
         md_path = os.path.join(self.test_dir.name, "handshakes_summary.md")
-        
+
         self.assertTrue(os.path.exists(json_path))
         self.assertTrue(os.path.exists(md_path))
 
         # Check content of JSON report
         import json
-        with open(json_path, "r") as f:
+        with open(json_path) as f:
             data = json.load(f)
-            
+
         self.assertEqual(data["summary"]["total_unique_ssids_seen"], 1)
         self.assertEqual(data["summary"]["total_handshakes_captured"], 1)
         self.assertEqual(data["summary"]["total_pmkids"], 1)
         self.assertIn("Test-AP", data["ssids"])
-        
+
         # Verify hashcat values are constructed correctly
         handshake = data["handshakes"][0]
         self.assertEqual(handshake["hashcat_22000"], "WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150")
         self.assertEqual(handshake["hashcat_16800"], "0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150")
 
         # Check content of MD report
-        with open(md_path, "r") as f:
+        with open(md_path) as f:
             md_content = f.read()
 
         self.assertIn("Test-AP", md_content)

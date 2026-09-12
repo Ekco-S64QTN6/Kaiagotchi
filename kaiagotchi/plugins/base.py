@@ -1,29 +1,34 @@
 # kaiagotchi/plugins/base.py
-from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+"""Base class for Kaiagotchi plugins.
 
-class Plugin(ABC):
-    """Abstract base class for Kaiagotchi plugins."""
+All lifecycle hooks are optional no-ops so a plugin only needs to override the
+callbacks it cares about. A minimal plugin is::
 
-    def __init__(self, name: str, config: Optional[Dict[str, Any]] = None):
+    from kaiagotchi.plugins.base import Plugin
+
+    class MyPlugin(Plugin):
+        def on_state_update(self, state):
+            ...
+"""
+from typing import Any
+
+
+class Plugin:
+    """Base class every Kaiagotchi plugin inherits from."""
+
+    def __init__(self, name: str, config: dict[str, Any] | None = None) -> None:
         self.name = name
         self.config = config or {}
         self.enabled = True
 
-    @abstractmethod
     def on_load(self) -> None:
-        """Called when the plugin is loaded."""
-        pass
+        """Called once when the plugin is loaded."""
 
-    @abstractmethod
     def on_unload(self) -> None:
-        """Called when the plugin is unloaded."""
-        pass
+        """Called once when the plugin is unloaded."""
 
     def on_event(self, event_name: str, data: Any = None) -> None:
-        """Called when an event occurs in the system."""
-        pass
+        """Called when a named event is dispatched (e.g. ``mood_change``)."""
 
-    def on_state_update(self, state: Dict[str, Any]) -> None:
-        """Called periodically with the full system state."""
-        pass
+    def on_state_update(self, state: dict[str, Any]) -> None:
+        """Called periodically with the full system state snapshot."""

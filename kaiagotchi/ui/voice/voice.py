@@ -8,12 +8,13 @@ Rewritten tone:
 """
 
 from __future__ import annotations
+
 import gettext
+import logging
 import os
 import random
-import logging
 from datetime import datetime
-from typing import Any, Dict, Optional, Union, List
+from typing import Any
 
 from kaiagotchi.data.system_types import AgentMood
 from kaiagotchi.ui import faces  # <— unified mood-face link
@@ -25,7 +26,7 @@ _LOG = logging.getLogger("kaiagotchi.ui.voice")
 # Central mood profile table — tone, timing, and visual sync
 # ------------------------------------------------------------------
 
-MOOD_PROFILES: Dict[str, Dict[str, Any]] = {
+MOOD_PROFILES: dict[str, dict[str, Any]] = {
     "happy": {
         "interval": 10.0,
         "face": faces.get_face("happy"),
@@ -72,7 +73,7 @@ MOOD_PROFILES: Dict[str, Dict[str, Any]] = {
 class Voice:
     """voice message generator for Kaiagotchi."""
 
-    VOICE_LINES: Dict[str, List[str]] = {
+    VOICE_LINES: dict[str, list[str]] = {
         "happy": [
             "Signal acquisition successful.",
             "Data assimilation complete.",
@@ -117,7 +118,7 @@ class Voice:
         ],
     }
 
-    CHATTER_INTERVALS: Dict[str, float] = {k: v["interval"] for k, v in MOOD_PROFILES.items()}
+    CHATTER_INTERVALS: dict[str, float] = {k: v["interval"] for k, v in MOOD_PROFILES.items()}
 
     def __init__(self, lang: str = "en"):
         try:
@@ -126,7 +127,7 @@ class Voice:
             self._ = translation.gettext
         except Exception:
             self._ = lambda s: s
-        self._last_line: Optional[str] = None
+        self._last_line: str | None = None
 
     def custom(self, s: str) -> str:
         return self._(s)
@@ -135,7 +136,7 @@ class Voice:
         return self._("Awaiting transmission. Static is preferable to silence.")
 
     # ---------------------------------------------------------------
-    def get_mood_line(self, mood: Union[str, AgentMood, None]) -> str:
+    def get_mood_line(self, mood: str | AgentMood | None) -> str:
         """Return a cyberpunk-toned mood line."""
         key = None
         try:
@@ -155,11 +156,11 @@ class Voice:
 
         line = random.choice(pool)
         if line == self._last_line and len(pool) > 1:
-            line = random.choice([l for l in pool if l != self._last_line])
+            line = random.choice([cand for cand in pool if cand != self._last_line])
         self._last_line = line
         return self._(line)
 
-    def get_chatter_interval(self, mood: Union[str, AgentMood, None]) -> float:
+    def get_chatter_interval(self, mood: str | AgentMood | None) -> float:
         key = None
         try:
             if isinstance(mood, AgentMood):
@@ -171,7 +172,7 @@ class Voice:
         # use unified mood profiles
         return MOOD_PROFILES.get(key or "neutral", {}).get("interval", 25.0)
 
-    def get_face_for_mood(self, mood: Union[str, AgentMood, None]) -> str:
+    def get_face_for_mood(self, mood: str | AgentMood | None) -> str:
         """Return the ASCII face linked to the given mood."""
         key = None
         try:
@@ -184,7 +185,7 @@ class Voice:
         return MOOD_PROFILES.get(key or "neutral", {}).get("face", faces.get_face("neutral"))
 
     # ---------------------------------------------------------------
-    def get_event_line(self, message: str, mood: Optional[Union[str, AgentMood]] = None) -> str:
+    def get_event_line(self, message: str, mood: str | AgentMood | None = None) -> str:
         """Return a cyberpunk-flavored system event message."""
         msg_lower = message.lower()
         mood_key = (
@@ -238,7 +239,7 @@ class Voice:
         return self._(f"{prefix} {base_line}".strip())
 
     # ---------------------------------------------------------------
-    def format_chatter_entry(self, capture: Dict[str, Any]) -> str:
+    def format_chatter_entry(self, capture: dict[str, Any]) -> str:
         """Format system chatter for terminal UI."""
         try:
             ts = capture.get("timestamp") or datetime.now().strftime("%H:%M:%S")
@@ -249,7 +250,7 @@ class Voice:
             _LOG.debug("format_chatter_entry failed", exc_info=True)
             return ""
 
-    def contextual_line(self, state: Optional[Dict[str, Any]] = None) -> str:
+    def contextual_line(self, state: dict[str, Any] | None = None) -> str:
         """Generate a context-aware voice line."""
         try:
             st = state or {}

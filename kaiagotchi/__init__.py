@@ -27,20 +27,19 @@ __all__ = [
     "reboot",
 ]
 
-import re
-import time
-import logging
 import argparse
+import logging
+import re
 import sys
-from typing import Optional, Dict, Any
 from importlib import import_module
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Core metadata and system utilities
 # ---------------------------------------------------------------------------
-_name: Optional[str] = None
+_name: str | None = None
 
 
 def set_name(new_name: str) -> None:
@@ -51,7 +50,7 @@ def set_name(new_name: str) -> None:
     new_name = str(new_name).strip()
     if new_name == "":
         raise ValueError("name cannot be empty")
-    if not re.match(r"^[a-zA-Z0-9\\-]{2,25}$", new_name):
+    if not re.match(r"^[a-zA-Z0-9-]{2,25}$", new_name):
         raise ValueError("name must be 2-25 chars, letters/digits/hyphen only")
     _name = new_name
 
@@ -62,21 +61,21 @@ def name() -> str:
     return _name or "kaiagotchi"
 
 
-def uptime() -> Optional[float]:
+def uptime() -> float | None:
     """Return system uptime in seconds, or None if unavailable."""
     try:
-        with open("/proc/uptime", "r", encoding="utf-8") as f:
+        with open("/proc/uptime", encoding="utf-8") as f:
             first = f.readline().split()[0]
             return float(first)
     except Exception:
         return None
 
 
-def mem_usage() -> Dict[str, Any]:
+def mem_usage() -> dict[str, Any]:
     """Return a minimal memory-info dict or empty dict if unavailable."""
     try:
         info = {}
-        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+        with open("/proc/meminfo", encoding="utf-8") as f:
             for line in f:
                 if ":" not in line:
                     continue

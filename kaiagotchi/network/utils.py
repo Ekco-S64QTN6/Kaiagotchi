@@ -1,10 +1,9 @@
 # kaiagotchi/network/utils.py
 import logging
-from typing import List
 
 logger = logging.getLogger(__name__)
 
-def iface_channels(interface: str) -> List[int]:
+def iface_channels(interface: str) -> list[int]:
     """Get supported channels for a wireless interface."""
     try:
         return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]

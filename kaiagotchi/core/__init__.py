@@ -2,8 +2,8 @@
 """
 Core runtime subsystems for Kaiagotchi.
 """
-from .manager import Manager
 from .automata import Automata
+from .manager import Manager
 from .system import SystemTicker
 
 __all__ = ["Manager", "Automata", "SystemTicker"]

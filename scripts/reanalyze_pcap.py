@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
-import os
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from kaiagotchi.storage.persistent_network import PersistentNetwork

@@ -1,53 +1,54 @@
 # kaiagotchi/plugins/manager.py
-import os
 import importlib
 import logging
-import sys
-from typing import Dict, List, Type, Any
+from pathlib import Path
+from typing import Any
+
 from .base import Plugin
 
 _LOG = logging.getLogger("kaiagotchi.plugins.manager")
 
+
 class PluginManager:
-    """Manages the lifecycle of Kaiagotchi plugins."""
+    """Manages the lifecycle of Kaiagotchi plugins.
 
-    def __init__(self, plugin_dir: str = "kaiagotchi/plugins"):
-        self.plugin_dir = plugin_dir
-        self.plugins: Dict[str, Plugin] = {}
-        self._sys_path_added = False
+    A plugin is a subpackage of :mod:`kaiagotchi.plugins` (a directory with an
+    ``__init__.py`` exposing a :class:`~kaiagotchi.plugins.base.Plugin`
+    subclass). Discovered plugins are loaded unless their config sets
+    ``enabled = false``.
+    """
 
-    def discover_and_load(self, config: Dict[str, Any] = None):
-        """Discover and load plugins from the plugin directory."""
+    def __init__(self, plugin_dir: str | Path | None = None):
+        # Resolve relative to this package so discovery works regardless of CWD.
+        self.plugin_dir = Path(plugin_dir) if plugin_dir else Path(__file__).resolve().parent
+        self.plugins: dict[str, Plugin] = {}
+
+    def discover_and_load(self, config: dict[str, Any] | None = None):
+        """Discover and load plugin subpackages from the plugin directory."""
         config = config or {}
-        
-        # Ensure plugin dir is in sys.path
-        abs_plugin_dir = os.path.abspath(self.plugin_dir)
-        if abs_plugin_dir not in sys.path:
-            sys.path.append(abs_plugin_dir)
-            self._sys_path_added = True
 
-        if not os.path.exists(abs_plugin_dir):
-            _LOG.warning(f"Plugin directory not found: {abs_plugin_dir}")
+        if not self.plugin_dir.is_dir():
+            _LOG.warning("Plugin directory not found: %s", self.plugin_dir)
             return
 
-        # Iterate over subdirectories in plugin_dir
-        for item in os.listdir(abs_plugin_dir):
-            item_path = os.path.join(abs_plugin_dir, item)
-            if os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, "__init__.py")):
-                try:
-                    module_name = f"kaiagotchi.plugins.{item}"
-                    module = importlib.import_module(module_name)
-                    
-                    # Look for a 'Plugin' subclass in the module
-                    for attr_name in dir(module):
-                        attr = getattr(module, attr_name)
-                        if isinstance(attr, type) and issubclass(attr, Plugin) and attr is not Plugin:
-                            plugin_instance = attr(name=item, config=config.get(item, {}))
-                            self.register_plugin(plugin_instance)
-                            _LOG.info(f"Loaded plugin: {item}")
-                            break
-                except Exception as e:
-                    _LOG.error(f"Failed to load plugin {item}: {e}", exc_info=True)
+        for item_path in sorted(self.plugin_dir.iterdir()):
+            if not (item_path.is_dir() and (item_path / "__init__.py").exists()):
+                continue
+            name = item_path.name
+            plugin_config = config.get(name, {})
+            if plugin_config.get("enabled") is False:
+                _LOG.debug("Plugin %s disabled via config; skipping", name)
+                continue
+            try:
+                module = importlib.import_module(f"kaiagotchi.plugins.{name}")
+                for attr_name in dir(module):
+                    attr = getattr(module, attr_name)
+                    if isinstance(attr, type) and issubclass(attr, Plugin) and attr is not Plugin:
+                        self.register_plugin(attr(name=name, config=plugin_config))
+                        _LOG.info("Loaded plugin: %s", name)
+                        break
+            except Exception as e:
+                _LOG.error("Failed to load plugin %s: %s", name, e, exc_info=True)
 
     def register_plugin(self, plugin: Plugin):
         """Register a plugin instance."""
@@ -77,7 +78,7 @@ class PluginManager:
                 except Exception as e:
                     _LOG.error(f"Error in on_event for plugin {plugin.name}: {e}")
 
-    def dispatch_state_update(self, state: Dict[str, Any]):
+    def dispatch_state_update(self, state: dict[str, Any]):
         """Dispatch state update to all enabled plugins."""
         for plugin in self.plugins.values():
             if plugin.enabled:

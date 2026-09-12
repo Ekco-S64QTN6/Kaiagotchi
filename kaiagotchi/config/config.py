@@ -1,9 +1,10 @@
 #config/config.py
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
+
 import tomlkit
-import logging
 
 _log = logging.getLogger(__name__)
 
@@ -46,12 +47,12 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return base
 
 
-def load_config(system_path: Union[Path, None] = None) -> dict:
+def load_config(system_path: Path | None = None) -> dict:
     """
     Load the defaults.toml configuration and merge it with the optional system config.
 
     Args:
-        system_path (Path, optional): Path to a system configuration file. If None, 
+        system_path (Path, optional): Path to a system configuration file. If None,
                                        the default system config path is used.
 
     Returns:
@@ -59,16 +60,16 @@ def load_config(system_path: Union[Path, None] = None) -> dict:
     """
     # Load the default configuration
     cfg = _load_toml(DEFAULTS_PATH)
-    
+
     # Determine system config path if not provided
     sys_path = Path(system_path) if system_path else SYSTEM_CONFIG_PATH
     # Load the system configuration
     sys_cfg = _load_toml(sys_path)
-    
+
     # Merge system config into defaults
     if sys_cfg:
         cfg = _deep_merge(cfg, sys_cfg)
-    
+
     return cfg
 
 
@@ -76,7 +77,7 @@ def load_config(system_path: Union[Path, None] = None) -> dict:
 CONFIG: dict[str, Any] = load_config()
 
 
-def reload(system_path: Union[Path, None] = None) -> None:
+def reload(system_path: Path | None = None) -> None:
     """
     Reload the configuration from the disk, merging with the system configuration if provided.
 

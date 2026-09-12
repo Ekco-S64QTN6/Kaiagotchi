@@ -1,15 +1,14 @@
 from __future__ import annotations
-import asyncio
+
 import curses
 import logging
-import os
 import re
 import shutil
 import sys
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from kaiagotchi.ui import faces
 
@@ -30,14 +29,14 @@ class TerminalDisplay:
     - Q key sets stop_event, propagated to cli for clean shutdown
     """
 
-    _instance: Optional[TerminalDisplay] = None
+    _instance: TerminalDisplay | None = None
 
     def __new__(cls, *a, **kw):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         if getattr(self, "_initialized", False):
             return
         self._initialized = True
@@ -47,14 +46,14 @@ class TerminalDisplay:
 
         # Thread-safe state shared between async View and curses thread
         self._state_provider = None
-        self._snapshot: Dict[str, Any] = {}
+        self._snapshot: dict[str, Any] = {}
         self._lock = threading.Lock()
-        self._ap_table: List[Dict[str, Any]] = []
-        self._stations: List[Dict[str, Any]] = []
+        self._ap_table: list[dict[str, Any]] = []
+        self._stations: list[dict[str, Any]] = []
 
         # Curses thread management
         self._stop_event = threading.Event()
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._started = False
 
         # Display limits
@@ -68,20 +67,25 @@ class TerminalDisplay:
         self._min_status_display_time = 3.0
         self._current_mood_from_state = "neutral"
         self._agent = None
-        self._last_state: Dict[str, Any] = {}
+        self._last_state: dict[str, Any] = {}
         self._last_draw_time = 0.0
 
         # Backward-compat stdout handle (for test stubs and splash)
         self._out = sys.__stdout__
 
-        # Enter alt screen for splash (curses.wrapper will manage its own later)
-        try:
-            self._out.write("\033[?1049h\033[?25l")
-            self._out.flush()
-        except Exception:
-            pass
-        import atexit
-        atexit.register(self._atexit_cleanup)
+        # Only touch the real terminal when attached to an interactive TTY.
+        # This keeps construction side-effect-free under tests / pipes so we
+        # never leak alt-screen escape sequences into non-interactive output.
+        self._owns_terminal = bool(self._out is not None and self._out.isatty())
+        if self._owns_terminal:
+            # Enter alt screen for the splash (curses.wrapper manages its own later).
+            try:
+                self._out.write("\033[?1049h\033[?25l")
+                self._out.flush()
+            except Exception:
+                pass
+            import atexit
+            atexit.register(self._atexit_cleanup)
         _LOG.debug("TerminalDisplay initialized (curses backend)")
 
     # ── Lifecycle ─────────────────────────────────────────────
@@ -106,6 +110,8 @@ class TerminalDisplay:
         return self._stop_event.is_set()
 
     def _atexit_cleanup(self):
+        if not self._owns_terminal:
+            return
         try:
             sys.__stdout__.write("\033[?25h\033[?1049l")
             sys.__stdout__.flush()
@@ -138,7 +144,7 @@ class TerminalDisplay:
             except Exception:
                 _LOG.debug("Curses frame error", exc_info=True)
 
-    def _take_snapshot(self) -> Dict[str, Any]:
+    def _take_snapshot(self) -> dict[str, Any]:
         """Fetch the latest state snapshot from the registered state provider or local fallback."""
         if self._state_provider:
             try:
@@ -228,7 +234,7 @@ class TerminalDisplay:
 
     # ── Frame renderer ────────────────────────────────────────
 
-    def _draw_frame(self, scr, snap: Dict[str, Any]):
+    def _draw_frame(self, scr, snap: dict[str, Any]):
         scr.erase()
         H, W = scr.getmaxyx()
         if W < 60 or H < 18:
@@ -258,7 +264,7 @@ class TerminalDisplay:
             if i == 3:  # Status row before Uptime
                 slab = "● SNIFFING" if mode == "AUTO" else "○ MANUAL"
                 sc = _CP_GREEN if mode == "AUTO" else _CP_YELLOW
-                self._put(scr, 3, 2, f"Status:  ", cp(_CP_CYAN))
+                self._put(scr, 3, 2, "Status:  ", cp(_CP_CYAN))
                 self._put(scr, 3, 11, slab, cp(sc))
                 self._put(scr, i + 1, 2, f"{lbl:<9}", cp(_CP_CYAN))
                 self._put(scr, i + 1, 11, val, cp(c))
@@ -317,7 +323,7 @@ class TerminalDisplay:
 
     def _draw_spectrum(self, scr, y0, W, aps):
         cp = curses.color_pair
-        ch_map: Dict[int, int] = {}
+        ch_map: dict[int, int] = {}
         for ap in aps:
             try:
                 ch_map[int(ap["channel"])] = ch_map.get(int(ap["channel"]), 0) + 1
@@ -392,7 +398,7 @@ class TerminalDisplay:
     def register_state_provider(self, provider_callable):
         self._state_provider = provider_callable
 
-    def render(self, state: Dict[str, Any]):
+    def render(self, state: dict[str, Any]):
         """Update the internal snapshot. The curses thread draws from it."""
         if not self._enabled:
             return
@@ -405,11 +411,11 @@ class TerminalDisplay:
         if not self._started:
             self.start()
 
-    async def draw(self, state: Dict[str, Any]):
+    async def draw(self, state: dict[str, Any]):
         """Async compatibility wrapper."""
         self.render(state)
 
-    def update_table(self, aps: List[Dict[str, Any]], stations: Optional[List[Dict[str, Any]]] = None):
+    def update_table(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]] | None = None):
         def pwr(item):
             try:
                 return int(item.get("power", -9999))
@@ -470,7 +476,7 @@ class TerminalDisplay:
             pass
         return ssids or len(snap.get("_aps", [])), hs, comp, pmk
 
-    def _get_face(self, state: Dict[str, Any]) -> str:
+    def _get_face(self, state: dict[str, Any]) -> str:
         f = state.get("face")
         if f:
             return f
@@ -487,7 +493,7 @@ class TerminalDisplay:
         except Exception:
             return faces.get_face("neutral")
 
-    def _update_status(self, state: Dict[str, Any], now: float):
+    def _update_status(self, state: dict[str, Any], now: float):
         new = (state.get("status") or "").strip()
         if not new:
             if (self._current_status != "Monitoring signals..." and
@@ -527,12 +533,12 @@ class TerminalDisplay:
 
     # ── Backward compat stubs for tests ──────────────────────
 
-    def _render_header(self, state: Dict[str, Any]):
+    def _render_header(self, state: dict[str, Any]):
         iface = state.get("interface", "wlan1")
         model = state.get("interface_model", "")
         self._out.write(f"[{iface} [{model}]]" if model else f"[{iface}]")
 
-    def _render_tables(self, aps: List[Dict[str, Any]], stations: List[Dict[str, Any]]):
+    def _render_tables(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]):
         self._out.write("── Access Points ──\n")
         for ap in aps:
             self._out.write(f"{ap.get('bssid', '')} | {ap.get('essid', '')}\n")

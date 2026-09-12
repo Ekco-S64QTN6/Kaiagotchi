@@ -10,18 +10,19 @@ Enhanced with Epoch and Reward System Integration:
 """
 
 from __future__ import annotations
+
 import asyncio
 import csv
 import logging
 import os
-import time
-from pathlib import Path
-from datetime import datetime
-from typing import Dict, Any, Optional, List
 import shutil
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-from kaiagotchi.storage.persistent_network import PersistentNetwork
 from kaiagotchi.storage.persistent_mood import PersistentMood
+from kaiagotchi.storage.persistent_network import PersistentNetwork
 from kaiagotchi.storage.utils_time import TZ
 from kaiagotchi.ui.voice import Voice
 
@@ -34,11 +35,11 @@ PCAP_STORAGE_DIR = Path(__file__).parent.parent / "storage" / "pcaps"
 class MonitoringAgent:
     def __init__(
         self,
-        interface: Optional[str] = None,
+        interface: str | None = None,
         view=None,
-        config: Optional[Dict[str, Any]] = None,
-        system_state: Optional[Any] = None,
-        state_lock: Optional[asyncio.Lock] = None,
+        config: dict[str, Any] | None = None,
+        system_state: Any | None = None,
+        state_lock: asyncio.Lock | None = None,
     ):
         self.view = view
         self.config = config or {}
@@ -53,15 +54,15 @@ class MonitoringAgent:
         )
 
         self._running = False
-        self._process: Optional[asyncio.subprocess.Process] = None
-        self._csv_path: Optional[Path] = None
-        self._base_path: Optional[Path] = None
-        self._loop_task: Optional[asyncio.Task] = None
+        self._process: asyncio.subprocess.Process | None = None
+        self._csv_path: Path | None = None
+        self._base_path: Path | None = None
+        self._loop_task: asyncio.Task | None = None
         self._start_time = time.time()
 
         self._seen_bssids: set[str] = set()
         self._seen_stations: set[str] = set()
-        self._session_pcap: Optional[Path] = None
+        self._session_pcap: Path | None = None
 
         self._max_aps_seen: int = 0
 
@@ -73,8 +74,8 @@ class MonitoringAgent:
             self.config.get("monitor", {}).get("csv_poll", 1.0)
         ) or 1.0
 
-        self.persistent_network: Optional[PersistentNetwork] = None
-        self.persistent_mood: Optional[PersistentMood] = None
+        self.persistent_network: PersistentNetwork | None = None
+        self.persistent_mood: PersistentMood | None = None
         self.epoch_tracker = None  # Will be set by agent
         self.reward_engine = None  # Will be set by agent
         self.voice = Voice()
@@ -89,17 +90,17 @@ class MonitoringAgent:
                 self.system_state.setdefault("recent_captures", [])
                 self.system_state.setdefault("chatter_log", [])
             elif not hasattr(self.system_state, "recent_captures"):
-                setattr(self.system_state, "recent_captures", [])
-                setattr(self.system_state, "chatter_log", [])
+                self.system_state.recent_captures = []
+                self.system_state.chatter_log = []
         except Exception:
-            setattr(self, "_fallback_captures", [])
+            self._fallback_captures = []
             _LOG.debug("[monitoring] Could not attach recent_captures; using fallback list")
 
-    def _get_recent_captures_list(self) -> List[Dict[str, Any]]:
+    def _get_recent_captures_list(self) -> list[dict[str, Any]]:
         if isinstance(self.system_state, dict):
             return self.system_state.setdefault("recent_captures", [])
         elif hasattr(self.system_state, "recent_captures"):
-            return getattr(self.system_state, "recent_captures")
+            return self.system_state.recent_captures
         return getattr(self, "_fallback_captures", [])
 
     # ------------------------------------------------------------------
@@ -175,7 +176,7 @@ class MonitoringAgent:
                 self._process.terminate()
                 try:
                     await asyncio.wait_for(self._process.wait(), timeout=1.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     _LOG.info("[monitoring] Killing airodump process...")
                     self._process.kill()
                     await self._process.wait()
@@ -263,8 +264,7 @@ class MonitoringAgent:
                 "airodump-ng not found. Install aircrack-ng: sudo pacman -S aircrack-ng"
             )
 
-        session_time = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
-        base_name = f"{session_time}_session"
+        datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
         self._base_path = Path("/tmp") / f"kaiagotchi_{os.getpid()}"
         self._csv_path = Path(f"{self._base_path}-01.csv")
         self._session_pcap = Path(f"{self._base_path}-01.cap")
@@ -308,8 +308,8 @@ class MonitoringAgent:
                     self.system_state["recent_captures"] = list(captures)
                     self.system_state["chatter_log"] = list(captures)
                 else:
-                    setattr(self.system_state, "recent_captures", list(captures))
-                    setattr(self.system_state, "chatter_log", list(captures))
+                    self.system_state.recent_captures = list(captures)
+                    self.system_state.chatter_log = list(captures)
 
             if self.view:
                 await self.view.async_update({
@@ -330,14 +330,14 @@ class MonitoringAgent:
                 Path(f"{self._base_path}-01.cap"),
                 Path(f"{self._base_path}-01.pcap")  # Some systems might create .pcap
             ]
-            
+
             src = None
             for possible_src in possible_sources:
                 if possible_src and possible_src.exists():
                     src = possible_src
                     _LOG.info(f"[monitoring] Found PCAP source: {src}")
                     break
-            
+
             if not src or not src.exists():
                 _LOG.warning(f"[monitoring] No .cap/.pcap file found to archive. Checked: {[str(p) for p in possible_sources if p]}")
                 # Try to find any kaiagotchi_*.cap files in /tmp as fallback
@@ -369,20 +369,20 @@ class MonitoringAgent:
                 timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
                 clean_filename = f"{timestamp}_airodump.pcap"
                 clean_dest = PCAP_STORAGE_DIR / clean_filename
-                
+
                 import shutil
                 shutil.copy2(src, clean_dest)
                 _LOG.info(f"[monitoring] PersistentNetwork not attached; manually copied PCAP to: {clean_dest}")
 
             await self._emit_capture_summary("Session PCAP archived.")
-            
+
             # FIXED: Clean up the temporary file after successful copy
             try:
                 src.unlink()
                 _LOG.info(f"[monitoring] Cleaned up temporary PCAP: {src}")
             except Exception as e:
                 _LOG.debug(f"[monitoring] Could not remove temporary PCAP {src}: {e}")
-                
+
         except Exception as e:
             _LOG.exception(f"[monitoring] Failed to archive PCAP: {e}")
 
@@ -490,7 +490,7 @@ class MonitoringAgent:
                         }
                         # Clean up ESSID (remove non-printable characters)
                         if ap_data["essid"]:
-                            ap_data["essid"] = ''.join(char for char in ap_data["essid"] 
+                            ap_data["essid"] = ''.join(char for char in ap_data["essid"]
                                                      if char.isprintable() or char in ' _-')
                         aps.append(ap_data)
                     elif section == "stations" and len(row) >= 6:
@@ -504,7 +504,7 @@ class MonitoringAgent:
                             "probed_essids": row[6].strip() if len(row) > 6 else "",
                         }
                         stations.append(station_data)
-            
+
             # Normalize privacy field
             for ap in aps:
                 privacy = ap.get("privacy", "").upper()
@@ -512,7 +512,7 @@ class MonitoringAgent:
                     ap["privacy"] = "OPEN"
                 elif not privacy or privacy == "--":
                     ap["privacy"] = "UNKNOWN"
-                    
+
         except Exception:
             _LOG.exception("[monitoring] Failed to parse CSV output")
         return aps, stations
@@ -541,14 +541,14 @@ class MonitoringAgent:
             return 0.0
 
     # ------------------------------------------------------------------
-    async def _update_state(self, aps: List[Dict[str, Any]], stations: List[Dict[str, Any]]):
+    async def _update_state(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]):
         ap_count = len(aps)
         self._max_aps_seen = max(self._max_aps_seen, ap_count)
         uptime = time.strftime("%H:%M:%S", time.gmtime(time.time() - self._start_time))
-        
+
         # Get recent captures for epoch tracking
         recent_captures = self._get_recent_captures_list()
-        
+
         # Update epoch tracker with current network state
         if self.epoch_tracker and hasattr(self.epoch_tracker, 'update_network_state'):
             try:
@@ -591,7 +591,7 @@ class MonitoringAgent:
                 _LOG.debug("view.async_update failed in monitoring _update_state", exc_info=True)
 
         if self.view and hasattr(self.view, "display"):
-            disp = getattr(self.view, "display")
+            disp = self.view.display
             if hasattr(disp, "update_table"):
                 try:
                     disp.update_table(aps, stations)
@@ -599,7 +599,7 @@ class MonitoringAgent:
                     _LOG.debug("display.update_table failed", exc_info=True)
 
     # ------------------------------------------------------------------
-    def get_network_summary(self) -> Dict[str, Any]:
+    def get_network_summary(self) -> dict[str, Any]:
         """Get current network summary for debugging and UI."""
         return {
             "aps_count": len(self._seen_bssids),

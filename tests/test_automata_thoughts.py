@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-import asyncio
-from unittest.mock import MagicMock, AsyncMock
-from kaiagotchi.core.automata import Automata, AgentMood
+
+from kaiagotchi.core.automata import AgentMood, Automata
+
 
 @pytest.mark.asyncio
 async def test_generate_thought_injects_to_view():
@@ -9,15 +11,15 @@ async def test_generate_thought_injects_to_view():
     # Mock dependencies
     mock_view = MagicMock()
     mock_view.async_update = AsyncMock()
-    
+
     automata = Automata(config={}, view=mock_view)
-    
+
     # Force a mood
     automata._current_mood = AgentMood.HAPPY
-    
+
     # Call generate_thought
     await automata.generate_thought()
-    
+
     # Verify view was updated
     assert mock_view.async_update.called
     call_args = mock_view.async_update.call_args[0][0]
@@ -33,14 +35,14 @@ async def test_tick_calls_generate_thought(monkeypatch):
     mock_view = MagicMock()
     mock_view.async_update = AsyncMock()
     automata = Automata(config={}, view=mock_view)
-    
+
     # Mock random to always trigger thought (return 0.0 < 0.1)
     import random
     monkeypatch.setattr(random, "random", lambda: 0.0)
-    
+
     # Mock generate_thought to track calls
     automata.generate_thought = AsyncMock()
-    
+
     await automata.tick({})
-    
+
     assert automata.generate_thought.called

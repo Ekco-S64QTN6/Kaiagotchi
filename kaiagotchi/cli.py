@@ -10,36 +10,28 @@ Behavior:
 - Cleanly awaits view shutdown hooks to avoid "un-awaited coroutine" warnings.
 - Provides --smoke-ui and --diag-ui helpers for local testing.
 """
-from pathlib import Path
-
-# ensure local log directory exists
-local_logs = Path(__file__).resolve().parent.parent / "logs"
-local_logs.mkdir(exist_ok=True, parents=True)
-
 import argparse
 import asyncio
 import logging
 import os
-import sys
 import signal
-from typing import Optional
+import sys
+from pathlib import Path
 
-# Project logger (defined early for use in import-guard logger calls)
+from kaiagotchi.config.config import load_config
+from kaiagotchi.data.system_types import (
+    GlobalSystemState,
+    NetworkState,
+    SessionMetrics,
+    SystemMetrics,
+    SystemState,
+)
+from kaiagotchi.ui.view import View
+
 logger = logging.getLogger("kaiagotchi.cli")
 
-# Put package root on path (so "kaiagotchi" imports resolve when run from repo root)
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
-# Core imports
-from kaiagotchi.config.config import load_config
-from kaiagotchi.ui.view import View
-from kaiagotchi.data.system_types import (
-    SystemState,
-    SystemMetrics,
-    SessionMetrics,
-    NetworkState,
-    GlobalSystemState,
-)
+# Preferred local log directory (created lazily in setup_logging()).
+local_logs = Path(__file__).resolve().parent.parent / "logs"
 
 # Optional imports (Manager preferred)
 Manager = None
@@ -98,7 +90,7 @@ def setup_logging(debug: bool = False) -> None:
         "/var/log/kaiagotchi"
     ]
 
-    log_dir: Optional[str] = None
+    log_dir: str | None = None
     for d in log_dirs:
         try:
             os.makedirs(d, exist_ok=True)
@@ -110,9 +102,9 @@ def setup_logging(debug: bool = False) -> None:
                 os.unlink(test_file)
                 log_dir = d
                 break
-            except (IOError, OSError):
+            except OSError:
                 continue
-        except (IOError, OSError):
+        except OSError:
             continue
 
     if not log_dir:
@@ -179,13 +171,13 @@ async def run_agent() -> int:
 
     logger.info("Starting Kaiagotchi...")
 
-    view: Optional[View] = None
+    view: View | None = None
     mgr = None
     agent = None
 
     # Set up signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
-    
+
     shutdown_requested = 0
     def handle_signal():
         nonlocal shutdown_requested
@@ -257,13 +249,13 @@ async def run_agent() -> int:
             logger.info("Manager found — booting via core.manager.Manager")
             try:
                 mgr = Manager(config=config, view=view, system_state=system_state, state_lock=state_lock)
-                
+
                 # Define startup task
                 async def start_manager():
                     # Manager should expose an async 'start' or 'bootstrap' method; attempt both
-                    if hasattr(mgr, "bootstrap") and asyncio.iscoroutinefunction(getattr(mgr, "bootstrap")):
+                    if hasattr(mgr, "bootstrap") and asyncio.iscoroutinefunction(mgr.bootstrap):
                         await mgr.bootstrap()
-                    elif hasattr(mgr, "start") and asyncio.iscoroutinefunction(getattr(mgr, "start")):
+                    elif hasattr(mgr, "start") and asyncio.iscoroutinefunction(mgr.start):
                         await mgr.start()
                     else:
                         # If manager.start is sync, run it in executor
@@ -276,7 +268,7 @@ async def run_agent() -> int:
                 # We want splash to run for at least 15s, but manager can start in background
                 manager_task = asyncio.create_task(start_manager())
                 shutdown_wait = asyncio.create_task(_shutdown_event.wait())
-                
+
                 if splash:
                     splash_task = asyncio.create_task(splash.show(duration=15.0))
                     # Wait for splash OR shutdown
@@ -284,7 +276,7 @@ async def run_agent() -> int:
                         [splash_task, shutdown_wait],
                         return_when=asyncio.FIRST_COMPLETED
                     )
-                    
+
                     if shutdown_wait in done:
                         logger.info("Shutdown requested during splash/startup")
                         splash_task.cancel()
@@ -308,7 +300,7 @@ async def run_agent() -> int:
                     except Exception as e:
                         logger.error(f"Manager startup failed: {e}")
                         raise e
-                
+
                 # Re-register signal handlers (Rich Progress might have restored defaults)
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     try:
@@ -336,7 +328,7 @@ async def run_agent() -> int:
             if Agent is None:
                 raise RuntimeError("No Manager or Agent implementation available to start Kaiagotchi")
             logger.info("No Manager available — starting legacy Agent directly")
-            
+
             try:
                 # Create agent
                 agent = Agent(
@@ -344,28 +336,14 @@ async def run_agent() -> int:
                     system_state=system_state,
                     state_lock=state_lock
                 )
-                
-                # Register signal handlers for clean shutdown
-                loop = asyncio.get_running_loop()
-                
-                def handle_signal():
-                    nonlocal shutdown_requested
-                    shutdown_requested += 1
-                    if shutdown_requested > 1:
-                        os._exit(0)
-                    logger.info("Signal received, initiating shutdown...")
-                    asyncio.create_task(agent.stop())
 
-                for sig in (signal.SIGINT, signal.SIGTERM):
-                    try:
-                        loop.add_signal_handler(sig, handle_signal)
-                    except NotImplementedError:
-                        pass # Windows support
+                # Signal handlers (registered once in run_agent) set
+                # _shutdown_event; the finally block performs agent teardown.
 
                 # Start agent in background while splash runs
                 agent_start_task = asyncio.create_task(agent.start())
                 shutdown_wait = asyncio.create_task(_shutdown_event.wait())
-                
+
                 if splash:
                     splash_task = asyncio.create_task(splash.show(duration=15.0))
                     done, pending = await asyncio.wait(
@@ -385,7 +363,7 @@ async def run_agent() -> int:
                     if shutdown_wait in done:
                         agent_start_task.cancel()
                         return 0
-                
+
                 # Re-register signal handlers (Rich Progress might have restored defaults)
                 for sig in (signal.SIGINT, signal.SIGTERM):
                     try:
@@ -395,28 +373,28 @@ async def run_agent() -> int:
 
                 # Enable view output
                 view.suppress_output = False
-                
+
                 # Now wait for agent task (which runs forever)
                 # But we need to handle signals, so we wait on the shutdown event
                 # shutdown_wait is already created/used, let's recreate or reuse?
                 # It might have completed if we are here? No, if we are here, splash completed first.
                 # So shutdown_wait is still pending.
-                
+
                 done, pending = await asyncio.wait(
                     [agent_start_task, shutdown_wait],
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                
+
                 if agent_start_task in done:
                     # Agent exited on its own
                     try:
                         await agent_start_task
                     except Exception as e:
                         logger.error(f"Agent task failed: {e}")
-                        
+
                 if shutdown_wait in done:
                     logger.info("Shutdown event triggered")
-                    
+
                 # Cancel pending
                 for task in pending:
                     task.cancel()
@@ -435,7 +413,7 @@ async def run_agent() -> int:
                         await agent.stop()
                     except Exception as stop_err:
                         logger.error(f"Error stopping agent: {stop_err}")
-                
+
             return 0 # Agent path returns 0 on successful completion/shutdown
 
         # ------------------------------------------------------------------
@@ -443,14 +421,14 @@ async def run_agent() -> int:
         # ------------------------------------------------------------------
         # Create a task for the main run loop
         main_task = None
-        if mgr is not None and hasattr(mgr, "run_forever") and asyncio.iscoroutinefunction(getattr(mgr, "run_forever")):
+        if mgr is not None and hasattr(mgr, "run_forever") and asyncio.iscoroutinefunction(mgr.run_forever):
             main_task = asyncio.create_task(mgr.run_forever())
 
         # Wait for either shutdown signal or main task completion
         if main_task:
             # FIXED: Create a task for the shutdown event wait (required in Python 3.13+)
             shutdown_task = asyncio.create_task(_shutdown_event.wait())
-            
+
             done, pending = await asyncio.wait(
                 [main_task, shutdown_task],
                 return_when=asyncio.FIRST_COMPLETED
@@ -458,7 +436,7 @@ async def run_agent() -> int:
 
             if shutdown_task in done:
                 logger.info("Shutdown event triggered")
-            
+
             if main_task in done:
                 try:
                     await main_task
@@ -499,7 +477,7 @@ async def run_agent() -> int:
 
             # Give shutdown process time to complete
             shutdown_timeout = 5.0  # Reduced to 5s max hard timeout
-            
+
             # If manager has a stop/shutdown coroutine, await it
             if mgr is not None:
                 stop_fn = getattr(mgr, "stop", None) or getattr(mgr, "shutdown", None)
@@ -509,11 +487,11 @@ async def run_agent() -> int:
                             await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
                         else:
                             await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, stop_fn), 
+                                asyncio.get_running_loop().run_in_executor(None, stop_fn),
                                 timeout=shutdown_timeout
                             )
                         logger.info("Manager stopped/cleanup complete.")
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("Manager shutdown timed out, continuing...")
                     except Exception as e:
                         logger.error(f"Error stopping manager: {e}")
@@ -527,11 +505,11 @@ async def run_agent() -> int:
                             await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
                         else:
                             await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, stop_fn), 
+                                asyncio.get_running_loop().run_in_executor(None, stop_fn),
                                 timeout=shutdown_timeout
                             )
                         logger.info("Agent stopped/cleanup complete.")
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning("Agent shutdown timed out, continuing...")
                     except Exception as e:
                         logger.error(f"Error stopping agent: {e}")
@@ -546,11 +524,11 @@ async def run_agent() -> int:
                         else:
                             # run sync stop in executor to avoid blocking loop
                             await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, vs), 
+                                asyncio.get_running_loop().run_in_executor(None, vs),
                                 timeout=5.0
                             )
                     logger.info("View shutdown executed cleanly.")
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("View shutdown timed out, continuing...")
                 except Exception:
                     logger.exception("Error during View shutdown", exc_info=True)
@@ -561,10 +539,10 @@ async def run_agent() -> int:
                     view.display.show_goodbye()
                 except Exception:
                     pass
-                    
+
             # Additional short delay to ensure all cleanup completes
             await asyncio.sleep(0.5)
-                    
+
         except Exception:
             logger.exception("Error during final cleanup", exc_info=True)
 
@@ -598,11 +576,12 @@ if __name__ == "__main__":
             v = View({})
             try:
                 await v.start()
-                await v.show_startup_sequence()
+                await v.on_starting()
                 dummy = {"network": {"access_points": {"a": {}, "b": {}, "c": {}}, "current_channel": 6},
                          "current_system_state": "MONITORING"}
                 for _ in range(5):
-                    await v.display.draw(dummy)
+                    if v.display:
+                        await v.display.draw(dummy)
                     await asyncio.sleep(1.0)
             finally:
                 await v.stop()

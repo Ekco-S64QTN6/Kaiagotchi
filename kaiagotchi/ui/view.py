@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import collections
 import copy
-from datetime import datetime
 import logging
 import random
 import re
 import threading
 import time
-from typing import Optional, Dict, Any, List
+from datetime import datetime
+from typing import Any
 
 from kaiagotchi.ui.terminal_display import TerminalDisplay
 from kaiagotchi.ui.voice.voice import Voice
@@ -17,7 +17,7 @@ from kaiagotchi.ui.voice.voice import Voice
 _log = logging.getLogger("kaiagotchi.ui.view")
 
 
-def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
+def _deep_merge(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
     """
     Merge src into dst in-place and return dst.
 
@@ -57,27 +57,27 @@ def _deep_merge(dst: Dict[str, Any], src: Dict[str, Any]) -> Dict[str, Any]:
 class View:
     """Bridge between the Agent, system state, and the terminal UI."""
 
-    def __init__(self, config: Dict[str, Any], display: Optional[TerminalDisplay] = None):
+    def __init__(self, config: dict[str, Any], display: TerminalDisplay | None = None):
         self._config = config or {}
-        self.display: Optional[TerminalDisplay] = display
+        self.display: TerminalDisplay | None = display
         self._agent = None
-        self.state: Dict[str, Any] = {}
-        self._last_drawn_state: Dict[str, Any] = {}
+        self.state: dict[str, Any] = {}
+        self._last_drawn_state: dict[str, Any] = {}
         self._update_lock = asyncio.Lock()
         self._running = False
-        self._update_task: Optional[asyncio.Task] = None
-        self._chatter_task: Optional[asyncio.Task] = None
+        self._update_task: asyncio.Task | None = None
+        self._chatter_task: asyncio.Task | None = None
         self._last_draw_time = 0.0
         self._min_interval = 0.5  # Reduced to be more responsive to mood changes
 
         # Chatter state
-        self._current_chatter_msg: Optional[str] = None
+        self._current_chatter_msg: str | None = None
         self._last_chatter_change: float = 0.0
         self._chatter_hold: float = 30.0
         self._event_cooldown: float = 0.0  # how long event overrides persist
 
         self.voice = Voice()
-        self._last_announced_captures: List[str] = []
+        self._last_announced_captures: list[str] = []
         self._chatter_lines: collections.deque = collections.deque(maxlen=50)
 
         # AP tracking
@@ -99,7 +99,7 @@ class View:
             self.display.register_state_provider(self.get_snapshot_dict)
 
         _log.debug("View initialized (display linked: %s)", bool(self.display))
-        
+
         # Flag to suppress rendering (e.g. during splash screen)
         self.suppress_output = False
 
@@ -115,7 +115,7 @@ class View:
         _log.debug("View linked to agent: %s", type(agent).__name__)
 
     # ------------------------------------------------------------------
-    def _ensure_normalized(self, st: Dict[str, Any]) -> Dict[str, Any]:
+    def _ensure_normalized(self, st: dict[str, Any]) -> dict[str, Any]:
         """
         Ensure certain keys have the expected types. Return a shallow copy
         with normalized types so displays always receive consistent values.
@@ -147,20 +147,20 @@ class View:
         return s
 
     # ------------------------------------------------------------------
-    def get_snapshot_dict(self) -> Dict[str, Any]:
+    def get_snapshot_dict(self) -> dict[str, Any]:
         """Thread-safe snapshot getter for the curses display thread."""
         with self._state_lock:
             now = time.time()
             mood = self._current_mood
-            
+
             # Idle chatter check
             mood_interval = self.voice.get_chatter_interval(mood)
             base_hold = max(10.0, min(90.0, mood_interval))
-            
+
             cooldown_active = False
             if hasattr(self, "_event_cooldown_expiry"):
                 cooldown_active = (now < self._event_cooldown_expiry)
-                
+
             if not cooldown_active:
                 last_change = getattr(self, "_last_chatter_change", 0.0)
                 hold_dur = getattr(self, "_chatter_hold", 25.0)
@@ -170,17 +170,17 @@ class View:
                         self._current_chatter_msg = new_msg
                         self._last_chatter_change = now
                         self._chatter_hold = random.uniform(base_hold * 0.8, base_hold * 1.2)
-                        
+
                         ts = datetime.now().strftime("%H:%M:%S")
                         self._chatter_lines.append(f"[{ts}] {new_msg}")
                         self.state["face"] = self.voice.get_face_for_mood(mood)
 
             # Normalize and construct state dict
             normalized = self._ensure_normalized(self.state)
-            
+
             # Chatter log
             normalized["chatter_log"] = list(self._chatter_lines)
-            
+
             # Status is the latest entry from chatter log (stripped of timestamp)
             if self._chatter_lines:
                 latest = self._chatter_lines[-1]
@@ -191,11 +191,11 @@ class View:
                     normalized["status"] = latest
             else:
                 normalized["status"] = "Monitoring signals..."
-                
+
             return normalized
 
     # ------------------------------------------------------------------
-    async def async_update(self, state: Dict[str, Any]):
+    async def async_update(self, state: dict[str, Any]):
         """Async state update called by Agent. Thread-safe aggregation."""
         now = time.time()
         with self._state_lock:
@@ -236,7 +236,7 @@ class View:
                 _log.exception("View.async_update: _handle_recent_captures failed")
 
     # ------------------------------------------------------------------
-    def _handle_recent_captures(self, captures: List[Dict[str, Any]]):
+    def _handle_recent_captures(self, captures: list[dict[str, Any]]):
         """Play reactions + update chatter when MonitoringAgent pushes events. Synchronous."""
         if not captures:
             return
@@ -258,14 +258,14 @@ class View:
                 formatted = self.voice.format_chatter_entry(cap)
                 if formatted:
                     self._chatter_lines.append(formatted)
-                    
+
                     msg = cap.get("message", "")
                     _log.info(f"[UI] New capture event: {msg}")
                     mood = self._current_mood
                     voice_line = self.voice.get_event_line(msg, mood) or msg
                     ts = datetime.now().strftime("%H:%M:%S")
                     self._chatter_lines.append(f"[{ts}] {voice_line}")
-                    
+
                     # React visually
                     if "pmkid" in msg.lower():
                         self.state["face"] = self.voice.get_face_for_mood("happy")
@@ -273,7 +273,7 @@ class View:
                         self.state["face"] = self.voice.get_face_for_mood("curious")
                     else:
                         self.state["face"] = self.voice.get_face_for_mood(mood)
-                        
+
                     base_cool = self.voice.get_chatter_interval(mood)
                     cooldown_dur = min(30.0, max(15.0, base_cool * 0.3))
                     self._event_cooldown_expiry = time.time() + cooldown_dur
@@ -284,12 +284,12 @@ class View:
     async def update_mood(self, new_mood, reason: str = "automata"):
         """Update UI to reflect the current mood. Thread-safe."""
         mood_name = getattr(new_mood, "name", str(new_mood)).lower()
-        
+
         current_time = time.time()
         if current_time - self._last_mood_update < self._mood_debounce_interval:
             _log.debug(f"Mood change debounced: {self._current_mood} -> {mood_name} (too soon)")
             return
-            
+
         with self._state_lock:
             _log.info(f"🎭 View.update_mood: Updating mood to {mood_name} (reason={reason})")
 
@@ -300,15 +300,15 @@ class View:
                 self.state["agent_mood"] = mood_name
                 self.state["face"] = self.voice.get_face_for_mood(mood_name)
                 text_message = self.voice.get_mood_line(mood_name) or "..."
-                
+
                 ts = datetime.now().strftime("%H:%M:%S")
                 self._chatter_lines.append(f"[{ts}] {text_message}")
-                
+
                 self._current_chatter_msg = text_message
                 self._last_chatter_change = current_time
                 self._chatter_hold = self.voice.get_chatter_interval(mood_name)
                 self._event_cooldown_expiry = 0.0
-                
+
                 _log.info(f"✅ Mood update completed: {mood_name}")
             except Exception:
                 _log.exception("View.update_mood failed")

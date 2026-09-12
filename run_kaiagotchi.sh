@@ -1,20 +1,21 @@
 #!/bin/bash
-# Launch Kaiagotchi with full root permissions and debug logging
+# Launch Kaiagotchi with the privileges it needs (CAP_NET_ADMIN) and debug logging.
+set -euo pipefail
 
-set -e
-cd /home/ekco/github/Kaiagotchi || exit 1
+# Resolve the repository root from this script's location (portable, no hardcoded paths).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Activate venv if not already
+# Prefer the project virtualenv if present.
 PYTHON_EXEC="python3"
-if [ -d "venv" ]; then
-    source venv/bin/activate
-    PYTHON_EXEC="./venv/bin/python3"
+if [ -x "venv/bin/python3" ]; then
+    PYTHON_EXEC="$SCRIPT_DIR/venv/bin/python3"
 fi
 
-# Always run as root because Kaiagotchi needs CAP_NET_ADMIN
+# Kaiagotchi needs elevated privileges to manage the wireless interface.
 if [ "$EUID" -ne 0 ]; then
     echo "🔐 Re-launching as root..."
     exec sudo -E env "PATH=$PATH" "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
 else
-    "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
+    exec "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
 fi

@@ -16,29 +16,34 @@
 import asyncio
 import logging
 import time
-from typing import Dict, Any, Optional, Tuple, Any as AnyType
+from typing import Any
+from typing import Any as AnyType
 
-from kaiagotchi.network.action_manager import InterfaceActionManager
-from kaiagotchi.core.events import EventEmitter
-from kaiagotchi.storage.last_session import LastSession
-from kaiagotchi.data.system_types import SystemState, GlobalSystemState, AgentMood, AgentState
-from kaiagotchi.core.automata import Automata
-from kaiagotchi.ui.view import View
-from kaiagotchi.ui.terminal_display import TerminalDisplay
-from kaiagotchi.plugins.manager import PluginManager
-
-# Persistence systems
-from kaiagotchi.storage.persistent_mood import PersistentMood
-from kaiagotchi.storage.persistent_network import PersistentNetwork
+import kaiagotchi.plugins as plugins
+from kaiagotchi.agent.decision_engine import DecisionEngine
 
 # AI systems
 from kaiagotchi.ai.epoch import Epoch
 from kaiagotchi.ai.reward import RewardEngine
+from kaiagotchi.core.automata import Automata
+from kaiagotchi.core.hardware import get_interface_model
+from kaiagotchi.data.system_types import (
+    AgentMood,
+    GlobalSystemState,
+    SystemState,
+)
+from kaiagotchi.network.action_manager import InterfaceActionManager
+from kaiagotchi.plugins.manager import PluginManager
+from kaiagotchi.storage.last_session import LastSession
+
+# Persistence systems
+from kaiagotchi.storage.persistent_mood import PersistentMood
+from kaiagotchi.storage.persistent_network import PersistentNetwork
+from kaiagotchi.ui.terminal_display import TerminalDisplay
+from kaiagotchi.ui.view import View
 
 from .base import kaiagotchiBase
 from .monitoring_agent import MonitoringAgent
-from kaiagotchi.agent.decision_engine import DecisionEngine
-from kaiagotchi.core.hardware import get_interface_model
 
 _log = logging.getLogger("kaiagotchi.agent.agent")
 
@@ -47,17 +52,17 @@ class Agent(kaiagotchiBase):
     """Main Kaiagotchi agent — orchestrates monitoring, decisions, emotions, and UI sync."""
 
     state_lock: asyncio.Lock
-    _update_task: Optional[asyncio.Task[AnyType]]
-    _decision_task: Optional[asyncio.Task[AnyType]]
-    _monitor_task: Optional[asyncio.Task[AnyType]]
+    _update_task: asyncio.Task[AnyType] | None
+    _decision_task: asyncio.Task[AnyType] | None
+    _monitor_task: asyncio.Task[AnyType] | None
 
     def __init__(
         self,
-        config: Dict[str, Any],
+        config: dict[str, Any],
         view=None,
-        keypair: Optional[Tuple[str, str]] = None,
-        system_state: Optional[SystemState] = None,
-        state_lock: Optional[asyncio.Lock] = None,
+        keypair: tuple[str, str] | None = None,
+        system_state: SystemState | None = None,
+        state_lock: asyncio.Lock | None = None,
     ):
         super().__init__(config, system_state, state_lock)
 
@@ -78,7 +83,7 @@ class Agent(kaiagotchiBase):
 
         # Initialize AI subsystems - SINGLE SOURCE OF TRUTH
         self.reward_engine = RewardEngine(self.config)
-        
+
         self.epoch_tracker = Epoch(self.config)
         self.epoch_tracker.set_reward_engine(self.reward_engine)
         self.epoch_tracker.set_persistent_mood(self.persistent_mood)
@@ -126,9 +131,11 @@ class Agent(kaiagotchiBase):
         self.automata = Automata(self.config, self._view, on_thought=self._handle_thought)
         self.logger.info("Automata emotional engine initialized.")
 
-        # Initialize PluginManager
+        # Initialize PluginManager and register it globally so that
+        # kaiagotchi.plugins.on(...) event dispatch (used by Automata) works.
         self.plugin_manager = PluginManager()
         self.plugin_manager.discover_and_load(self.config.get("plugins", {}))
+        plugins.set_manager(self.plugin_manager)
         self.logger.info("PluginManager initialized and plugins loaded.")
 
         # NOW set automata in DecisionEngine since it exists
@@ -165,7 +172,7 @@ class Agent(kaiagotchiBase):
             iface_name = getattr(self, "interface_name", None) or getattr(self, "interface", "unknown")
         except Exception:
             iface_name = "unknown"
-        
+
         self.interface_model = get_interface_model(iface_name)
         self.logger.info(f"Agent initialized with interface: {iface_name} ({self.interface_model})")
         self.logger.info(f"View provided: {view is not None}")
@@ -206,7 +213,7 @@ class Agent(kaiagotchiBase):
         self.events.on("state_updated", lambda s: asyncio.create_task(_on_state_updated(s)))
         self.logger.info("State update event handler registered.")
 
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         """Get current system state for Automata emotional engine."""
         current_mood = "neutral"
         if self.automata and hasattr(self.automata, 'current_mood'):
@@ -214,7 +221,7 @@ class Agent(kaiagotchiBase):
                 current_mood = self.automata.current_mood.value
             except Exception:
                 pass
-        
+
         # Gather state from subsystems
         current_state = {
             "agent": self,
@@ -239,7 +246,7 @@ class Agent(kaiagotchiBase):
 
         return current_state
 
-    async def update_state(self, updates: Dict[str, Any]) -> None:
+    async def update_state(self, updates: dict[str, Any]) -> None:
         """Override base update_state to trigger UI refresh for important changes."""
         await super().update_state(updates)
 
@@ -290,7 +297,7 @@ class Agent(kaiagotchiBase):
         while self._running:
             try:
                 if hasattr(super(), "run_decision_cycle"):
-                    func = getattr(super(), "run_decision_cycle")
+                    func = super().run_decision_cycle
                     if asyncio.iscoroutinefunction(func):
                         await func()
                     else:
@@ -309,7 +316,7 @@ class Agent(kaiagotchiBase):
                     result = await self.decision_engine.process_state(state_dict, self.action_manager)
                     if hasattr(result, "name"):
                         self.logger.debug("DecisionEngine state: %s", result.name)
-                
+
                 if self.epoch_tracker:
                     loop = asyncio.get_running_loop()
                     await loop.run_in_executor(None, self.epoch_tracker.next)
@@ -377,7 +384,7 @@ class Agent(kaiagotchiBase):
         aps = getattr(self.system_state, "aps", 0)
         mode = getattr(self.system_state, "mode", "AUTO")
         status = getattr(self.system_state, "status", "")
-        
+
         if self.automata and hasattr(self.automata, 'current_mood'):
             mood = self.automata.current_mood.value
             agent_mood = mood
@@ -406,7 +413,7 @@ class Agent(kaiagotchiBase):
         if not self._running:
             self.logger.debug("Agent.stop() called but already stopped")
             return
-            
+
         self.logger.info("Stopping Kaiagotchi agent...")
         self._running = False
 
@@ -430,7 +437,7 @@ class Agent(kaiagotchiBase):
             try:
                 await asyncio.wait_for(asyncio.gather(*tasks_to_cancel, return_exceptions=True), timeout=5.0)
                 self.logger.info("All agent tasks cancelled successfully.")
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 self.logger.warning("Some tasks didn't cancel within timeout")
             except Exception as e:
                 self.logger.error(f"Error cancelling tasks: {e}")
@@ -448,7 +455,7 @@ class Agent(kaiagotchiBase):
             reward_val = getattr(self.automata, "last_reward", 0.0) if self.automata else 0.0
             self.persistent_mood.set_and_save(mood_val, reward_val)
             self.logger.info(f"Saved persistent mood={mood_val}, reward={reward_val}")
-        
+
         if self.persistent_network:
             self.persistent_network.save()
             self.logger.info("Persistent network state saved.")
@@ -488,8 +495,8 @@ class Agent(kaiagotchiBase):
                     captures = self.system_state["recent_captures"]
                 else:
                     if not hasattr(self.system_state, "recent_captures"):
-                        setattr(self.system_state, "recent_captures", [])
-                    captures = getattr(self.system_state, "recent_captures")
+                        self.system_state.recent_captures = []
+                    captures = self.system_state.recent_captures
 
                 captures.append(new_entry)
                 if len(captures) > 20:
@@ -499,7 +506,7 @@ class Agent(kaiagotchiBase):
                 if isinstance(self.system_state, dict):
                     self.system_state["chatter_log"] = list(captures)
                 else:
-                    setattr(self.system_state, "chatter_log", list(captures))
+                    self.system_state.chatter_log = list(captures)
 
             # Push immediate update to view
             if self._view:
@@ -507,7 +514,7 @@ class Agent(kaiagotchiBase):
                     "recent_captures": list(captures),
                     "chatter_log": list(captures)
                 })
-            
+
             self.logger.debug(f"Thought injected into system state: {thought}")
 
         except Exception as e:

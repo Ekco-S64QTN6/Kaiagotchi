@@ -8,18 +8,18 @@ import asyncio
 import logging
 import os
 import re
-from typing import Dict, Any, List, Optional
+from typing import Any
 
 
 class InterfaceActionManager:
     """Manages network interface operations for Linux systems with improved error handling."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.config = config
         self.logger = logging.getLogger(__name__)
         self._interface = config.get("main", {}).get("iface", "wlan1")
-        self._monitor_interface: Optional[str] = None
-        self._killed_processes: List[str] = []
+        self._monitor_interface: str | None = None
+        self._killed_processes: list[str] = []
         self._channel_hop_disabled = False
         self._channel_hop_disabled_logged = False
 
@@ -38,7 +38,7 @@ class InterfaceActionManager:
         )
 
     # ------------------------------------------------------------------
-    async def hop_channel(self, interface: Optional[str] = None) -> bool:
+    async def hop_channel(self, interface: str | None = None) -> bool:
         """
         Cycle the monitor interface to the next channel in the configured list.
         Immediately pushes a UI update with the new channel if possible.
@@ -94,7 +94,7 @@ class InterfaceActionManager:
         except FileNotFoundError:
             self.logger.error("iw not found, falling back to iwconfig...")
             return await self._hop_channel_iwconfig(iface_to_use, next_channel)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             self.logger.error("Timeout while setting channel via iw.")
             return False
         except Exception as e:
@@ -138,7 +138,7 @@ class InterfaceActionManager:
             return False
 
     # ------------------------------------------------------------------
-    async def get_interface_info(self, interface: str) -> Dict[str, Any]:
+    async def get_interface_info(self, interface: str) -> dict[str, Any]:
         """
         Gather interface mode, frequency, and status info.
         Uses iw first; falls back to iwconfig if not available.
@@ -152,7 +152,7 @@ class InterfaceActionManager:
             self.logger.error(f"Failed to get interface info for {interface}: {e}")
             return {}
 
-    async def _get_iw_info(self, interface: str) -> Dict[str, Any]:
+    async def _get_iw_info(self, interface: str) -> dict[str, Any]:
         """Parse info from 'iw dev <iface> info'."""
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -177,7 +177,7 @@ class InterfaceActionManager:
         except Exception:
             return {}
 
-    async def _get_iwconfig_info(self, interface: str) -> Dict[str, Any]:
+    async def _get_iwconfig_info(self, interface: str) -> dict[str, Any]:
         """Parse output from iwconfig as a fallback."""
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -220,7 +220,7 @@ class InterfaceActionManager:
             self.logger.info(f"Setting {interface} into monitor mode...")
             # Set unmanaged in NetworkManager first to prevent interference
             await asyncio.create_subprocess_exec("nmcli", "device", "set", interface, "managed", "no")
-            
+
             proc = await asyncio.create_subprocess_exec(
                 "ip", "link", "set", interface, "down",
                 stdout=asyncio.subprocess.PIPE,
@@ -249,7 +249,7 @@ class InterfaceActionManager:
             )
             await asyncio.create_subprocess_exec("iw", interface, "set", "type", "managed")
             await asyncio.create_subprocess_exec("ip", "link", "set", interface, "up")
-            
+
             # Restore managed mode in NetworkManager
             await asyncio.create_subprocess_exec("nmcli", "device", "set", interface, "managed", "yes")
 

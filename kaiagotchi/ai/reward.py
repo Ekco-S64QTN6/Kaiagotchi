@@ -9,10 +9,12 @@ for network discoveries and activity.
 """
 
 from __future__ import annotations
-import math
+
 import logging
+import math
 import time
-from typing import Dict, Any, Optional, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 logger = logging.getLogger("kaiagotchi.ai.reward")
 
@@ -36,11 +38,11 @@ class RewardEngine:
 
     EPSILON = 1e-9
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         cfg_weights = (self.config.get("reward", {}) or {}).get("weights", {}) or {}
         self.WEIGHTS = {**DEFAULT_WEIGHTS, **cfg_weights}
-        self._last_snapshot: Dict[str, Any] = {}
+        self._last_snapshot: dict[str, Any] = {}
         self._last_reward: float = 0.0
         self._last_eval_ts: float = time.time()
         self._idle_accum: float = 0.0
@@ -66,57 +68,57 @@ class RewardEngine:
             try:
                 val = 0
                 if isinstance(a, dict):
-                    val = (a.get("handshakes") or 
-                          a.get("handshakes_secured") or 
-                          a.get("handshake_count") or 
+                    val = (a.get("handshakes") or
+                          a.get("handshakes_secured") or
+                          a.get("handshake_count") or
                           a.get("session_metrics", {}).get("handshakes_secured") or 0)
                 else:
-                    val = (getattr(a, "handshakes", None) or 
-                          getattr(a, "handshakes_secured", None) or 
-                          getattr(a, "handshake_count", None) or 
+                    val = (getattr(a, "handshakes", None) or
+                          getattr(a, "handshakes_secured", None) or
+                          getattr(a, "handshake_count", None) or
                           getattr(getattr(a, "session_metrics", None), "handshakes_secured", None) or 0)
                 total += int(val or 0)
             except Exception:
                 continue
         return max(0, total)
 
-    def _extract_ap_count(self, state: Dict[str, Any]) -> int:
+    def _extract_ap_count(self, state: dict[str, Any]) -> int:
         """Extract AP count from multiple possible locations in state."""
         try:
             # Try direct AP count first
             direct_aps = state.get("aps")
             if direct_aps is not None:
                 return int(direct_aps)
-            
+
             # Try network section
             net = state.get("network", {}) or {}
-            
+
             # Try access_points dict
             aps_dict = net.get("access_points", {})
             if aps_dict and isinstance(aps_dict, dict):
                 return len(aps_dict)
-            
+
             # Try aps_list
             aps_list = state.get("aps_list") or net.get("aps_list") or []
             if aps_list and isinstance(aps_list, list):
                 return len(aps_list)
-                
+
             # Try monitoring agent data
             if "monitoring_agent" in state:
                 monitoring_data = state["monitoring_agent"]
                 if isinstance(monitoring_data, dict) and "aps" in monitoring_data:
                     return int(monitoring_data["aps"])
-                    
+
         except Exception as e:
             logger.debug("Failed to extract AP count: %s", e)
-            
+
         return 0
 
-    def _extract_new_discoveries(self, state: Dict[str, Any]) -> tuple[int, int]:
+    def _extract_new_discoveries(self, state: dict[str, Any]) -> tuple[int, int]:
         """Track and reward new AP and station discoveries."""
         new_aps = 0
         new_stations = 0
-        
+
         try:
             # Check for recent captures that indicate discoveries
             recent_captures = state.get("recent_captures", [])
@@ -127,21 +129,21 @@ class RewardEngine:
                         new_aps += 1
                     elif "new station" in msg:
                         new_stations += 1
-            
+
             # Check aps_list for new BSSIDs
             aps_list = state.get("aps_list", [])
             current_aps = set()
             for ap in aps_list:
                 if isinstance(ap, dict) and "bssid" in ap:
                     current_aps.add(ap["bssid"])
-            
+
             # Calculate new discoveries
             new_aps += len(current_aps - self._discovered_aps)
             self._discovered_aps.update(current_aps)
-            
+
         except Exception as e:
             logger.debug("Discovery tracking failed: %s", e)
-            
+
         return new_aps, new_stations
 
     def _safe_get_value(self, obj: Any, key: str, default: Any = None) -> Any:
@@ -150,7 +152,7 @@ class RewardEngine:
             if hasattr(obj, 'model_dump'):
                 # Handle Pydantic models
                 obj = obj.model_dump()
-            
+
             if isinstance(obj, dict):
                 return obj.get(key, default)
             else:
@@ -159,7 +161,7 @@ class RewardEngine:
         except Exception:
             return default
 
-    def evaluate(self, state: Dict[str, Any]) -> float:
+    def evaluate(self, state: dict[str, Any]) -> float:
         """Evaluate current state and return reward [-1.0, 1.0]."""
         try:
             now = time.time()
@@ -177,12 +179,12 @@ class RewardEngine:
             # Extract current state data with safe access
             num_aps = self._extract_ap_count(state)
             handshakes = self._extract_handshakes(agents)
-            
+
             # FIX: Use safe access for uptime - handle both dict and Pydantic objects
             uptime = float(self._safe_get_value(metrics, "uptime_seconds", 0.0) or 0.0)
-            
+
             # FIX: Use safe access for network data
-            current_channel = (self._safe_get_value(net, "current_channel") or 
+            current_channel = (self._safe_get_value(net, "current_channel") or
                              self._safe_get_value(net, "channel") or "--")
 
             # Track discoveries
@@ -197,19 +199,19 @@ class RewardEngine:
             # Calculate deltas
             d_aps = max(0, int(num_aps) - prev_aps)
             d_handshakes = max(0, int(handshakes) - prev_handshakes)
-            d_uptime = max(0.0, uptime - prev_uptime)
+            max(0.0, uptime - prev_uptime)
             channel_changed = 1.0 if current_channel != prev_channel else 0.0
 
             # Mood-based penalties (reduced severity)
-            mood_val = (self._safe_get_value(state, "agent_mood") or 
-                       self._safe_get_value(self._safe_get_value(state, "agent", {}), "mood", "") or 
+            mood_val = (self._safe_get_value(state, "agent_mood") or
+                       self._safe_get_value(self._safe_get_value(state, "agent", {}), "mood", "") or
                        "").lower()
             boredom_penalty = self.WEIGHTS.get("boredom", 0.0) if "bored" in mood_val else 0.0
             sadness_penalty = self.WEIGHTS.get("sadness", 0.0) if "sad" in mood_val else 0.0
 
             # Activity detection with discovery rewards
             has_activity = any([d_aps, d_handshakes, new_aps, new_stations])
-            
+
             # Idle penalty (reduced accumulation)
             idle_penalty = 0.0
             if not has_activity:
@@ -256,7 +258,7 @@ class RewardEngine:
             logger.error("RewardEngine.evaluate() failed: %s", e, exc_info=True)
             return float(self._last_reward or 0.0)
 
-    async def tick(self, state: Dict[str, Any]) -> float:
+    async def tick(self, state: dict[str, Any]) -> float:
         """Async interface for reward evaluation."""
         return self.evaluate(state)
 

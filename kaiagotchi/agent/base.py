@@ -13,21 +13,21 @@ Key improvements:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import time
-import hashlib
 from pathlib import Path
-from typing import Dict, Any, Optional, Set
+from typing import Any
 
+from kaiagotchi.agent.decision_engine import AgentState, DecisionEngine
+from kaiagotchi.core.events import EventEmitter
 from kaiagotchi.data.system_types import (
-    SystemState,
     GlobalSystemState,
     NetworkState,
-    SystemMetrics,
     SessionMetrics,
+    SystemMetrics,
+    SystemState,
 )
-from kaiagotchi.core.events import EventEmitter
-from kaiagotchi.agent.decision_engine import DecisionEngine, AgentState
 
 agent_logger = logging.getLogger("kaiagotchi.agent.base")
 
@@ -37,10 +37,10 @@ class kaiagotchiBase:
 
     def __init__(
         self,
-        config: Dict[str, Any],
-        system_state: Optional[SystemState] = None,
-        state_lock: Optional[asyncio.Lock] = None,
-        view: Optional[Any] = None,
+        config: dict[str, Any],
+        system_state: SystemState | None = None,
+        state_lock: asyncio.Lock | None = None,
+        view: Any | None = None,
     ):
         """
         Args:
@@ -55,7 +55,7 @@ class kaiagotchiBase:
         self.decision_engine = DecisionEngine(config)
         self.action_manager = None
         self._running = False
-        self._tasks: Set[asyncio.Task] = set()
+        self._tasks: set[asyncio.Task] = set()
         self.interface_name: str = config.get("main", {}).get("iface", "wlan0")
 
         # Handle shared View injection
@@ -103,7 +103,7 @@ class kaiagotchiBase:
         except Exception:
             self.logger.debug("Failed to log detailed SystemState", exc_info=True)
 
-    async def update_state(self, updates: Dict[str, Any]) -> None:
+    async def update_state(self, updates: dict[str, Any]) -> None:
         """
         Thread-safe update of global SystemState.
         Merges network updates and coerces enums safely.
@@ -260,7 +260,7 @@ class kaiagotchiBase:
                 last_size = new_size
 
             text = path.read_text(errors="ignore")
-            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
             parsed_aps = {}
 
             for line in lines:

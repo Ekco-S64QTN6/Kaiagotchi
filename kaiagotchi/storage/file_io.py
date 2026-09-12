@@ -1,15 +1,15 @@
-import os
+import glob
 import json
 import logging
-import tempfile
-import glob
+import os
 import stat
-from typing import Any, Dict
+import tempfile
+from typing import Any
 
 file_io_logger = logging.getLogger("file_io")
 
 
-def atomically_save_data(filepath: str, data: Dict[str, Any], fmt: str = "json") -> bool:
+def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json") -> bool:
     """
     Atomically saves data to a file, preserving ownership and permissions.
     Prevents corruption and permission flips between runs as root/non-root.
@@ -95,7 +95,7 @@ def load_data(filepath: str, default: Any = None) -> Any:
 
     file_io_logger.debug(f"Loading data from: {filepath}")
     try:
-        with open(filepath, "r", encoding="utf-8") as fp:
+        with open(filepath, encoding="utf-8") as fp:
             data = json.load(fp)
             file_io_logger.info(f"Successfully loaded data from {filepath}")
             return data
@@ -141,7 +141,7 @@ if __name__ == "__main__":
         os.remove(test_path)
 
     # 2. Test Handshake Count
-    print(f"\n--- Testing Handshake Count ---")
+    print("\n--- Testing Handshake Count ---")
     current_dir = os.path.dirname(os.path.abspath(__file__))
     print(
         f"Handshakes in current directory ({current_dir}): "

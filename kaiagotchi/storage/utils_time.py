@@ -1,8 +1,8 @@
 # kaiagotchi/storage/utils_time.py
 from __future__ import annotations
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from typing import Optional
 
 TZ = ZoneInfo("America/Chicago")
 

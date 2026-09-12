@@ -2,7 +2,7 @@
 Mesh networking and Wi-Fi communication.
 """
 
-from .wifi import WiFiBand, CHANNEL_PLANS, NumChannels
+from .wifi import CHANNEL_PLANS, NumChannels, WiFiBand
 
 __all__ = [
     'WiFiBand',

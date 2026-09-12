@@ -13,22 +13,21 @@ ARCHITECTURE FIX: Removed duplicate RewardEngine and PersistentMood creation
 - Added proper setter methods for dependency injection
 """
 
-import time
-import threading
 import logging
-from typing import Dict, Any, List, Optional
+import threading
+import time
+from typing import Any
 
-from kaiagotchi.core import utils
+from kaiagotchi.ai.reward import RewardEngine
 from kaiagotchi.core.system import cpu_load, mem_usage, temperature
 from kaiagotchi.mesh import NumChannels
-from kaiagotchi.ai.reward import RewardEngine
 from kaiagotchi.storage.persistent_mood import PersistentMood
 
 _LOG = logging.getLogger("kaiagotchi.ai.epoch")
 
 
 class Epoch:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: dict[str, Any]):
         self.epoch = 0
         self.config = config or {}
 
@@ -81,9 +80,9 @@ class Epoch:
         self._lock = threading.Lock()
 
         # ARCHITECTURE FIX: Remove duplicate instances - use shared ones from Agent
-        self._reward_engine: Optional[RewardEngine] = None  # Will be set by Agent
-        self._persistent_mood: Optional[PersistentMood] = None  # Will be set by Agent
-        self._epoch_data: Dict[str, Any] = {}
+        self._reward_engine: RewardEngine | None = None  # Will be set by Agent
+        self._persistent_mood: PersistentMood | None = None  # Will be set by Agent
+        self._epoch_data: dict[str, Any] = {}
         self._last_reward = 0.0
         self._last_mood = "neutral"
 
@@ -102,7 +101,7 @@ class Epoch:
         _LOG.info("EpochTracker: Shared PersistentMood attached")
 
     # --------------------------------------------------------------
-    def wait_for_epoch_data(self, with_observation: bool = True, timeout: Optional[float] = None) -> Dict[str, Any]:
+    def wait_for_epoch_data(self, with_observation: bool = True, timeout: float | None = None) -> dict[str, Any]:
         """Wait for epoch data to be ready and return it."""
         self._epoch_data_ready.wait(timeout)
         self._epoch_data_ready.clear()
@@ -112,13 +111,13 @@ class Epoch:
             else {**self._observation, **self._epoch_data}
         )
 
-    def data(self) -> Dict[str, Any]:
+    def data(self) -> dict[str, Any]:
         """Get current epoch data."""
         return self._epoch_data
 
     # --------------------------------------------------------------
-    def update_network_state(self, aps_list: List[Dict[str, Any]], stations_list: List[Dict[str, Any]], 
-                           recent_captures: List[Dict[str, Any]]) -> None:
+    def update_network_state(self, aps_list: list[dict[str, Any]], stations_list: list[dict[str, Any]],
+                           recent_captures: list[dict[str, Any]]) -> None:
         """Update epoch with current network state from monitoring agent."""
         with self._lock:
             self.aps_list = aps_list or []
@@ -126,13 +125,13 @@ class Epoch:
             self.recent_captures = recent_captures or []
             self.current_aps = len(self.aps_list)
             self.current_stations = len(self.stations_list)
-            
+
             # Update activity flag based on network discoveries
             if self.current_aps > 0 or self.current_stations > 0:
                 self.any_activity = True
 
     # --------------------------------------------------------------
-    def observe(self, aps: List, peers: List) -> None:
+    def observe(self, aps: list, peers: list) -> None:
         """Update observation histograms from AP + peer lists."""
         if not isinstance(aps, list) or not isinstance(peers, list):
             _LOG.error("observe() requires list inputs for aps and peers")
@@ -146,7 +145,7 @@ class Epoch:
             self.num_peers = len(peers)
             num_peers = self.num_peers + 1e-10
 
-            self.tot_bond_factor = sum((getattr(p, "encounters", 0) for p in peers)) / bond_unit_scale
+            self.tot_bond_factor = sum(getattr(p, "encounters", 0) for p in peers) / bond_unit_scale
             self.avg_bond_factor = self.tot_bond_factor / num_peers
 
             aps_per_chan = [0.0] * NumChannels
@@ -208,7 +207,7 @@ class Epoch:
             if self._reward_engine is None:
                 _LOG.error("EpochTracker.next() called before RewardEngine was set!")
                 return
-                
+
             if self._persistent_mood is None:
                 _LOG.error("EpochTracker.next() called before PersistentMood was set!")
                 return
@@ -216,7 +215,7 @@ class Epoch:
             # Detect activity using both action tracking and network state
             network_activity = self.current_aps > 0 or self.current_stations > 0
             has_activity = self.any_activity or network_activity or self.did_handshakes
-            
+
             if not has_activity:
                 self.inactive_for += 1
                 self.active_for = 0
@@ -359,7 +358,7 @@ class Epoch:
         # Note: Network state (aps_list, stations_list) is preserved between epochs
 
     # --------------------------------------------------------------
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get comprehensive epoch summary for debugging and UI."""
         return {
             "epoch": self.epoch,
@@ -381,3 +380,7 @@ class Epoch:
                 "uptime": time.time() - self.epoch_started,
             }
         }
+
+
+# Public alias — the class is exported as EpochTracker throughout the package.
+EpochTracker = Epoch

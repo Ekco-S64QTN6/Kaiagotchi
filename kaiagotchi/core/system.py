@@ -14,7 +14,8 @@ import asyncio
 import logging
 import os
 import time
-from typing import Any, Dict, Optional, Callable
+from collections.abc import Callable
+from typing import Any
 
 _logger = logging.getLogger("kaiagotchi.core.system")
 
@@ -22,7 +23,7 @@ _logger = logging.getLogger("kaiagotchi.core.system")
 # ==========================================================
 # Environment setup
 # ==========================================================
-def setup_environment(config: Optional[Dict[str, Any]] = None) -> None:
+def setup_environment(config: dict[str, Any] | None = None) -> None:
     """Ensure required directories exist for Kaiagotchi."""
     _logger.info("Setting up Kaiagotchi environment...")
     directories = [
@@ -42,20 +43,20 @@ def setup_environment(config: Optional[Dict[str, Any]] = None) -> None:
 # ==========================================================
 # Metric helpers (low-level sysinfo)
 # ==========================================================
-def uptime() -> Optional[float]:
+def uptime() -> float | None:
     """Return system uptime in seconds, or None if unavailable."""
     try:
-        with open("/proc/uptime", "r", encoding="utf-8") as f:
+        with open("/proc/uptime", encoding="utf-8") as f:
             return float(f.readline().split()[0])
     except Exception:
         return None
 
 
-def mem_usage() -> Dict[str, Any]:
+def mem_usage() -> dict[str, Any]:
     """Return a dict of memory info (kB), or empty if unavailable."""
     try:
-        info: Dict[str, Any] = {}
-        with open("/proc/meminfo", "r", encoding="utf-8") as f:
+        info: dict[str, Any] = {}
+        with open("/proc/meminfo", encoding="utf-8") as f:
             for line in f:
                 if ":" in line:
                     k, v = line.split(":", 1)
@@ -65,17 +66,17 @@ def mem_usage() -> Dict[str, Any]:
         return {}
 
 
-def cpu_load() -> Optional[float]:
+def cpu_load() -> float | None:
     """Return CPU load (1-min average) or None."""
     try:
-        with open("/proc/loadavg", "r", encoding="utf-8") as f:
+        with open("/proc/loadavg", encoding="utf-8") as f:
             load = f.readline().split()[0]
             return float(load)
     except Exception:
         return None
 
 
-def temperature() -> Optional[float]:
+def temperature() -> float | None:
     """Return CPU temperature in Celsius, or None."""
     try:
         temp_paths = [
@@ -85,7 +86,7 @@ def temperature() -> Optional[float]:
         ]
         for path in temp_paths:
             if os.path.exists(path):
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, encoding="utf-8") as f:
                     temp = f.readline().strip()
                     return float(temp) / 1000.0
         return None
@@ -99,21 +100,21 @@ def temperature() -> Optional[float]:
 class SystemTicker:
     """
     Async background task that updates system metrics periodically.
-    
+
     Designed to integrate with kaiagotchi.data.system_types.SystemState.
     """
 
     def __init__(
         self,
-        system_state: Optional[Any] = None,
+        system_state: Any | None = None,
         *,
         interval: float = 2.0,
-        on_tick: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_tick: Callable[[dict[str, Any]], None] | None = None,
     ):
         self.system_state = system_state
         self.interval = interval
         self.on_tick = on_tick  # Optional callback hook
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
         self._running = False
         self._last_update: float = 0.0
         self._tick_count: int = 0

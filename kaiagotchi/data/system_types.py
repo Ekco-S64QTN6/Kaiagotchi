@@ -1,11 +1,13 @@
 #data/system_types.py
 from __future__ import annotations
-import time
+
 import logging
+import time
 import warnings
 from enum import Enum
-from typing import Dict, List, Optional, Annotated, Any
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from typing import Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # --- GLOBAL WARNING FILTER (critical for UI) ---
 warnings.filterwarnings("ignore", message="PydanticSerializationUnexpectedValue")
@@ -97,7 +99,7 @@ class SecurityLevel(str, Enum):
 class WirelessClient(BaseModel):
     model_config = ConfigDict(strict=True)
     mac: MACAddress
-    vendor: Optional[str] = None
+    vendor: str | None = None
     first_seen: NonNegativeFloat = Field(default_factory=time.time)
     last_seen: NonNegativeFloat = Field(default_factory=time.time)
     power: int = 0
@@ -107,17 +109,17 @@ class WirelessClient(BaseModel):
 class AccessPoint(BaseModel):
     model_config = ConfigDict(strict=True)
     bssid: BSSID
-    ssid: Optional[str] = None
+    ssid: str | None = None
     protocol: AccessPointProtocol = AccessPointProtocol.UNKNOWN
     ap_type: AccessPointType = AccessPointType.UNKNOWN
     channel: NetworkChannel = 1
     frequency: FrequencyMHz = 2412
     power: int = 0
     privacy: bool = False
-    cipher: Optional[str] = None
+    cipher: str | None = None
     first_seen: NonNegativeFloat = Field(default_factory=time.time)
     last_seen: NonNegativeFloat = Field(default_factory=time.time)
-    clients: Dict[str, WirelessClient] = Field(default_factory=dict)
+    clients: dict[str, WirelessClient] = Field(default_factory=dict)
     handshakes_captured: NonNegativeInt = 0
     pmkid_captured: bool = False
     is_target: bool = False
@@ -137,16 +139,16 @@ class InterfaceState(BaseModel):
     mode: InterfaceMode = InterfaceMode.UNKNOWN
     is_up: bool = False
     mac_address: MACAddress = "00:00:00:00:00:00"
-    active_channel: Optional[NetworkChannel] = None
-    tx_power: Optional[int] = None
-    supported_modes: List[InterfaceMode] = Field(default_factory=list)
-    driver: Optional[str] = None
-    phy: Optional[str] = None
+    active_channel: NetworkChannel | None = None
+    tx_power: int | None = None
+    supported_modes: list[InterfaceMode] = Field(default_factory=list)
+    driver: str | None = None
+    phy: str | None = None
 
 class NetworkState(BaseModel):
     model_config = ConfigDict(strict=True)
-    interfaces: Dict[str, InterfaceState] = Field(default_factory=dict)
-    access_points: Dict[str, AccessPoint] = Field(default_factory=dict)
+    interfaces: dict[str, InterfaceState] = Field(default_factory=dict)
+    access_points: dict[str, AccessPoint] = Field(default_factory=dict)
     last_scan_time: NonNegativeFloat = 0.0
     scan_in_progress: bool = False
     total_aps_discovered: NonNegativeInt = 0
@@ -181,7 +183,7 @@ class AgentStatus(BaseModel):
     agent_id: str
     status: AgentState = AgentState.IDLE
     description: str = "Initialized"
-    last_action: Optional[str] = None
+    last_action: str | None = None
     last_update: NonNegativeFloat = Field(default_factory=time.time)
     error_count: NonNegativeInt = 0
     restart_count: NonNegativeInt = 0
@@ -206,10 +208,10 @@ class SystemMetrics(BaseModel):
     memory_usage: Percentage = 0.0
     disk_free_gb: NonNegativeFloat = 0.0
     uptime_seconds: NonNegativeFloat = 0.0
-    temperature: Optional[float] = None
+    temperature: float | None = None
     network_throughput_rx: NonNegativeFloat = 0.0
     network_throughput_tx: NonNegativeFloat = 0.0
-    battery_level: Optional[Percentage] = None
+    battery_level: Percentage | None = None
 
 # --- CORE SYSTEM STATE ---
 class SystemState(BaseModel):
@@ -222,11 +224,11 @@ class SystemState(BaseModel):
 
     current_system_state: GlobalSystemState = GlobalSystemState.BOOTING
     network: NetworkState = Field(default_factory=NetworkState)
-    agents: Dict[str, AgentStatus] = Field(default_factory=dict)
+    agents: dict[str, AgentStatus] = Field(default_factory=dict)
     metrics: SystemMetrics = Field(default_factory=SystemMetrics)
     session_metrics: SessionMetrics = Field(default_factory=SessionMetrics)
     last_state_update: NonNegativeFloat = Field(default_factory=time.time)
-    config_hash: Optional[str] = None
+    config_hash: str | None = None
 
     @field_validator("current_system_state", mode="before")
     @classmethod
@@ -295,10 +297,10 @@ class SystemEvent(BaseModel):
     timestamp: NonNegativeFloat = Field(default_factory=time.time)
     source: str
     severity: str = "INFO"
-    details: Dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, Any] = Field(default_factory=dict)
 
 class HandshakeCaptureEvent(SystemEvent):
     bssid: BSSID
-    client_mac: Optional[MACAddress] = None
+    client_mac: MACAddress | None = None
     handshake_type: str
-    file_path: Optional[str] = None
+    file_path: str | None = None

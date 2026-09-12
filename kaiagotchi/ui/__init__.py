@@ -6,8 +6,8 @@ Provides unified access to:
 - Voice: centralized mood/message/face engine.
 """
 
-from .view import View
 from .terminal_display import TerminalDisplay
+from .view import View
 from .voice import Voice  # unified voice + mood + face logic
 
 __all__ = ["View", "TerminalDisplay", "Voice"]

@@ -1,15 +1,16 @@
 from __future__ import annotations
+
 import logging
 import os
+import re
 import shutil
 import stat
-import re
-from typing import Any, Dict, Optional, List
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .file_io import atomically_save_data, load_data
-from .utils_time import now_cst_iso, TZ
+from .utils_time import TZ, now_cst_iso
 
 try:
     from kaiagotchi.network.pcap_parser import parse_pcap_comprehensive  # type: ignore
@@ -52,7 +53,7 @@ class PersistentNetwork:
       - pcaps: metadata + optional parsed analysis from pcap_parser
     """
 
-    def __init__(self, storage_dir: Optional[str] = None):
+    def __init__(self, storage_dir: str | None = None):
         if storage_dir:
             self.storage_dir = os.path.expanduser(storage_dir)
         else:
@@ -60,16 +61,16 @@ class PersistentNetwork:
 
         self.filepath = os.path.join(self.storage_dir, DEFAULT_FILENAME)
         self.pcaps_dir = os.path.join(self.storage_dir, PCAP_DIRNAME)
-        
+
         # Ensure directories exist with proper permissions
         self._ensure_directory_permissions()
-        
-        self._data: Dict[str, Any] = {"bssids": {}, "stations": {}, "pcaps": {}}
+
+        self._data: dict[str, Any] = {"bssids": {}, "stations": {}, "pcaps": {}}
         self.load()
-        
+
         # Sync pcap records with filesystem on initialization
         self._sync_pcaps_with_filesystem()
-        
+
         # Generate initial handshake and SSID summary reports
         self.generate_reports()
 
@@ -79,11 +80,11 @@ class PersistentNetwork:
             # Create directories if they don't exist
             os.makedirs(self.storage_dir, exist_ok=True)
             os.makedirs(self.pcaps_dir, exist_ok=True)
-            
+
             # Set proper permissions (read/write for user, read for group/others)
             os.chmod(self.storage_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
             os.chmod(self.pcaps_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-            
+
             LOGGER.debug(f"Ensured directory permissions for {self.storage_dir}")
         except Exception as e:
             LOGGER.error(f"Failed to set directory permissions: {e}")
@@ -140,13 +141,13 @@ class PersistentNetwork:
             # Get all pcap files in the directory
             pcap_files = list(Path(self.pcaps_dir).glob("*.pcap"))
             existing_filenames = {f.name for f in pcap_files}
-            
+
             # Remove records for files that don't exist
             for filename in list(self._data.get("pcaps", {}).keys()):
                 if filename not in existing_filenames:
                     LOGGER.info(f"Removing pcap record for deleted file: {filename}")
                     del self._data["pcaps"][filename]
-            
+
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
                 if pcap_file.name not in self._data.get("pcaps", {}):
@@ -154,14 +155,14 @@ class PersistentNetwork:
                     stat = pcap_file.stat()
                     # ENHANCED: Better BSSID extraction that handles various filename formats
                     bssid = self._extract_bssid_from_filename(pcap_file.name)
-                    
-                    record: Dict[str, Any] = {
+
+                    record: dict[str, Any] = {
                         "bssid": bssid,
                         "created": datetime.fromtimestamp(stat.st_mtime, tz=TZ).isoformat(),
                         "size": stat.st_size,
                         "path": str(pcap_file),
                     }
-                    
+
                     # Try to analyze the pcap to extract BSSID and other info
                     if parse_pcap_comprehensive is not None:
                         try:
@@ -174,14 +175,14 @@ class PersistentNetwork:
                                         break
                         except Exception:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
-                    
+
                     self._data.setdefault("pcaps", {})[pcap_file.name] = record
-            
+
             # Save the synced state
             if pcap_files:
                 self.save()
                 LOGGER.info(f"Synced {len(pcap_files)} pcap files with filesystem")
-                
+
         except Exception:
             LOGGER.exception("Failed to sync pcaps with filesystem")
 
@@ -189,33 +190,33 @@ class PersistentNetwork:
         """Extract BSSID from filename using multiple pattern matching strategies."""
         # Remove file extension
         stem = Path(filename).stem
-        
+
         # Strategy 1: Look for MAC address patterns (XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX)
         mac_patterns = [
             r'([0-9A-Fa-f]{2}[:][0-9A-Fa-f]{2}[:][0-9A-Fa-f]{2}[:][0-9A-Fa-f]{2}[:][0-9A-Fa-f]{2}[:][0-9A-Fa-f]{2})',
             r'([0-9A-Fa-f]{2}[-][0-9A-Fa-f]{2}[-][0-9A-Fa-f]{2}[-][0-9A-Fa-f]{2}[-][0-9A-Fa-f]{2}[-][0-9A-Fa-f]{2})'
         ]
-        
+
         for pattern in mac_patterns:
             match = re.search(pattern, stem)
             if match:
                 # Convert to standard MAC format (uppercase with colons)
                 mac = match.group(1).replace('-', ':').upper()
                 return mac
-        
+
         # Strategy 2: Split by common separators and look for MAC-like segments
         for separator in ['_', '-', '.']:
             parts = stem.split(separator)
             for part in parts:
                 if len(part) == 17 and (part.count(':') == 5 or part.count('-') == 5):
                     return part.replace('-', ':').upper()
-        
+
         return "UNKNOWN"
 
     # -------------------------
     # BSSID helpers
     # -------------------------
-    def get_first_seen(self, mac: str) -> Optional[str]:
+    def get_first_seen(self, mac: str) -> str | None:
         if not mac:
             return None
         mac = mac.upper()
@@ -225,12 +226,12 @@ class PersistentNetwork:
     def update_bssid(
         self,
         bssid: str,
-        essid: Optional[str] = None,
+        essid: str | None = None,
         packets: int = 0,
         beacons: int = 0,
-        seen_iso: Optional[str] = None,
-        channel: Optional[str] = None,
-        encryption: Optional[str] = None,
+        seen_iso: str | None = None,
+        channel: str | None = None,
+        encryption: str | None = None,
     ) -> None:
         """Merge or create entry for a BSSID and update stats while preserving earliest first_seen."""
         try:
@@ -282,7 +283,7 @@ class PersistentNetwork:
                     store[key] = int(store.get(key, 0)) + int(val)
                 except Exception:
                     LOGGER.exception("Error incrementing %s for %s", key, bssid)
-                    
+
             LOGGER.debug(f"Updated BSSID {bssid}: first_seen={store['first_seen']}, last_seen={store['last_seen']}")
         except Exception:
             LOGGER.exception("update_bssid failed for %s", bssid)
@@ -293,10 +294,10 @@ class PersistentNetwork:
     def update_station(
         self,
         sta_mac: str,
-        associated_bssid: Optional[str] = None,
+        associated_bssid: str | None = None,
         packets: int = 0,
-        seen_iso: Optional[str] = None,
-        essids: Optional[str] = None,
+        seen_iso: str | None = None,
+        essids: str | None = None,
     ) -> None:
         """Merge or create entry for a station MAC and update stats while preserving earliest first_seen."""
         try:
@@ -339,7 +340,7 @@ class PersistentNetwork:
     # -------------------------
     # Methods for terminal display compatibility
     # -------------------------
-    def get_bssid_history(self, bssid: str) -> Optional[Dict[str, Any]]:
+    def get_bssid_history(self, bssid: str) -> dict[str, Any] | None:
         """Get historical data for a BSSID in terminal display format."""
         if not bssid:
             return None
@@ -347,7 +348,7 @@ class PersistentNetwork:
         entry = self._data["bssids"].get(bssid)
         if not entry:
             return None
-            
+
         # Convert to terminal display format
         return {
             "bssid": entry.get("bssid", bssid),
@@ -360,7 +361,7 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         }
 
-    def get_all_bssids(self) -> Dict[str, Any]:
+    def get_all_bssids(self) -> dict[str, Any]:
         """Get all BSSID history in terminal display format."""
         result = {}
         for bssid, entry in self._data["bssids"].items():
@@ -376,7 +377,7 @@ class PersistentNetwork:
             }
         return result
 
-    def get_station_history(self, station_mac: str) -> Optional[Dict[str, Any]]:
+    def get_station_history(self, station_mac: str) -> dict[str, Any] | None:
         """Get historical data for a station in terminal display format."""
         if not station_mac:
             return None
@@ -384,7 +385,7 @@ class PersistentNetwork:
         entry = self._data["stations"].get(station_mac)
         if not entry:
             return None
-            
+
         return {
             "station_mac": entry.get("station_mac", station_mac),
             "bssid": entry.get("associated_bssid", ""),
@@ -394,7 +395,7 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         }
 
-    def get_all_stations(self) -> Dict[str, Any]:
+    def get_all_stations(self) -> dict[str, Any]:
         """Get all station history in terminal display format."""
         result = {}
         for station_mac, entry in self._data["stations"].items():
@@ -411,10 +412,10 @@ class PersistentNetwork:
     # -------------------------
     # Batch update methods for monitoring agent
     # -------------------------
-    def update_from_scan_results(self, aps: List[Dict[str, Any]], stations: List[Dict[str, Any]]) -> None:
+    def update_from_scan_results(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]) -> None:
         """Update persistence from a full scan result set."""
         current_time = now_cst_iso()
-        
+
         for ap in aps:
             self.update_bssid(
                 bssid=ap.get("bssid", ""),
@@ -425,7 +426,7 @@ class PersistentNetwork:
                 channel=ap.get("channel", ""),
                 encryption=ap.get("privacy", "")
             )
-            
+
         for station in stations:
             self.update_station(
                 sta_mac=station.get("station_mac", ""),
@@ -434,14 +435,14 @@ class PersistentNetwork:
                 seen_iso=current_time,
                 essids=station.get("essids", "")
             )
-            
+
         self.save()
         LOGGER.debug(f"Updated persistence with {len(aps)} APs and {len(stations)} stations")
 
     # -------------------------
     # Enhanced PCAP analysis to extract ALL networks and devices
     # -------------------------
-    def _analyze_pcap_into_record(self, dst_path: Path, record: Dict[str, Any]) -> None:
+    def _analyze_pcap_into_record(self, dst_path: Path, record: dict[str, Any]) -> None:
         """Enhanced analysis that extracts ALL BSSIDs and stations from PCAP, not just handshakes."""
         if parse_pcap_comprehensive is None:
             LOGGER.debug("pcap_parser not available; skipping analysis for %s", dst_path)
@@ -450,7 +451,7 @@ class PersistentNetwork:
         try:
             # Use the comprehensive parser to extract ALL network data
             network_data = parse_pcap_comprehensive(str(dst_path))
-            
+
             if not network_data.bssids and not network_data.stations:
                 LOGGER.debug(f"No network data found in {dst_path}")
                 return
@@ -460,10 +461,10 @@ class PersistentNetwork:
             handshake_count = 0
             bssids_updated = set()
             stations_updated = set()
-            
+
             # Use the pcap file's modification time as the seen time
             pcap_time = datetime.fromtimestamp(dst_path.stat().st_mtime, tz=TZ).isoformat()
-            
+
             # Process ALL BSSIDs found in the PCAP
             for bssid, bssid_info in network_data.bssids.items():
                 self.update_bssid(
@@ -476,7 +477,7 @@ class PersistentNetwork:
                     encryption=bssid_info.get('encryption')
                 )
                 bssids_updated.add(bssid.upper())
-            
+
             # Process ALL stations found in the PCAP
             for station_mac, station_info in network_data.stations.items():
                 self.update_station(
@@ -486,7 +487,7 @@ class PersistentNetwork:
                     seen_iso=pcap_time
                 )
                 stations_updated.add(station_mac.upper())
-            
+
             # Process handshakes for the analysis record
             for capture in network_data.handshakes:
                 entry = {
@@ -498,17 +499,17 @@ class PersistentNetwork:
                     "pmkid": capture.pmkid,
                 }
                 analysis.append(entry)
-                
+
                 if capture.pmkid:
                     pmkid_count += 1
                 if capture.handshake_complete:
                     handshake_count += 1
 
             record["analysis"] = analysis
-            
+
             # Save after updating ALL BSSIDs and stations
             self.save()
-            
+
             LOGGER.info(
                 "[pcap] Comprehensive analysis of %s → %d BSSIDs, %d stations, %d handshakes (%d complete, %d PMKID)",
                 os.path.basename(str(dst_path)),
@@ -521,10 +522,10 @@ class PersistentNetwork:
         except Exception:
             LOGGER.exception("Error analyzing PCAP %s", dst_path)
 
-    def _make_pcap_filename(self, base_name: str, bssid: Optional[str] = None) -> str:
+    def _make_pcap_filename(self, base_name: str, bssid: str | None = None) -> str:
         """Generate a proper PCAP filename without asterisks."""
         timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-        
+
         if bssid and bssid != "UNKNOWN":
             # Clean BSSID for filename (replace colons with dashes)
             clean_bssid = bssid.replace(':', '-').upper()
@@ -535,10 +536,10 @@ class PersistentNetwork:
     def add_pcap_file(
         self,
         src_path: str,
-        bssid: Optional[str] = None,
-        src_name: Optional[str] = None,
+        bssid: str | None = None,
+        src_name: str | None = None,
         analyze: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Add PCAP file by copying from source - use add_pcap_record for existing files."""
         try:
             src = Path(src_path)
@@ -548,16 +549,16 @@ class PersistentNetwork:
 
             filename = self._make_pcap_filename(src_name or src.stem, bssid)
             dst = Path(self.pcaps_dir) / filename
-            
+
             # Check if file already exists to avoid duplicates
             if dst.exists():
                 LOGGER.warning(f"PCAP file already exists: {dst}, skipping copy")
                 return str(dst)
-                
+
             shutil.copy2(src, dst)
 
             stat = dst.stat()
-            record: Dict[str, Any] = {
+            record: dict[str, Any] = {
                 "bssid": (bssid or "UNKNOWN").upper(),
                 "created": now_cst_iso(),
                 "size": stat.st_size,
@@ -582,12 +583,12 @@ class PersistentNetwork:
             # Use absolute path to ensure consistency
             abs_path = path.absolute()
             filename = os.path.basename(str(abs_path))
-            
+
             # Check if record already exists to avoid duplicates
             if filename in self._data.get("pcaps", {}):
                 LOGGER.warning(f"PCAP record already exists for {filename}, updating instead")
-                
-            record: Dict[str, Any] = {
+
+            record: dict[str, Any] = {
                 "bssid": bssid.upper(),
                 "created": timestamp,
                 "size": size,
@@ -628,8 +629,8 @@ class PersistentNetwork:
         """Generate handshakes_summary.md and handshakes_summary.json in storage_dir."""
         try:
             # 1. Gather all unique SSIDs ever seen
-            unique_ssids: Dict[str, List[Dict[str, Any]]] = {}
-            for bssid, entry in self._data.get("bssids", {}).items():
+            unique_ssids: dict[str, list[dict[str, Any]]] = {}
+            for _bssid, entry in self._data.get("bssids", {}).items():
                 ssid = entry.get("essid", "") or "Hidden or Unknown"
                 if ssid not in unique_ssids:
                     unique_ssids[ssid] = []
@@ -710,11 +711,11 @@ class PersistentNetwork:
             atomically_save_data(json_path, json_report, fmt="json")
             self._ensure_file_permissions(json_path)            # Save MD report
             md_path = os.path.join(self.storage_dir, "handshakes_summary.md")
-            
+
             md_lines = []
             md_lines.append("# 📶 Kaiagotchi Wi-Fi Reconnaissance & Security Audit Summary")
             md_lines.append(f"Generated at: `{json_report['summary']['generated_at']}`\n")
-            
+
             # --- Scoreboard ---
             md_lines.append("## 📊 Scoreboard")
             md_lines.append(f"- **Total Unique SSIDs Seen:** {json_report['summary']['total_unique_ssids_seen']}")
@@ -725,9 +726,9 @@ class PersistentNetwork:
             # --- ASCII Channel Load Distribution ---
             md_lines.append("## 📈 Wi-Fi Channel Load & Density Distribution")
             md_lines.append("Visual distribution of active Access Points (APs) across Wi-Fi frequency bands:\n")
-            
+
             # Group channels
-            chan_map: Dict[int, int] = {}
+            chan_map: dict[int, int] = {}
             for entry in self._data.get("bssids", {}).values():
                 ch_val = entry.get("channel")
                 if ch_val:
@@ -740,7 +741,7 @@ class PersistentNetwork:
             # Divide channels into 2.4GHz and 5GHz/6GHz lists
             chans_24 = sorted([c for c in chan_map.keys() if c <= 14])
             chans_5 = sorted([c for c in chan_map.keys() if c > 14])
-            
+
             max_ap_count = max(chan_map.values()) if chan_map else 0
             bar_width = 30
 
@@ -785,7 +786,7 @@ class PersistentNetwork:
                     h_link = "`WPA*02` (MIC needed)"
                     if h["pmkid"]:
                         h_link = f"**Mode 22000:**<br>`{h['hashcat_22000']}`<br><br>**Mode 16800:**<br>`{h['hashcat_16800']}`"
-                    
+
                     complete_str = "✅ Yes" if h["handshake_complete"] else "❌ No"
                     ssid_display = h["ssid"] if h["ssid"] != "Hidden or Unknown" else "*Hidden/Unknown*"
                     md_lines.append(
@@ -796,9 +797,9 @@ class PersistentNetwork:
             # --- Open & Vulnerable Networks Audit ---
             md_lines.append("## ⚠️ Wi-Fi Security Vulnerability Audit")
             md_lines.append("Identified Open or insecure legacy networks in the wireless vicinity:\n")
-            
+
             vulnerable_networks = []
-            for bssid, entry in self._data.get("bssids", {}).items():
+            for _bssid, entry in self._data.get("bssids", {}).items():
                 enc = (entry.get("encryption") or "").upper()
                 if "OPEN" in enc or "WEP" in enc or "WPA" in enc or not enc:
                     vulnerable_networks.append(entry)
@@ -812,7 +813,7 @@ class PersistentNetwork:
                     ssid_display = entry.get("essid", "") or "*Hidden/Unknown*"
                     enc_profile = entry.get("encryption") or "Open / Unencrypted"
                     enc_upper = enc_profile.upper()
-                    
+
                     if "WEP" in enc_upper:
                         status = "🛑 HIGHLY INSECURE"
                     elif "OPEN" in enc_upper or not enc_upper or enc_upper == "OPEN / UNENCRYPTED":
@@ -825,7 +826,7 @@ class PersistentNetwork:
                         status = "⚠️ LEGACY WPA1"
                     else:
                         status = f"ℹ️ {enc_profile}"
-                        
+
                     md_lines.append(
                         f"| {ssid_display} | `{entry.get('bssid')}` | {entry.get('channel') or '-'} | `{enc_profile}` | **{status}** |"
                     )
@@ -834,9 +835,9 @@ class PersistentNetwork:
             # --- Hidden SSID & Client Association Tracker ---
             md_lines.append("## 🕵️ Hidden & Masked Access Points")
             md_lines.append("Access points broadcasting in stealth mode (Hidden SSIDs):\n")
-            
+
             hidden_aps = []
-            for bssid, entry in self._data.get("bssids", {}).items():
+            for _bssid, entry in self._data.get("bssids", {}).items():
                 ssid = entry.get("essid", "")
                 if ssid == "Hidden or Unknown" or not ssid or ssid.strip() == "":
                     hidden_aps.append(entry)
@@ -855,8 +856,8 @@ class PersistentNetwork:
             # --- Multi-BSSID Virtualization & Spoofing Diagnostics ---
             md_lines.append("## 🧬 Multi-BSSID Virtualization & Spoofing Diagnostics")
             md_lines.append("Detects potential physical network mapping, multi-SSID enterprise virtualization, or BSSID cloning/spoofing anomalies:\n")
-            
-            multi_bssid_groups: Dict[str, List[Dict[str, Any]]] = {}
+
+            multi_bssid_groups: dict[str, list[dict[str, Any]]] = {}
             for ssid, entries in unique_ssids.items():
                 if ssid != "Hidden or Unknown" and len(entries) > 1:
                     multi_bssid_groups[ssid] = entries
@@ -868,7 +869,7 @@ class PersistentNetwork:
                 md_lines.append("| --- | --- | --- | --- |")
                 for ssid, entries in multi_bssid_groups.items():
                     bssid_list = ", ".join([f"`{e.get('bssid')}`" for e in entries])
-                    channel_list = ", ".join(list(set([str(e.get('channel')) for e in entries if e.get('channel')])))
+                    channel_list = ", ".join(list({str(e.get('channel')) for e in entries if e.get('channel')}))
                     profile = "🏢 Enterprise Virtualization / Roaming" if len(entries) >= 3 else "👥 Dual-Band / Multi-AP Network"
                     md_lines.append(
                         f"| **{ssid}** | {bssid_list} | {channel_list} | {profile} |"
@@ -957,23 +958,23 @@ class PersistentNetwork:
     # -------------------------
     # Utilities / Introspection
     # -------------------------
-    def list_known_bssids(self) -> List[str]:
+    def list_known_bssids(self) -> list[str]:
         return list(self._data.get("bssids", {}).keys())
 
-    def list_known_stations(self) -> List[str]:
+    def list_known_stations(self) -> list[str]:
         return list(self._data.get("stations", {}).keys())
 
-    def get_bssid_record(self, bssid: str) -> Optional[Dict[str, Any]]:
+    def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
         return self._data.get("bssids", {}).get(bssid.upper())
 
-    def get_station_record(self, sta_mac: str) -> Optional[Dict[str, Any]]:
+    def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
         return self._data.get("stations", {}).get(sta_mac.upper())
 
-    def get_pcap_records(self) -> Dict[str, Any]:
+    def get_pcap_records(self) -> dict[str, Any]:
         return dict(self._data.get("pcaps", {}))
 
-    def get_analysis_for_bssid(self, bssid: str) -> List[Dict[str, Any]]:
-        results: List[Dict[str, Any]] = []
+    def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
         try:
             for rec in self._data.get("pcaps", {}).values():
                 if rec.get("bssid", "").upper() == bssid.upper():

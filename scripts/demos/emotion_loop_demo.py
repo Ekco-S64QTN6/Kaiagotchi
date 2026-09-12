@@ -12,9 +12,9 @@ import asyncio
 import random
 import time
 
-from kaiagotchi.ui.view import View
-from kaiagotchi.ui.terminal_display import TerminalDisplay
 from kaiagotchi.core.automata import Automata
+from kaiagotchi.ui.terminal_display import TerminalDisplay
+from kaiagotchi.ui.view import View
 
 
 async def main():
@@ -50,7 +50,7 @@ async def main():
     # Simulate 12 epochs with random reward dynamics
     for epoch in range(12):
         # Fake state data — mimic network scan results
-        fake_state = {
+        {
             "network": {
                 "access_points": [{"bssid": f"AA:BB:CC:{epoch:02X}:01:01"} for _ in range(random.randint(0, 5))]
             },

@@ -1,10 +1,11 @@
 # kaiagotchi/storage/persistent_mood.py
 from __future__ import annotations
+
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from .file_io import atomically_save_data, load_data
@@ -25,7 +26,7 @@ class PersistentMood:
     - Maintains backward compatibility with existing calls
     """
 
-    def __init__(self, storage_dir: Optional[str] = None):
+    def __init__(self, storage_dir: str | None = None):
         self.storage_dir = os.path.expanduser(storage_dir) if storage_dir else os.path.dirname(__file__)
         self.filepath = os.path.join(self.storage_dir, DEFAULT_FILENAME)
 
@@ -36,7 +37,7 @@ class PersistentMood:
         self._last_reward_time = 0.0
         self._reward_debounce_interval = 1.0  # Minimum 1 second between rewards
 
-        self._data: Dict[str, Any] = {
+        self._data: dict[str, Any] = {
             "mood": "neutral",
             "energy": 0.75,
             "curiosity": 0.5,
@@ -89,37 +90,37 @@ class PersistentMood:
 
     # ------------------------------------------------------------------
     # Getters - ARCHITECTURE FIX: Added methods for Agent compatibility
-    def get_state(self) -> Dict[str, Any]:
+    def get_state(self) -> dict[str, Any]:
         return dict(self._data)
 
     def get_mood(self) -> str:
         return self._current_mood  # FIXED: Use tracked mood state
-    
+
     def get_last_mood(self) -> str:
         """Get last saved mood - used by Agent for restoration."""
         return self._current_mood  # FIXED: Use tracked mood state
 
     def get_reward_points(self) -> float:
         return float(self._data.get("reward_points", 0.0))
-    
+
     def get_last_reward(self) -> float:
         """Get last reward value - used by Agent for restoration."""
         return float(self._data.get("last_reward", 0.0))
 
     # ------------------------------------------------------------------
     # Mutators
-    def set(self, mood: str, reward: float = 0.0, energy: Optional[float] = None, curiosity: Optional[float] = None) -> None:
+    def set(self, mood: str, reward: float = 0.0, energy: float | None = None, curiosity: float | None = None) -> None:
         """Directly set values in memory."""
         # FIXED: Add mood change validation
         current_time = time.time()
         if current_time - self._last_mood_change < self._min_mood_duration:
             LOGGER.debug(f"Mood change too rapid: {self._current_mood} -> {mood}, ignoring")
             return
-            
+
         old_mood = self._current_mood
         self._current_mood = mood
         self._last_mood_change = current_time
-        
+
         self._data["mood"] = mood
         self._data["reward_points"] = float(reward)
         self._data["last_reward"] = float(reward)  # ARCHITECTURE FIX: Track last reward
@@ -128,18 +129,18 @@ class PersistentMood:
         if curiosity is not None:
             self._data["curiosity"] = float(max(0.0, min(1.0, curiosity)))
         self._data["_last_updated"] = self._now_iso()
-        
+
         if old_mood != mood:
             LOGGER.debug(f"[mood] Mood changed {old_mood} → {mood}")
 
-    def set_and_save(self, mood: str, reward: float = 0.0, energy: Optional[float] = None, curiosity: Optional[float] = None) -> bool:
+    def set_and_save(self, mood: str, reward: float = 0.0, energy: float | None = None, curiosity: float | None = None) -> bool:
         """Convenience wrapper for set() + save()."""
         self.set(mood, reward, energy, curiosity)
         return self.save()
 
     # ------------------------------------------------------------------
     # Emotional logic - ARCHITECTURE FIX: Enhanced for EpochTracker compatibility
-    def apply_reward(self, points: float, event: Optional[str] = None, epoch_data: Optional[Dict[str, Any]] = None) -> None:
+    def apply_reward(self, points: float, event: str | None = None, epoch_data: dict[str, Any] | None = None) -> None:
         """
         Increment rewards and gently shift mood based on performance.
         Enhanced to accept epoch_data parameter from EpochTracker.
@@ -149,7 +150,7 @@ class PersistentMood:
         if current_time - self._last_reward_time < self._reward_debounce_interval:
             LOGGER.debug(f"Reward too rapid: {points} for {event}, ignoring")
             return
-            
+
         self._last_reward_time = current_time
 
         # ARCHITECTURE FIX: Handle epoch_data if provided
@@ -205,11 +206,11 @@ class PersistentMood:
         self.set(new_mood, self._data.get("reward_points", 0.0))
 
     # ------------------------------------------------------------------
-    def sync_from_epoch(self, epoch_data: Dict[str, Any]) -> None:
+    def sync_from_epoch(self, epoch_data: dict[str, Any]) -> None:
         """
         Merge reward & mood context from Epoch cycles into persistent state.
         - epoch_data: {"reward": float, "mood": str, ...}
-        
+
         ARCHITECTURE FIX: Now uses enhanced apply_reward method
         """
         try:

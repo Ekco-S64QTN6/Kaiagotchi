@@ -8,12 +8,14 @@ by the main Automata instance in the Agent.
 """
 
 from __future__ import annotations
+
 import asyncio
 import logging
 import time
-from typing import Dict, Any, Callable, Optional
-from enum import Enum, auto
+from collections.abc import Callable
 from dataclasses import dataclass
+from enum import Enum, auto
+from typing import Any
 
 from kaiagotchi.core.events import EventEmitter
 from kaiagotchi.data.system_types import GlobalSystemState
@@ -32,19 +34,19 @@ class AgentState(Enum):
 
 @dataclass
 class InterfaceCache:
-    data: Dict[str, Any]
+    data: dict[str, Any]
     timestamp: float
 
 
 class DecisionEngine:
     """High-level FSM (Finite State Machine) for Kaiagotchi operational behavior."""
 
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: dict[str, Any] | None = None):
         self.config = config or {}
         self.current_state: AgentState = AgentState.INITIALIZING
         self._last_state_change: float = time.time()
         self._last_channel_hop: float = time.time()
-        self._iface_cache: Dict[str, InterfaceCache] = {}
+        self._iface_cache: dict[str, InterfaceCache] = {}
         self._cache_ttl: float = float(self.config.get("iface_cache_ttl", 5.0))
         self._state_history: list = []
 
@@ -64,8 +66,8 @@ class DecisionEngine:
         self.hop_interval: float = float(self.config.get("personality", {}).get("hop_recon_time", 10.0))
 
         # External bindings
-        self.view: Optional[Any] = None
-        self.automata: Optional[Any] = None  # Reference to main automata instance
+        self.view: Any | None = None
+        self.automata: Any | None = None  # Reference to main automata instance
 
         log.debug("DecisionEngine initialized (hop interval %.1fs)", self.hop_interval)
 
@@ -80,7 +82,7 @@ class DecisionEngine:
         log.debug("DecisionEngine: Main Automata instance attached")
 
     # -------------------------
-    async def _safe_emit(self, event_name: str, payload: Dict[str, Any]) -> None:
+    async def _safe_emit(self, event_name: str, payload: dict[str, Any]) -> None:
         """Safely emit events (awaits if coroutine)."""
         try:
             result = self.events.emit(event_name, payload)
@@ -118,7 +120,7 @@ class DecisionEngine:
 
         # Change from INFO to DEBUG to reduce log spam
         log.debug("State: %s → %s (%s)", old_state.name, new_state.name, reason)
-        
+
         # Emit state change event
         asyncio.create_task(self._safe_emit("state_changed", {
             "old_state": old_state.name,
@@ -138,7 +140,7 @@ class DecisionEngine:
         return new_state
 
     # -------------------------
-    async def process_state(self, state: Dict[str, Any], action_manager: Any) -> AgentState:
+    async def process_state(self, state: dict[str, Any], action_manager: Any) -> AgentState:
         """Decide next operational state based on system context."""
         try:
             global_state = state.get("current_system_state", GlobalSystemState.BOOTING)
@@ -228,7 +230,7 @@ class DecisionEngine:
                 cpu = float(metrics.get("cpu_usage", 0.0) or 0.0)
                 if cpu > 0.85:
                     return await self._transition_to(AgentState.MAINTENANCE, "High load")
-                
+
                 # Time-based targeting completion
                 if (time.time() - self._last_state_change) > self.target_time:
                     return await self._transition_to(AgentState.RECON_SCAN, "Targeting done")
@@ -245,7 +247,7 @@ class DecisionEngine:
             return await self._transition_to(AgentState.RECON_SCAN, "Recovery fallback")
 
     # -------------------------
-    def get_state_info(self) -> Dict[str, Any]:
+    def get_state_info(self) -> dict[str, Any]:
         """Return diagnostic info."""
         try:
             # Get current mood from main automata if available
@@ -282,7 +284,7 @@ class DecisionEngine:
             }
 
     # -------------------------
-    def get_operational_summary(self) -> Dict[str, Any]:
+    def get_operational_summary(self) -> dict[str, Any]:
         """Get comprehensive operational summary."""
         return {
             "current_operational_state": self.current_state.name,
@@ -301,7 +303,7 @@ class DecisionEngine:
     def get_available_moods(self) -> list[str]:
         """Return list of available moods for reference (from faces.py)."""
         return [
-            "neutral", "calm", "happy", "curious", "bored", 
-            "sad", "frustrated", "sleepy", "confident", 
+            "neutral", "calm", "happy", "curious", "bored",
+            "sad", "frustrated", "sleepy", "confident",
             "broken", "angry", "awake", "debug"
         ]

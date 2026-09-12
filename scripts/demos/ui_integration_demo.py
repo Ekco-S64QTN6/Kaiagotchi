@@ -1,6 +1,8 @@
 import asyncio
-from kaiagotchi.ui.view import View
+
 from kaiagotchi.ui.terminal_display import TerminalDisplay
+from kaiagotchi.ui.view import View
+
 try:
     from kaiagotchi.data.system_types import AgentMood
 except ImportError:

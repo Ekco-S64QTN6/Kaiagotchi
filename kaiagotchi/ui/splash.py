@@ -1,23 +1,19 @@
-import time
-import shutil
-import logging
-from pathlib import Path
-from typing import Optional
-
 import base64
+import logging
+import shutil
 import sys
 from io import BytesIO
+from pathlib import Path
 
 try:
     from PIL import Image
 except ImportError:
     Image = None
 
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
 from rich.align import Align
+from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 from rich.text import Text
-from rich.panel import Panel
 
 _LOG = logging.getLogger("kaiagotchi.ui.splash")
 
@@ -31,7 +27,7 @@ class SplashScreen:
             # Try finding it relative to the package
             root = Path(__file__).parent.parent.parent
             self.image_path = root / image_path
-        
+
         self.ascii_art = self._load_image_as_ascii()
 
     def _load_image_as_ascii(self, width: int = 60) -> str:
@@ -41,7 +37,7 @@ class SplashScreen:
 
         try:
             img = Image.open(self.image_path)
-            
+
             # Resize maintaining aspect ratio (font aspect ratio is roughly 2:1)
             w_percent = (width / float(img.size[0]))
             h_size = int((float(img.size[1]) * float(w_percent)) * 0.5)
@@ -61,12 +57,12 @@ class SplashScreen:
 
     def _fallback_ascii(self) -> str:
         return r"""
-   __ __      _                  _       _     _ 
+   __ __      _                  _       _     _
   / //_/____ (_)___ _____ _____ | |_ ___| |__ (_)
  / ,<  / __ `/ / __ `/ __ `/ __ | __/ __| '_ \| |
 / /| |/ /_/ / / /_/ / /_/ / /_/ | || (__| | | | |
 /_/ |_|\__,_/_/\__,_/\__, /\____|\__\___|_| |_|_|
-                    /____/                       
+                    /____/
         """
 
     def _render_kitty_image(self) -> bool:
@@ -84,7 +80,7 @@ class SplashScreen:
             # Determine size in character cells (columns and rows)
             term_cols = shutil.get_terminal_size().columns
             display_cols = min(30, max(20, term_cols // 3))
-            
+
             # Calculate display rows based on image aspect ratio and font aspect ratio (approx 2:1 height:width)
             aspect_ratio = img.size[1] / img.size[0]
             display_rows = max(1, int(display_cols * aspect_ratio * 0.5))
@@ -93,52 +89,52 @@ class SplashScreen:
             # Resize the pixel image to a reasonable resolution (e.g. 240px wide) to minimize payload
             target_width = 240
             w_percent = (target_width / float(img.size[0]))
-            h_size = int((float(img.size[1]) * float(w_percent)))
+            h_size = int(float(img.size[1]) * float(w_percent))
             img = img.resize((target_width, h_size), Image.Resampling.LANCZOS)
 
             # Save to bytes for encoding
             with BytesIO() as output:
                 img.save(output, format="PNG")
                 img_data = output.getvalue()
-                
+
             encoded = base64.standard_b64encode(img_data)
-            
+
             # Chunking logic for Kitty protocol (chunks must be <= 4096 bytes)
             chunk_size = 4096
-            
+
             # Calculate centering column
             start_col = max(1, (term_cols - display_cols) // 2)
-            
+
             # Clear screen first
             sys.stdout.write("\033[2J\033[H")
             sys.stdout.flush()
-            
+
             # Move cursor down a bit to center vertically (approx)
             sys.stdout.write("\n" * 2)
-            
+
             # Move cursor to center horizontally
             sys.stdout.write(f"\033[{start_col}G")
-            
+
             # Split the base64 data
             total_len = len(encoded)
             chunks = [encoded[i:i+chunk_size] for i in range(0, total_len, chunk_size)]
-            
+
             for i, chunk in enumerate(chunks):
                 m = 1 if i < len(chunks) - 1 else 0
                 payload = chunk.decode('ascii')
-                
+
                 # First chunk header including c (columns) and r (rows) to force scaling
                 if i == 0:
                     cmd = f"\033_Gf=100,a=T,c={display_cols},r={display_rows},m={m};{payload}\033\\"
                 else:
                     cmd = f"\033_Gm={m};{payload}\033\\"
-                
+
                 sys.stdout.write(cmd)
-                
+
             sys.stdout.write("\n") # Newline after image
             sys.stdout.flush()
             return True
-            
+
         except Exception as e:
             _LOG.error(f"Failed to render Kitty image: {e}")
             return False
@@ -146,7 +142,7 @@ class SplashScreen:
     async def show(self, duration: float = 15.0):
         """Display splash screen with progress bar."""
         self.console.clear()
-        
+
         # Try Kitty graphics first
         if not self._render_kitty_image():
             # Fallback to ASCII
@@ -159,12 +155,12 @@ class SplashScreen:
             self.console.print("\n")
 
         # Progress bar
-        # We can't use the context manager easily with async sleep inside, 
+        # We can't use the context manager easily with async sleep inside,
         # but Rich Progress works fine if we manually start/stop or just use it as is.
         # Actually, we can use it as a context manager, just await sleep inside.
-        
+
         import asyncio
-        
+
         with Progress(
             SpinnerColumn(),
             TextColumn("[progress.description]{task.description}"),
@@ -174,14 +170,14 @@ class SplashScreen:
             transient=True,
         ) as progress:
             task = progress.add_task("[cyan]Initializing Kaiagotchi systems...", total=100)
-            
+
             steps = 100
             step_delay = duration / steps
-            
+
             for i in range(steps):
                 await asyncio.sleep(step_delay)
                 progress.update(task, advance=1)
-                
+
                 # Simulate loading stages
                 if i == 10:
                     progress.update(task, description="[green]Loading neural pathways...")
@@ -191,5 +187,5 @@ class SplashScreen:
                     progress.update(task, description="[green]Calibrating emotional sensors...")
                 elif i == 85:
                     progress.update(task, description="[green]Establishing neural link...")
-        
+
         self.console.clear()
