@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KAIAGOTCHI // PASSIVE WIRELESS MONITOR</title>
+  <link rel="stylesheet" href="/static/css/cyberdeck.css">
+</head>
+<body>
+  <div class="crt-overlay"></div>
+
+  <div id="app-container">
+    <!-- 1. STATUS BAR -->
+    <header class="header-bar">
+      <div class="header-left">
+        <div class="status-readout">
+          <span>STATUS:</span>
+          <span id="hud-status">PASSIVE MONITORING</span>
+          <span class="dot green live" id="hud-live"></span>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="header-pills">
+          <div class="pill pill-green"><span>APs:</span><span id="val-aps">--</span></div>
+          <div class="pill pill-pink"><span>PWND:</span><span id="val-pwnd">--</span></div>
+          <div class="pill pill-blue"><span>MOOD:</span><span id="val-mood">--</span></div>
+          <div class="pill pill-cyan"><span>MODE:</span><span id="val-mode">--</span></div>
+          <div class="pill pill-cyan"><span>UPTIME:</span><span id="val-uptime">--:--:--</span></div>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-grid">
+
+      <!-- ACCESS POINT TELEMETRY -->
+      <section class="tactical-panel ap-panel">
+        <div class="panel-header">
+          <div class="panel-title"><span>ACCESS POINT TELEMETRY</span></div>
+          <span class="panel-meta" id="ap-count-label">0 APs in range</span>
+        </div>
+        <div class="panel-body">
+          <div class="table-container">
+            <table class="tactical-table" id="ap-table">
+              <thead>
+                <tr><th>BSSID</th><th>CH</th><th>SIGNAL <span class="unit">(dBm)</span></th><th>ENC</th><th>ESSID</th></tr>
+              </thead>
+              <tbody id="ap-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- OPERATIVE: full-bleed Kaia codec -->
+      <section class="tactical-panel operative-panel">
+        <div class="operative-stage" id="kaia-operative-stage"></div>
+        <div class="codec-corner codec-tl">
+          CH: <span id="codec-ch">--</span>
+          <span class="mini-bars" id="codec-bars"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+        <div class="codec-corner codec-tr">FREQ: <span id="codec-freq">--</span></div>
+        <div class="operative-subbar">
+          <span class="dot green" id="kaia-sync-dot"></span>
+          <span>KAIA - A.I. OPERATIVE</span>
+          <span class="subbar-sep">|</span>
+          <span>SYSTEM SYNC: <span class="operative-sync-ok" id="kaia-sync-status">OK</span></span>
+          <span class="mini-bars" id="sync-bars"><i></i><i></i><i></i><i></i><i></i></span>
+        </div>
+      </section>
+
+      <!-- PACKET TELEMETRY -->
+      <section class="tactical-panel packet-panel">
+        <div class="panel-header">
+          <div class="panel-title"><span>PACKET TELEMETRY</span></div>
+        </div>
+        <div class="panel-body">
+          <div class="packet-panel-content">
+            <div class="packet-types-list">
+              <div class="pkt-row" style="--swatch: var(--green);">
+                <div class="pkt-name"><i class="swatch"></i>Probe Req</div>
+                <div class="pkt-vals">RX <span id="val-probe-rx">--</span><br>TX <span id="val-probe-tx">--</span></div>
+              </div>
+              <div class="pkt-row" style="--swatch: #2ee6a8;">
+                <div class="pkt-name"><i class="swatch"></i>Beacon</div>
+                <div class="pkt-vals">RX <span id="val-beacon-rx">--</span><br>TX <span id="val-beacon-tx">--</span></div>
+              </div>
+              <div class="pkt-row" style="--swatch: var(--yellow);">
+                <div class="pkt-name"><i class="swatch"></i>Auth</div>
+                <div class="pkt-vals">RX <span id="val-auth-rx">--</span><br>TX <span id="val-auth-tx">--</span></div>
+              </div>
+              <div class="pkt-row" style="--swatch: var(--pink);">
+                <div class="pkt-name"><i class="swatch"></i>EAPOL Handshakes</div>
+                <div class="pkt-vals">RX <span id="val-eapol-rx">--</span><br>TX <span id="val-eapol-tx">--</span></div>
+              </div>
+            </div>
+            <div class="rate-chart">
+              <canvas id="pkt-rate-canvas"></canvas>
+              <div class="chart-readout" id="pkt-rate-avg">-- pkt/s avg</div>
+            </div>
+          </div>
+          <div class="total-packets-bar">
+            <div class="totals">
+              <span class="totals-label">TOTAL PKTS</span>
+              <span>RX <b id="val-total-rx">--</b></span>
+              <span>TX <b id="val-total-tx">--</b></span>
+            </div>
+            <canvas id="pkt-total-canvas"></canvas>
+          </div>
+        </div>
+      </section>
+
+      <div class="bottom-right-container">
+        <!-- CHANNEL RSSI HISTORY -->
+        <section class="tactical-panel oscillogram-panel">
+          <div class="panel-header">
+            <div class="panel-title"><span>CHANNEL RSSI HISTORY</span></div>
+          </div>
+          <div class="panel-body">
+            <div class="oscillogram-body">
+              <canvas id="rssi-history-canvas"></canvas>
+            </div>
+          </div>
+        </section>
+
+        <div class="station-chatter-split">
+          <!-- STATION MONITORING -->
+          <section class="tactical-panel stations-panel">
+            <div class="panel-header">
+              <div class="panel-title"><span>STATION MONITORING</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="table-container stations-table-container">
+                <table class="tactical-table" id="stations-table">
+                  <thead>
+                    <tr><th>MAC ADDRESS</th><th>RSSI</th><th>CH</th><th>TX/RX</th><th>STATUS</th></tr>
+                  </thead>
+                  <tbody id="stations-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- SYSTEM CHATTER -->
+          <section class="tactical-panel chatter-panel">
+            <div class="panel-header">
+              <div class="panel-title pink"><span>SYSTEM CHATTER</span></div>
+            </div>
+            <div class="panel-body">
+              <div class="chatter-terminal" id="chatter-terminal"></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="/static/js/telemetry.js"></script>
+  <script src="/static/js/charts.js"></script>
+  <script src="/static/js/kaia/kaia-shaders.js"></script>
+  <script src="/static/js/kaia/kaia-renderer.js"></script>
+  <script src="/static/js/kaia/kaia-animator.js"></script>
+  <script src="/static/js/kaia/kaia-codec.js"></script>
+  <script src="/static/js/operative.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

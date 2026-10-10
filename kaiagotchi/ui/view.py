@@ -147,6 +147,16 @@ class View:
         return s
 
     # ------------------------------------------------------------------
+    def _handshake_count(self) -> int:
+        """Captured handshakes/PMKIDs recorded by the agent's persistent network store."""
+        try:
+            pn = getattr(self._agent, "persistent_network", None)
+            data = getattr(pn, "_data", None) or {}
+            return sum(len(r.get("analysis") or []) for r in data.get("pcaps", {}).values())
+        except Exception:
+            return 0
+
+    # ------------------------------------------------------------------
     def get_snapshot_dict(self) -> dict[str, Any]:
         """Thread-safe snapshot getter for the curses display thread."""
         with self._state_lock:
@@ -180,6 +190,7 @@ class View:
 
             # Chatter log
             normalized["chatter_log"] = list(self._chatter_lines)
+            normalized["pwnd_count"] = self._handshake_count()
 
             # Status is the latest entry from chatter log (stripped of timestamp)
             if self._chatter_lines:

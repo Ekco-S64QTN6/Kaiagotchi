@@ -45,11 +45,13 @@ try:
     from kaiagotchi.agent.agent import Agent
     from kaiagotchi.ui.splash import SplashScreen
     from kaiagotchi.ui.terminal_display import TerminalDisplay
+    from kaiagotchi.ui.web.server import WebServer
 except Exception as e:
-    logger.error("Failed to import core subsystems (Agent/UI/Splash): %s", e, exc_info=True)
+    logger.error("Failed to import core subsystems (Agent/UI/Splash/Web): %s", e, exc_info=True)
     Agent = None
     SplashScreen = None
     TerminalDisplay = None
+    WebServer = None
 
 # Global flag for shutdown
 _shutdown_event = asyncio.Event()
@@ -75,6 +77,11 @@ def parse_arguments():
         help="Path to configuration file",
     )
     parser.add_argument("--manual", action="store_true", help="Start in manual mode")
+    parser.add_argument("--web", action="store_true", default=None, help="Enable Cyber-Deck Web UI (default: enabled)")
+    parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
+    parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
+    parser.add_argument("--port", type=int, default=None, help="Port for Web UI (default: 8080)")
+    parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (default: 0.0.0.0)")
     # helper flags (handled below in __main__)
     parser.add_argument("--smoke-ui", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--diag-ui", action="store_true", help=argparse.SUPPRESS)
@@ -225,6 +232,31 @@ async def run_agent() -> int:
         # Initialize View (do not call start_rotation here; Manager/Agent will control lifecycle)
         view = View(config)
         view.suppress_output = True  # Suppress output during splash
+
+        # Initialize Web Server (Cyber-Deck UI)
+        web_server = None
+        web_enabled = True
+        if args.no_web:
+            web_enabled = False
+        elif args.web:
+            web_enabled = True
+        else:
+            web_enabled = config.get("web", {}).get("enabled", True)
+
+        if args.port:
+            config.setdefault("web", {})["port"] = args.port
+        if args.host:
+            config.setdefault("web", {})["host"] = args.host
+
+        if web_enabled and WebServer is not None:
+            try:
+                web_server = WebServer(config, state_provider=view.get_snapshot_dict)
+                web_server.start()
+                w_host = config.get("web", {}).get("host", "0.0.0.0")
+                w_port = config.get("web", {}).get("port", 8080)
+                logger.info("⚡ Cyber-Deck Web UI live at http://%s:%d", "localhost" if w_host == "0.0.0.0" else w_host, w_port)
+            except Exception as e:
+                logger.warning(f"Could not start Cyber-Deck WebServer: {e}")
 
         async def monitor_display_quit():
             while not _shutdown_event.is_set():
@@ -477,6 +509,14 @@ async def run_agent() -> int:
 
             # Give shutdown process time to complete
             shutdown_timeout = 5.0  # Reduced to 5s max hard timeout
+
+            # Stop WebServer
+            if web_server:
+                try:
+                    web_server.stop()
+                    logger.info("WebServer stopped cleanly.")
+                except Exception as ws_err:
+                    logger.error(f"Error stopping WebServer: {ws_err}")
 
             # If manager has a stop/shutdown coroutine, await it
             if mgr is not None:

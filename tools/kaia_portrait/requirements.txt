@@ -1,0 +1,7 @@
+# Offline asset tooling only (not a Kaiagotchi runtime dependency).
+torch
+transformers
+rembg[cpu]
+mediapipe
+pillow
+numpy

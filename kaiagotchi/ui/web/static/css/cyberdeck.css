@@ -1,0 +1,857 @@
+/* =============================================================================
+   KAIAGOTCHI // CYBER-DECK REACTIVE HUD DESIGN SYSTEM
+   ============================================================================= */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700;800&family=Orbitron:wght@600;800;900&family=Share+Tech+Mono&display=swap');
+
+:root {
+  /* Color Palette */
+  --bg-void: #04060c;
+  --bg-grid: #070b14;
+  --panel-bg: rgba(10, 14, 25, 0.88);
+  --panel-bg-dark: rgba(7, 10, 18, 0.94);
+  --line-dim: #151e30;
+  --line-subtle: #1c2842;
+  --line-bright: #2d416b;
+
+  /* Neon Accent Tokens */
+  --cyan: #00f0ff;
+  --cyan-dim: #00a6b3;
+  --cyan-glow: rgba(0, 240, 255, 0.35);
+  --cyan-glow-intense: rgba(0, 240, 255, 0.7);
+
+  --green: #3dff8a;
+  --green-dim: #25a85b;
+  --green-glow: rgba(61, 255, 138, 0.35);
+
+  --pink: #ff2fd1;
+  --pink-dim: #ad188c;
+  --pink-glow: rgba(255, 47, 209, 0.35);
+
+  --yellow: #ffe45c;
+  --yellow-glow: rgba(255, 228, 92, 0.35);
+
+  --red: #ff3860;
+  --red-glow: rgba(255, 56, 96, 0.35);
+
+  /* Text Tones */
+  --text-bright: #e8f0fe;
+  --text-mid: #9eb0cc;
+  --text-dim: #5c6e8e;
+  --text-cyan: #6df8ff;
+
+  /* Fonts */
+  --font-display: 'Orbitron', 'JetBrains Mono', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Share Tech Mono', monospace;
+  --font-code: 'Share Tech Mono', monospace;
+}
+
+/* Reset & Global Canvas */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-void);
+  background-image: 
+    linear-gradient(rgba(0, 240, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text-bright);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scanline Overlay & Vignette */
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  background: 
+    radial-gradient(ellipse at center, transparent 65%, rgba(0, 0, 0, 0.8) 100%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.15) 0px,
+      rgba(0, 0, 0, 0.15) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+  mix-blend-mode: multiply;
+  opacity: 0.85;
+}
+
+/* App Shell Layout */
+#app-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  padding: 10px 14px 12px 14px;
+  gap: 10px;
+}
+
+/* =============================================================================
+   1. TOP STATUS HEADER
+   ============================================================================= */
+.header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 6px;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.status-readout {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 14px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 4px;
+  background: rgba(10, 16, 28, 0.9);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--cyan);
+}
+
+#hud-status {
+  color: var(--text-bright);
+}
+
+.header-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  background: rgba(8, 12, 22, 0.85);
+  transition: all 0.25s ease;
+}
+
+.pill-green {
+  border: 1px solid var(--green);
+  color: var(--green);
+  box-shadow: 0 0 10px var(--green-glow), inset 0 0 8px rgba(61, 255, 138, 0.15);
+}
+
+.pill-pink {
+  border: 1px solid var(--pink);
+  color: var(--pink);
+  box-shadow: 0 0 10px var(--pink-glow), inset 0 0 8px rgba(255, 47, 209, 0.15);
+}
+
+.pill-blue {
+  border: 1px solid #3d6ea8;
+  color: #8bb2e8;
+  box-shadow: 0 0 8px rgba(61, 110, 168, 0.25);
+}
+
+.pill-cyan {
+  border: 1px solid var(--cyan);
+  color: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan-glow), inset 0 0 8px rgba(0, 240, 255, 0.15);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.uptime-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cyan);
+  text-shadow: 0 0 8px var(--cyan-glow);
+  letter-spacing: 1px;
+}
+
+.clock-icon {
+  width: 15px;
+  height: 15px;
+  stroke: var(--cyan);
+  stroke-width: 2;
+  fill: none;
+}
+
+/* =============================================================================
+   2. MAIN GRID LAYOUT
+   ============================================================================= */
+.main-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1.15fr 1fr;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Tactical Panel Base */
+.tactical-panel {
+  position: relative;
+  background: var(--panel-bg);
+  border: 1px solid var(--line-subtle);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+}
+
+/* Tactical Corner Brackets */
+.tactical-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-top: 2px solid var(--cyan);
+  border-left: 2px solid var(--cyan);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.tactical-panel::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 14px;
+  height: 14px;
+  border-bottom: 2px solid var(--cyan);
+  border-right: 2px solid var(--cyan);
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Panel Header */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 6px 14px;
+  border-bottom: 1px solid var(--line-dim);
+  background: rgba(12, 17, 30, 0.95);
+  flex-shrink: 0;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: var(--cyan);
+  text-transform: uppercase;
+}
+
+.panel-title.pink {
+  color: var(--pink);
+  text-shadow: 0 0 8px var(--pink-glow);
+}
+
+.header-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  stroke-width: 2;
+  fill: none;
+}
+
+.panel-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--cyan);
+  box-shadow: 0 0 6px var(--cyan);
+}
+
+.dot.green {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+}
+
+.dot.live {
+  animation: pulse-live 1.8s infinite ease-in-out;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.panel-body {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+/* =============================================================================
+   3. ACCESS POINT TELEMETRY TABLE (TOP LEFT)
+   ============================================================================= */
+.table-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tactical-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.tactical-table thead {
+  position: sticky;
+  top: 0;
+  background: rgba(10, 14, 25, 0.96);
+  z-index: 5;
+}
+
+.tactical-table th {
+  text-align: left;
+  padding: 8px 10px;
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line-dim);
+  text-transform: uppercase;
+}
+
+.tactical-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(24, 34, 58, 0.4);
+  color: var(--text-mid);
+  white-space: nowrap;
+}
+
+.tactical-table tbody tr {
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.tactical-table tbody tr:hover {
+  background: rgba(0, 240, 255, 0.06);
+}
+
+.tactical-table tbody tr.active-target {
+  background: rgba(0, 240, 255, 0.12);
+  border-left: 3px solid var(--cyan);
+}
+
+.bssid-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.status-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+  flex-shrink: 0;
+}
+
+.status-pip.green {
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+}
+
+.status-pip.stale,
+.status-pip.yellow {
+  background: var(--yellow);
+  box-shadow: 0 0 5px var(--yellow);
+}
+
+.status-pip.orange {
+  background: #ff914d;
+  box-shadow: 0 0 5px #ff914d;
+}
+
+.status-pip.red {
+  background: var(--red);
+  box-shadow: 0 0 5px var(--red);
+}
+
+/* Signal Power Segmented Meter */
+.signal-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.segmented-meter {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 64px;
+}
+
+.meter-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 1px;
+  transition: background 0.2s;
+}
+
+.meter-bar.active-green {
+  background: var(--green);
+  box-shadow: 0 0 4px var(--green-glow);
+}
+
+.meter-bar.active-yellow {
+  background: var(--yellow);
+  box-shadow: 0 0 4px var(--yellow-glow);
+}
+
+.meter-bar.active-red {
+  background: var(--red);
+  box-shadow: 0 0 4px var(--red-glow);
+}
+
+.dbm-val {
+  font-size: 11px;
+  font-weight: 700;
+  width: 48px;
+  text-align: right;
+  color: var(--text-bright);
+}
+
+.enc-tag {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 2px;
+  background: rgba(0, 240, 255, 0.08);
+  color: var(--cyan);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+}
+
+.enc-tag.wpa3 {
+  background: rgba(61, 255, 138, 0.1);
+  color: var(--green);
+  border: 1px solid rgba(61, 255, 138, 0.3);
+}
+
+.essid-name {
+  color: var(--text-bright);
+  font-weight: 600;
+}
+
+/* =============================================================================
+   4. OPERATIVE (TOP RIGHT) — full-bleed Kaia codec
+   ============================================================================= */
+.operative-panel {
+  background: #010402;
+}
+
+.operative-stage {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.kaia-codec-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.kaia-codec-fallback {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: grayscale(1) sepia(1) hue-rotate(75deg) saturate(3) brightness(0.85) contrast(1.2);
+}
+
+.codec-corner {
+  position: absolute;
+  top: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--green);
+  text-shadow: 0 0 6px var(--green-glow);
+  pointer-events: none;
+}
+
+.codec-tl { left: 18px; }
+.codec-tr { right: 18px; }
+
+.mini-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 10px;
+}
+
+.mini-bars i {
+  width: 3px;
+  background: rgba(61, 255, 138, 0.18);
+}
+
+.mini-bars i:nth-child(1) { height: 20%; }
+.mini-bars i:nth-child(2) { height: 40%; }
+.mini-bars i:nth-child(3) { height: 60%; }
+.mini-bars i:nth-child(4) { height: 80%; }
+.mini-bars i:nth-child(5) { height: 100%; }
+.mini-bars i.on { background: var(--green); }
+
+.operative-subbar {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid rgba(61, 255, 138, 0.35);
+  border-radius: 3px;
+  background: rgba(1, 8, 4, 0.82);
+  font-family: var(--font-code);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: #bfffd6;
+}
+
+.subbar-sep {
+  opacity: 0.4;
+}
+
+.operative-sync-ok {
+  color: var(--green);
+}
+
+.operative-sync-ok.retry {
+  color: var(--yellow);
+}
+
+.operative-panel::before,
+.operative-panel::after {
+  border-color: var(--green);
+}
+
+/* =============================================================================
+   5. PACKET TELEMETRY (BOTTOM LEFT)
+   ============================================================================= */
+.packet-panel-content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.packet-types-list {
+  width: 168px;
+  padding: 8px 12px;
+  border-right: 1px solid var(--line-dim);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  flex-shrink: 0;
+}
+
+.pkt-row {
+  padding: 4px 0;
+}
+
+.pkt-row + .pkt-row {
+  border-top: 1px solid var(--line-dim);
+}
+
+.pkt-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--swatch);
+}
+
+.pkt-vals {
+  padding-left: 17px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.pkt-vals span {
+  color: var(--swatch);
+  font-variant-numeric: tabular-nums;
+}
+
+.rate-chart {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+}
+
+#pkt-rate-canvas {
+  position: absolute;
+  inset: 6px 8px 4px 4px;
+  width: calc(100% - 12px);
+  height: calc(100% - 10px);
+}
+
+.chart-readout {
+  position: absolute;
+  right: 12px;
+  bottom: 22px;
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-mid);
+  font-variant-numeric: tabular-nums;
+}
+
+.total-packets-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 40px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--line-dim);
+  background: rgba(6, 9, 16, 0.85);
+  flex-shrink: 0;
+}
+
+.totals {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  font-family: var(--font-code);
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.totals-label {
+  color: var(--text-mid);
+  letter-spacing: 1px;
+}
+
+.totals b {
+  color: var(--text-bright);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+#pkt-total-canvas {
+  flex: 1;
+  height: 28px;
+  min-width: 0;
+}
+
+/* =============================================================================
+   6. CHANNEL RSSI HISTORY, STATIONS & CHATTER (BOTTOM RIGHT)
+   ============================================================================= */
+.bottom-right-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Oscillogram Sub-Panel */
+.oscillogram-panel {
+  flex: 1;
+  min-height: 0;
+}
+
+.oscillogram-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 4px 10px;
+  min-height: 0;
+}
+
+#rssi-history-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.station-chatter-split {
+  display: grid;
+  grid-template-columns: 0.9fr 1.1fr;
+  gap: 10px;
+  flex: 1.1;
+  min-height: 0;
+}
+
+/* Station Monitoring Sub-Panel */
+.stations-table-container {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* System Chatter Sub-Panel */
+.chatter-panel {
+  border-color: rgba(255, 47, 209, 0.4);
+}
+
+.chatter-panel::before,
+.chatter-panel::after {
+  border-color: var(--pink);
+}
+
+.chatter-terminal {
+  flex: 1;
+  padding: 8px 10px;
+  overflow-y: auto;
+  font-family: var(--font-code);
+  font-size: 11px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(4, 6, 12, 0.95);
+}
+
+.chatter-line {
+  display: flex;
+  gap: 8px;
+  word-break: break-word;
+}
+
+.chatter-ts {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.chatter-tag {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.chatter-tag.info { color: var(--cyan); }
+.chatter-tag.auth { color: var(--pink); }
+.chatter-tag.warn { color: var(--yellow); }
+.chatter-tag.eapol, .chatter-tag.success { color: var(--green); }
+.chatter-tag.alert { color: var(--red); }
+.chatter-tag.sync { color: var(--green); }
+
+.chatter-text {
+  color: var(--text-bright);
+}
+
+.terminal-prompt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--cyan);
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  background: var(--cyan);
+  animation: cursor-blink 1s infinite steps(2);
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* Custom Cyber Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(4, 6, 12, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--line-bright);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--cyan-dim);
+}
+
+.panel-meta {
+  font-family: var(--font-code);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.tactical-table th .unit {
+  text-transform: none;
+}
