@@ -11,6 +11,3 @@ def iface_channels(interface: str) -> list[int]:
         logger.warning(f"Could not determine channels for {interface}: {e}")
         return [1, 6, 11]
 
-def total_unique_handshakes() -> int:
-    """Get total unique handshakes captured."""
-    return 0  # This returns int, not Literal[0]

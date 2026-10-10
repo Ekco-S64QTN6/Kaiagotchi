@@ -377,7 +377,9 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                         client_mac = dot11.addr2
                         break
 
-            handshake_complete = len(packet_indices) >= 4
+            # Use actual EAPOL key-flag validation instead of naive packet count
+            eapol_pkts = [packets[idx] for idx in packet_indices if idx < len(packets)]
+            handshake_complete = is_complete_handshake(eapol_pkts)
             pmkid = None
 
             # Check for PMKID in the first handshake packet
@@ -514,8 +516,9 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
             ssid = bssid_ssid_map.get(bssid, "Hidden or Unknown")
             client_mac = bssid_client_map.get(bssid, "Unknown")
 
-            # Check if we have enough packets for a complete handshake
-            handshake_complete = len(packet_indices) >= 4
+            # Use actual EAPOL key-flag validation instead of naive packet count
+            eapol_pkts = [packets[idx] for idx in packet_indices if idx < len(packets)]
+            handshake_complete = is_complete_handshake(eapol_pkts)
 
             # Check for PMKID in the first handshake packet
             pmkid = None

@@ -4,6 +4,6 @@ Network package for kaiagotchi - contains protocols, action management, and util
 """
 
 from .action_manager import InterfaceActionManager
-from .utils import iface_channels, total_unique_handshakes
+from .utils import iface_channels
 
-__all__ = ['InterfaceActionManager', 'iface_channels', 'total_unique_handshakes']
+__all__ = ['InterfaceActionManager', 'iface_channels']
