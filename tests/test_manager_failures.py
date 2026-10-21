@@ -314,3 +314,70 @@ async def test_cli_legacy_agent_start_failure_is_observed_before_splash_finishes
 
     assert exit_code == 1
     assert splash.cancelled is True
+
+
+@pytest.mark.asyncio
+async def test_cli_does_not_start_legacy_agent_after_manager_bootstrap_failure(monkeypatch):
+    stopped = asyncio.Event()
+    legacy_agent_constructed = False
+
+    class FakeView:
+        def __init__(self, _config):
+            self.suppress_output = False
+            self.display = None
+
+        def get_snapshot_dict(self):
+            return {}
+
+        async def stop(self):
+            return None
+
+    class InstantSplash:
+        async def show(self, duration=0):
+            return None
+
+    class FailingManager:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def bootstrap(self):
+            raise RuntimeError("simulated partial bootstrap failure")
+
+        async def stop(self):
+            stopped.set()
+
+    class LegacyAgent:
+        def __init__(self, **_kwargs):
+            nonlocal legacy_agent_constructed
+            legacy_agent_constructed = True
+
+        async def start(self):
+            raise AssertionError("legacy fallback must not run")
+
+        async def stop(self):
+            return None
+
+    args = SimpleNamespace(
+        debug=False,
+        config="test-config.toml",
+        manual=False,
+        no_web=True,
+        web=None,
+        port=None,
+        host=None,
+        tui=True,
+    )
+    monkeypatch.setattr(cli, "parse_arguments", lambda: args)
+    monkeypatch.setattr(cli, "setup_logging", lambda _debug=False: None)
+    monkeypatch.setattr(cli, "load_config", lambda _path: {"log": {"level": "INFO"}})
+    monkeypatch.setattr(cli, "View", FakeView)
+    monkeypatch.setattr(cli, "SplashScreen", InstantSplash)
+    monkeypatch.setattr(cli, "WebServer", None)
+    monkeypatch.setattr(cli, "Manager", FailingManager)
+    monkeypatch.setattr(cli, "Agent", LegacyAgent)
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
+
+    assert await cli.run_agent() == 1
+    assert not legacy_agent_constructed
+    assert stopped.is_set()
