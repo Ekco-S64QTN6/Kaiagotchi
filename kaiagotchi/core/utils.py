@@ -5,12 +5,14 @@ import json
 import logging
 import os
 import pathlib
+import shutil
 import stat
 import sys
 import tempfile
 import zipfile
 from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
 import tomlkit
@@ -118,51 +120,37 @@ class StatusFile:
             self._save()
 
 def remove_whitelisted(aps: list[Any], whitelist: list[str]) -> list[Any]:
-    """
-    Remove access points that are in the whitelist.
-
-    Args:
-        aps: List of access point objects
-        whitelist: List of BSSIDs or ESSIDs to whitelist
-
-    Returns:
-        Filtered list of access points
-    """
+    """Remove APs whose BSSID, SSID, or ESSID appears in the whitelist."""
     if not whitelist:
         return aps
 
-    filtered = []
-    for ap in aps:
-        # Handle different AP object structures
-        bssid = getattr(ap, 'bssid', None) or ap.get('bssid', '') if hasattr(ap, 'get') else ''
-        essid = getattr(ap, 'essid', None) or ap.get('essid', '') if hasattr(ap, 'get') else ''
+    def field(ap: Any, name: str) -> Any:
+        value = getattr(ap, name, None)
+        if value:
+            return value
+        getter = getattr(ap, "get", None)
+        if callable(getter):
+            return getter(name, "")
+        return ""
 
-        if bssid not in whitelist and essid not in whitelist:
-            filtered.append(ap)
-
-    utils_logger.debug(f"Filtered {len(aps)} APs to {len(filtered)} using whitelist")
+    filtered = [
+        ap for ap in aps
+        if field(ap, "bssid") not in whitelist
+        and field(ap, "essid") not in whitelist
+        and field(ap, "ssid") not in whitelist
+    ]
+    utils_logger.debug("Filtered %d APs to %d using whitelist", len(aps), len(filtered))
     return filtered
 
 def merge_config(user_config: dict[str, Any], default_config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Deep merge user configuration into default configuration.
-
-    Args:
-        user_config: User-provided configuration
-        default_config: Default configuration template
-
-    Returns:
-        Merged configuration dictionary
-    """
-    config = default_config.copy()
+    """Deep-merge user settings into independent copies of the defaults."""
+    config = deepcopy(default_config)
 
     for key, value in user_config.items():
         if key in config and isinstance(config[key], dict) and isinstance(value, dict):
-            # Recursively merge dictionaries
             config[key] = merge_config(value, config[key])
         else:
-            # Overwrite with user value
-            config[key] = value
+            config[key] = deepcopy(value)
 
     return config
 
@@ -405,18 +393,71 @@ def download_file(url: str, dest: str, timeout: int = 60) -> bool:
         return False
 
 def unzip(src: str, dest: str, strip_dirs: int = 0) -> bool:
-    """Unzips an archive, optionally stripping a number of leading directories."""
-    utils_logger.info(f"Unzipping {src} to {dest}")
+    """
+    Safely extract a ZIP archive and optionally strip leading path components.
+
+    Validate all members before writing anything. Reject absolute paths,
+    parent traversal, and symlink entries so malicious archives cannot escape
+    the destination directory.
+    """
+    utils_logger.info("Unzipping %s to %s", src, dest)
+    if strip_dirs < 0:
+        utils_logger.error("strip_dirs must be non-negative")
+        return False
+
+    root = pathlib.Path(dest).resolve()
     try:
-        with zipfile.ZipFile(src, 'r') as zip_ref:
-            # Simple unzip without stripping (for now)
-            zip_ref.extractall(dest)
+        with zipfile.ZipFile(src, "r") as zip_ref:
+            entries: list[tuple[zipfile.ZipInfo, pathlib.Path, bool]] = []
+            for info in zip_ref.infolist():
+                raw_name = info.filename
+                posix_name = PurePosixPath(raw_name)
+                windows_name = PureWindowsPath(raw_name)
+
+                if (
+                    not raw_name
+                    or posix_name.is_absolute()
+                    or windows_name.is_absolute()
+                    or bool(windows_name.drive)
+                    or ".." in posix_name.parts
+                    or ".." in windows_name.parts
+                ):
+                    raise ValueError(f"Unsafe ZIP member path: {raw_name!r}")
+
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ValueError(f"Symlink ZIP member is not allowed: {raw_name!r}")
+
+                parts = [part for part in posix_name.parts if part not in ("", ".")]
+                if len(parts) <= strip_dirs:
+                    continue
+
+                relative_path = pathlib.Path(*parts[strip_dirs:])
+                target = (root / relative_path).resolve()
+                if not target.is_relative_to(root):
+                    raise ValueError(f"ZIP member escapes destination: {raw_name!r}")
+
+                entries.append((info, target, info.is_dir()))
+
+            # Don't extract any files until the entire archive passes validation.
+            root.mkdir(parents=True, exist_ok=True)
+            for info, target, is_dir in entries:
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zip_ref.open(info, "r") as source, open(target, "wb") as output:
+                    shutil.copyfileobj(source, output)
+
         return True
     except zipfile.BadZipFile:
-        utils_logger.error(f"Invalid ZIP file: {src}")
+        utils_logger.error("Invalid ZIP file: %s", src)
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        utils_logger.error("Failed to safely unzip %s: %s", src, e)
         return False
     except Exception as e:
-        utils_logger.error(f"Failed to unzip {src}: {e}")
+        utils_logger.error("Failed to unzip %s: %s", src, e)
         return False
 
 def save_config(config: dict[str, Any], path: str) -> bool:
