@@ -192,7 +192,9 @@ class PersistentNetwork:
                         except Exception:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
 
-                    self._data.setdefault("pcaps", {})[pcap_file.name] = record
+                    # Another thread may register this file while analysis runs.
+                    # Preserve that newer record rather than clobbering its metadata.
+                    self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
             # Save the synced state
             if pcap_files:
