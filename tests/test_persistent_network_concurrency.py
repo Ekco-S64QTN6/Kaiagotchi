@@ -141,3 +141,42 @@ def test_sync_restricts_permissions_on_preexisting_pcaps(tmp_path):
     assert stat.S_IMODE(pcap_dir.stat().st_mode) == 0o700
     assert stat.S_IMODE(pcap.stat().st_mode) == 0o600
     assert pcap.name in network.get_pcap_records()
+
+def test_sync_persists_deletion_when_last_pcap_is_removed(tmp_path):
+    import json
+
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    filename = "last-capture.pcap"
+    pcap_path = Path(network.pcaps_dir) / filename
+    pcap_path.write_bytes(b"captured")
+    record = {
+        "bssid": "00:11:22:33:44:55",
+        "created": "2026-10-21T12:00:00-05:00",
+        "size": pcap_path.stat().st_size,
+        "path": str(pcap_path),
+        "analysis": [
+            {
+                "type": "PMKID",
+                "bssid": "00:11:22:33:44:55",
+                "ssid": "Test-AP",
+                "client_mac": "AA:BB:CC:DD:EE:FF",
+                "handshake_complete": False,
+                "pmkid": "0102030405060708090a0b0c0d0e0f10",
+            }
+        ],
+    }
+    with network._state_lock:
+        network._data.setdefault("pcaps", {})[filename] = record
+    assert network.save()
+
+    pcap_path.unlink()
+    network._sync_pcaps_with_filesystem()
+
+    persisted = json.loads(Path(network.filepath).read_text(encoding="utf-8"))
+    assert filename not in persisted["pcaps"]
+    report = json.loads((tmp_path / "handshakes_summary.json").read_text(encoding="utf-8"))
+    assert report["summary"]["total_handshakes_captured"] == 0
+
