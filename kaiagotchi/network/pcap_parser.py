@@ -254,113 +254,116 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
     parser_logger.info(f"Loaded packets from {filepath}")
 
     # Process all packets to extract comprehensive network data
-    for i, packet in enumerate(packets):
-        try:
-            total_packets += 1
+    try:
+        for i, packet in enumerate(packets):
+            try:
+                total_packets += 1
 
-            if i % 5000 == 0 and i > 0:
-                parser_logger.info(f"Processed {i} packets...")
+                if i % 5000 == 0 and i > 0:
+                    parser_logger.info(f"Processed {i} packets...")
 
-            # Check for management frames (beacons, probe responses)
-            if packet.haslayer(Dot11):
-                dot11 = packet[Dot11]
-                bssid = dot11.addr3
-                transmitter = dot11.addr2
-                receiver = dot11.addr1
+                # Check for management frames (beacons, probe responses)
+                if packet.haslayer(Dot11):
+                    dot11 = packet[Dot11]
+                    bssid = dot11.addr3
+                    transmitter = dot11.addr2
+                    receiver = dot11.addr1
 
-                # Process beacon frames (all access points)
-                if packet.haslayer(Dot11Beacon):
-                    total_beacons += 1
-                    if bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                        ssid = extract_ssid(packet)
-                        channel = extract_channel(packet)
-                        encryption = extract_encryption(packet)
+                    # Process beacon frames (all access points)
+                    if packet.haslayer(Dot11Beacon):
+                        total_beacons += 1
+                        if bssid and bssid != "ff:ff:ff:ff:ff:ff":
+                            ssid = extract_ssid(packet)
+                            channel = extract_channel(packet)
+                            encryption = extract_encryption(packet)
 
+                            if bssid not in bssids:
+                                bssids[bssid] = {
+                                    'bssid': bssid,
+                                    'essid': ssid,
+                                    'channel': channel,
+                                    'encryption': encryption,
+                                    'first_seen': i,
+                                    'last_seen': i,
+                                    'beacons': 1,
+                                    'packets': 1
+                                }
+                            else:
+                                bssids[bssid]['last_seen'] = i
+                                bssids[bssid]['beacons'] += 1
+                                bssids[bssid]['packets'] += 1
+                                # Update SSID if we found a better one
+                                if ssid != "Hidden or Unknown" and bssids[bssid]['essid'] == "Hidden or Unknown":
+                                    bssids[bssid]['essid'] = ssid
+
+                    # Process probe responses
+                    elif packet.haslayer(Dot11ProbeResp):
+                        if bssid and bssid != "ff:ff:ff:ff:ff:ff":
+                            ssid = extract_ssid(packet)
+                            channel = extract_channel(packet)
+                            encryption = extract_encryption(packet)
+
+                            if bssid not in bssids:
+                                bssids[bssid] = {
+                                    'bssid': bssid,
+                                    'essid': ssid,
+                                    'channel': channel,
+                                    'encryption': encryption,
+                                    'first_seen': i,
+                                    'last_seen': i,
+                                    'beacons': 0,
+                                    'packets': 1
+                                }
+                            else:
+                                bssids[bssid]['last_seen'] = i
+                                bssids[bssid]['packets'] += 1
+
+                    # Track stations (clients) from data frames
+                    if dot11.type == 2:  # Data frames
+                        if transmitter and transmitter != "ff:ff:ff:ff:ff:ff" and not transmitter.startswith("01:00:5e"):
+                            # This is likely a station
+                            if transmitter not in stations:
+                                stations[transmitter] = {
+                                    'station_mac': transmitter,
+                                    'associated_bssid': bssid,
+                                    'first_seen': i,
+                                    'last_seen': i,
+                                    'packets': 1
+                                }
+                            else:
+                                stations[transmitter]['last_seen'] = i
+                                stations[transmitter]['packets'] += 1
+
+                    # Check for EAPOL packets (WPA handshakes) - your existing handshake logic
+                    if packet.haslayer(EAPOL) and bssid and bssid != "ff:ff:ff:ff:ff:ff":
+                        client_mac = receiver if receiver != bssid else transmitter
+
+                        if bssid not in handshake_packets:
+                            handshake_packets[bssid] = []
+                        handshake_packets[bssid].append((i, packet))
+
+                        # Extract SSID for this BSSID if not already known
                         if bssid not in bssids:
+                            ssid = extract_ssid(packet)
                             bssids[bssid] = {
                                 'bssid': bssid,
                                 'essid': ssid,
-                                'channel': channel,
-                                'encryption': encryption,
-                                'first_seen': i,
-                                'last_seen': i,
-                                'beacons': 1,
-                                'packets': 1
-                            }
-                        else:
-                            bssids[bssid]['last_seen'] = i
-                            bssids[bssid]['beacons'] += 1
-                            bssids[bssid]['packets'] += 1
-                            # Update SSID if we found a better one
-                            if ssid != "Hidden or Unknown" and bssids[bssid]['essid'] == "Hidden or Unknown":
-                                bssids[bssid]['essid'] = ssid
-
-                # Process probe responses
-                elif packet.haslayer(Dot11ProbeResp):
-                    if bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                        ssid = extract_ssid(packet)
-                        channel = extract_channel(packet)
-                        encryption = extract_encryption(packet)
-
-                        if bssid not in bssids:
-                            bssids[bssid] = {
-                                'bssid': bssid,
-                                'essid': ssid,
-                                'channel': channel,
-                                'encryption': encryption,
+                                'channel': '',
+                                'encryption': '',
                                 'first_seen': i,
                                 'last_seen': i,
                                 'beacons': 0,
                                 'packets': 1
                             }
-                        else:
-                            bssids[bssid]['last_seen'] = i
-                            bssids[bssid]['packets'] += 1
 
-                # Track stations (clients) from data frames
-                if dot11.type == 2:  # Data frames
-                    if transmitter and transmitter != "ff:ff:ff:ff:ff:ff" and not transmitter.startswith("01:00:5e"):
-                        # This is likely a station
-                        if transmitter not in stations:
-                            stations[transmitter] = {
-                                'station_mac': transmitter,
-                                'associated_bssid': bssid,
-                                'first_seen': i,
-                                'last_seen': i,
-                                'packets': 1
-                            }
-                        else:
-                            stations[transmitter]['last_seen'] = i
-                            stations[transmitter]['packets'] += 1
+            except Exception as e:
+                parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
+                continue
 
-                # Check for EAPOL packets (WPA handshakes) - your existing handshake logic
-                if packet.haslayer(EAPOL) and bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                    client_mac = receiver if receiver != bssid else transmitter
 
-                    if bssid not in handshake_packets:
-                        handshake_packets[bssid] = []
-                    handshake_packets[bssid].append((i, packet))
-
-                    # Extract SSID for this BSSID if not already known
-                    if bssid not in bssids:
-                        ssid = extract_ssid(packet)
-                        bssids[bssid] = {
-                            'bssid': bssid,
-                            'essid': ssid,
-                            'channel': '',
-                            'encryption': '',
-                            'first_seen': i,
-                            'last_seen': i,
-                            'beacons': 0,
-                            'packets': 1
-                        }
-
-        except Exception as e:
-            parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
-            continue
-
-    if reader is not None:
-        reader.close()
+    finally:
+        if reader is not None:
+            reader.close()
 
     # Process handshake data (your existing logic)
     parser_logger.info("Analyzing collected handshake data...")
@@ -419,9 +422,6 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
         except Exception as e:
             parser_logger.warning(f"Error analyzing handshake for BSSID {bssid}: {e}")
             continue
-
-    # Close reader if we used streaming mode
-    # (No longer needed since we collect into list, but kept for safety)
 
     parser_logger.info(
         f"Comprehensive analysis complete: {len(bssids)} BSSIDs, "
@@ -482,38 +482,41 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
     parser_logger.info(f"Loaded packets from {filepath}")
 
     # First pass: Collect all potential handshake packets and map BSSIDs to SSIDs
-    for i, packet in enumerate(packets):
-        try:
-            if i % 5000 == 0 and i > 0:
-                parser_logger.info(f"Processed {i} packets...")
+    try:
+        for i, packet in enumerate(packets):
+            try:
+                if i % 5000 == 0 and i > 0:
+                    parser_logger.info(f"Processed {i} packets...")
 
-            # Check for EAPOL packets (WPA handshakes)
-            if packet.haslayer(EAPOL) and packet.haslayer(Dot11):
-                bssid = packet[Dot11].addr3
-                client_mac = packet[Dot11].addr1  # Typically client MAC
+                # Check for EAPOL packets (WPA handshakes)
+                if packet.haslayer(EAPOL) and packet.haslayer(Dot11):
+                    bssid = packet[Dot11].addr3
+                    client_mac = packet[Dot11].addr1  # Typically client MAC
 
-                if bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                    # Store handshake packet index
-                    if bssid not in handshake_packets:
-                        handshake_packets[bssid] = []
-                    handshake_packets[bssid].append((i, packet))
+                    if bssid and bssid != "ff:ff:ff:ff:ff:ff":
+                        # Store handshake packet index
+                        if bssid not in handshake_packets:
+                            handshake_packets[bssid] = []
+                        handshake_packets[bssid].append((i, packet))
 
-                    # Map client MAC to BSSID
-                    if bssid not in bssid_client_map and client_mac != bssid:
-                        bssid_client_map[bssid] = client_mac
+                        # Map client MAC to BSSID
+                        if bssid not in bssid_client_map and client_mac != bssid:
+                            bssid_client_map[bssid] = client_mac
 
-                    # Extract and store SSID if available
-                    if bssid not in bssid_ssid_map:
-                        ssid = extract_ssid(packet)
-                        if ssid != "Hidden or Unknown":
-                            bssid_ssid_map[bssid] = ssid
+                        # Extract and store SSID if available
+                        if bssid not in bssid_ssid_map:
+                            ssid = extract_ssid(packet)
+                            if ssid != "Hidden or Unknown":
+                                bssid_ssid_map[bssid] = ssid
 
-        except Exception as e:
-            parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
-            continue
+            except Exception as e:
+                parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
+                continue
 
-    if reader is not None:
-        reader.close()
+
+    finally:
+        if reader is not None:
+            reader.close()
 
     # Second pass: Analyze collected handshakes and check for PMKIDs
     parser_logger.info("Analyzing collected handshake data...")
