@@ -183,3 +183,134 @@ async def test_cli_observes_manager_bootstrap_failure_before_splash_finishes(mon
 
     assert exit_code == 1
     assert splash.cancelled is True
+
+
+@pytest.mark.asyncio
+async def test_cli_legacy_agent_is_not_cancelled_when_splash_finishes(monkeypatch):
+    started = asyncio.Event()
+    stopped = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class FakeView:
+        def __init__(self, _config):
+            self.suppress_output = False
+            self.display = None
+
+        def get_snapshot_dict(self):
+            return {}
+
+        async def stop(self):
+            return None
+
+    class InstantSplash:
+        async def show(self, duration=0):
+            return None
+
+    class BlockingAgent:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def start(self):
+            started.set()
+            try:
+                await cli._shutdown_event.wait()
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        async def stop(self):
+            stopped.set()
+
+    args = SimpleNamespace(
+        debug=False,
+        config="test-config.toml",
+        manual=False,
+        no_web=True,
+        web=None,
+        port=None,
+        host=None,
+        tui=True,
+    )
+    monkeypatch.setattr(cli, "parse_arguments", lambda: args)
+    monkeypatch.setattr(cli, "setup_logging", lambda _debug=False: None)
+    monkeypatch.setattr(cli, "load_config", lambda _path: {"log": {"level": "INFO"}})
+    monkeypatch.setattr(cli, "View", FakeView)
+    monkeypatch.setattr(cli, "SplashScreen", InstantSplash)
+    monkeypatch.setattr(cli, "WebServer", None)
+    monkeypatch.setattr(cli, "Manager", None)
+    monkeypatch.setattr(cli, "Agent", BlockingAgent)
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
+
+    runner = asyncio.create_task(cli.run_agent())
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    await asyncio.sleep(0.05)
+
+    assert not runner.done(), "Agent should keep running after the splash finishes"
+    assert not cancelled.is_set()
+
+    cli._shutdown_event.set()
+    assert await asyncio.wait_for(runner, timeout=1.0) == 0
+    assert stopped.is_set()
+    assert not cancelled.is_set()
+
+
+@pytest.mark.asyncio
+async def test_cli_legacy_agent_start_failure_is_observed_before_splash_finishes(monkeypatch):
+    class FakeView:
+        def __init__(self, _config):
+            self.suppress_output = False
+            self.display = None
+
+        def get_snapshot_dict(self):
+            return {}
+
+        async def stop(self):
+            return None
+
+    class BlockingSplash:
+        def __init__(self):
+            self.cancelled = False
+
+        async def show(self, duration=0):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.cancelled = True
+
+    class FailingAgent:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def start(self):
+            raise RuntimeError("agent startup failed immediately")
+
+        async def stop(self):
+            return None
+
+    args = SimpleNamespace(
+        debug=False,
+        config="test-config.toml",
+        manual=False,
+        no_web=True,
+        web=None,
+        port=None,
+        host=None,
+        tui=True,
+    )
+    splash = BlockingSplash()
+    monkeypatch.setattr(cli, "parse_arguments", lambda: args)
+    monkeypatch.setattr(cli, "setup_logging", lambda _debug=False: None)
+    monkeypatch.setattr(cli, "load_config", lambda _path: {"log": {"level": "INFO"}})
+    monkeypatch.setattr(cli, "View", FakeView)
+    monkeypatch.setattr(cli, "SplashScreen", lambda: splash)
+    monkeypatch.setattr(cli, "WebServer", None)
+    monkeypatch.setattr(cli, "Manager", None)
+    monkeypatch.setattr(cli, "Agent", FailingAgent)
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
+
+    exit_code = await asyncio.wait_for(cli.run_agent(), timeout=1.0)
+
+    assert exit_code == 1
+    assert splash.cancelled is True
