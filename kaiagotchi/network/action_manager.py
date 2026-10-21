@@ -37,6 +37,15 @@ class InterfaceActionManager:
             f"with channel list: {self._channel_list}"
         )
 
+    def set_monitor_interface(self, interface: str) -> None:
+        """Pin channel hopping and cleanup to the dedicated capture interface."""
+        interface = interface.strip()
+        if not interface:
+            raise ValueError("monitor interface cannot be empty")
+        self._interface = interface
+        self._monitor_interface = interface
+        self.logger.info("ActionManager pinned to monitor interface '%s'", interface)
+
     # ------------------------------------------------------------------
     async def hop_channel(self, interface: str | None = None) -> bool:
         """
