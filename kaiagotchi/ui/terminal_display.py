@@ -41,6 +41,8 @@ class TerminalDisplay:
             return
         self._initialized = True
         self._config = config or {}
+        ui_config = self._config.get("ui", self._config)
+        self._ui_config = ui_config if isinstance(ui_config, dict) else {}
         self._enabled = True
         self._start_time = time.time()
 
@@ -57,9 +59,9 @@ class TerminalDisplay:
         self._started = False
 
         # Display limits
-        self._max_visible_aps = int(self._config.get("max_visible_aps", 15))
-        self._max_visible_stations = int(self._config.get("max_visible_stations", 10))
-        self._max_visible_chatter = int(self._config.get("max_visible_chatter", 6))
+        self._max_visible_aps = int(self._ui_config.get("max_visible_aps", 15))
+        self._max_visible_stations = int(self._ui_config.get("max_visible_stations", 10))
+        self._max_visible_chatter = int(self._ui_config.get("max_visible_chatter", 6))
 
         # Status tracking
         self._current_status = "Monitoring signals..."
@@ -488,7 +490,8 @@ class TerminalDisplay:
             try:
                 ms = str(mood).lower()
                 self._current_mood_from_state = ms
-                return faces.get_face(ms)
+                overrides = self._ui_config.get("faces", {})
+                return faces.get_face(ms, overrides=overrides if isinstance(overrides, dict) else None)
             except Exception:
                 pass
         try:
