@@ -17,9 +17,8 @@ async def test_thought_persistence():
     mock_view = MagicMock()
     mock_view.async_update = AsyncMock()
 
-    # Create Agent
-    agent = Agent(config, view=mock_view)
-    agent.system_state = SystemState() # Reset state
+    # Inject the same state object used by MonitoringAgent.
+    agent = Agent(config, view=mock_view, system_state=SystemState())
 
     # 1. Generate a thought via Automata
     # We need to mock the voice to return a predictable string
@@ -64,3 +63,38 @@ async def test_automata_callback_integration():
     mock_callback.assert_called_once()
     args = mock_callback.call_args[0]
     assert "💭 Callback test" in args[0]
+
+
+def test_system_state_declares_runtime_fields_and_dumps_them():
+    """Runtime telemetry is typed model state, not hidden Pydantic extras."""
+    state = SystemState()
+    expected = {
+        "mood", "aps", "aps_max_seen", "mode", "status", "substatus", "uptime",
+        "aps_list", "stations_list", "recent_captures", "chatter_log",
+    }
+    dumped = state.model_dump()
+    assert expected <= dumped.keys()
+    assert state.recent_captures == []
+    assert state.chatter_log == []
+    assert state.mood == "neutral"
+
+
+def test_agent_restores_persisted_mood_to_system_state(monkeypatch):
+    """Restored mood is visible to downstream state snapshots after startup."""
+    class StoredMood:
+        def get_last_mood(self):
+            return "happy"
+
+        def get_last_reward(self):
+            return 0.5
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", StoredMood)
+    mock_view = MagicMock()
+    mock_view.async_update = AsyncMock()
+    agent = Agent(
+        {"personality": {"default_mood": "neutral"}, "ui": {"fps": 2}},
+        view=mock_view,
+        system_state=SystemState(),
+    )
+    assert agent.system_state.mood == "happy"
+    assert agent.automata.current_mood.value == "happy"
