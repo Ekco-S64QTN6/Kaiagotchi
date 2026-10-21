@@ -49,24 +49,52 @@ class StatusFile:
         self._data_format = data_format  # Store it even if unused
         self._load()
 
-    def _load(self):
-        """Load status data from file."""
+    def _load(self) -> None:
+        """Load a JSON object from the status file, rejecting other root types."""
         try:
             if os.path.exists(self.path):
-                with open(self.path) as f:
-                    self._data = json.load(f)
-        except Exception as e:
-            utils_logger.warning(f"Failed to load status file {self.path}: {e}")
+                with open(self.path, encoding="utf-8") as fp:
+                    loaded = json.load(fp)
+                if isinstance(loaded, dict):
+                    self._data = loaded
+                else:
+                    utils_logger.warning(
+                        "Status file %s contains a non-object JSON value; ignoring it",
+                        self.path,
+                    )
+                    self._data = {}
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+            utils_logger.warning("Failed to load status file %s: %s", self.path, e)
             self._data = {}
 
-    def _save(self):
-        """Save status data to file."""
+    def _save(self) -> None:
+        """Atomically save a status object, including for a bare relative filename."""
+        temp_path: str | None = None
         try:
-            os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with open(self.path, 'w') as f:
-                json.dump(self._data, f)
-        except Exception as e:
-            utils_logger.error(f"Failed to save status file {self.path}: {e}")
+            destination = os.path.abspath(self.path)
+            parent = os.path.dirname(destination)
+            os.makedirs(parent, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=parent,
+                prefix=f".{os.path.basename(destination)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as fp:
+                temp_path = fp.name
+                json.dump(self._data, fp)
+                fp.flush()
+                os.fsync(fp.fileno())
+            os.replace(temp_path, destination)
+            temp_path = None
+        except (OSError, TypeError, ValueError) as e:
+            utils_logger.error("Failed to save status file %s: %s", self.path, e)
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    utils_logger.warning("Could not remove temporary status file %s", temp_path)
 
     def get(self, key: str, default=None):
         """Get a status value."""
@@ -391,14 +419,38 @@ def unzip(src: str, dest: str, strip_dirs: int = 0) -> bool:
         return False
 
 def save_config(config: dict[str, Any], path: str) -> bool:
-    """Saves the configuration dictionary to a TOML file."""
-    utils_logger.info(f"Saving configuration to {path}")
+    """Atomically save a TOML configuration file."""
+    temp_path: str | None = None
     try:
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(tomlkit.dumps(config))
+        destination = os.path.abspath(path)
+        parent = os.path.dirname(destination)
+        os.makedirs(parent, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=parent,
+            prefix=f".{os.path.basename(destination)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fp:
+            temp_path = fp.name
+            fp.write(tomlkit.dumps(config))
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(temp_path, destination)
+        temp_path = None
+        try:
+            os.chmod(destination, 0o600)
+        except OSError as e:
+            utils_logger.warning("Could not secure permissions for %s: %s", destination, e)
         return True
     except Exception as e:
-        utils_logger.error(f"Failed to save config to {path}: {e}")
+        utils_logger.error("Failed to save config to %s: %s", path, e)
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                utils_logger.warning("Could not remove temporary config file %s", temp_path)
         return False
 
 def md5(filename: str) -> str | None:
