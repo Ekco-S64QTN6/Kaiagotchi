@@ -9,9 +9,9 @@ from kaiagotchi.core.utils import download_file, sanitize_config_for_logging
 
 def test_load_config_missing_relative_path_uses_defaults(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    config = load_config("local-config.toml")
+    config = load_config("nested/local-config.toml")
     assert config["main"]["name"] == "kaiagotchi"
-    assert (tmp_path / "local-config.toml").parent.is_dir()
+    assert (tmp_path / "nested").is_dir()
 
 
 def test_invalid_config_returns_defaults_without_recursive_reload(tmp_path):
