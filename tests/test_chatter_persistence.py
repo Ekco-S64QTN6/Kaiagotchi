@@ -98,3 +98,19 @@ def test_agent_restores_persisted_mood_to_system_state(monkeypatch):
     )
     assert agent.system_state.mood == "happy"
     assert agent.automata.current_mood.value == "happy"
+
+
+
+def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
+    """A configured wlan0 must not override the capture dongle's wlan1."""
+    monkeypatch.delenv("KAIAGOTCHI_INTERFACE", raising=False)
+    config = {
+        "main": {"iface": "wlan0"},
+        "personality": {"channels": [1, 6, 11]},
+        "ui": {"fps": 2},
+    }
+    agent = Agent(config, view=MagicMock(), system_state=SystemState())
+
+    assert agent.monitoring_agent.interface == "wlan1"
+    assert agent.action_manager._interface == "wlan1"
+    assert agent.action_manager._monitor_interface == "wlan1"
