@@ -49,6 +49,7 @@ class RewardEngine:
         self._decay_per_min = self.config.get("reward", {}).get("idle_decay_per_min", DEFAULT_DECAY_PER_MIN)
         self._discovered_aps: set = set()
         self._discovered_stations: set = set()
+        self._seen_discovery_events: dict[tuple[str, str], None] = {}
         logger.debug("RewardEngine initialized (weights=%s)", self.WEIGHTS)
 
     def _safe_iter_agents(self, agents: Any) -> Iterable:
@@ -115,31 +116,94 @@ class RewardEngine:
         return 0
 
     def _extract_new_discoveries(self, state: dict[str, Any]) -> tuple[int, int]:
-        """Track and reward new AP and station discoveries."""
+        """Count each newly observed AP/station once, with deduplicated legacy-event fallback."""
         new_aps = 0
         new_stations = 0
+        network = state.get("network", {}) or {}
 
         try:
-            # Check for recent captures that indicate discoveries
+            # Prefer identity inventories where available. They let us detect a
+            # first-seen BSSID/station once, without counting the same recent
+            # chatter entry again on every reward evaluation.
+            aps_inventory_available = False
+            aps_list = state.get("aps_list")
+            if isinstance(aps_list, list):
+                aps_inventory_available = True
+                current_aps = {
+                    str(ap.get("bssid")).strip().upper()
+                    for ap in aps_list
+                    if isinstance(ap, dict) and ap.get("bssid")
+                }
+            else:
+                access_points = (
+                    network.get("access_points", {})
+                    if isinstance(network, dict)
+                    else {}
+                )
+                if isinstance(access_points, dict):
+                    aps_inventory_available = True
+                    current_aps = {
+                        str(ap.get("bssid") or key).strip().upper()
+                        for key, ap in access_points.items()
+                        if isinstance(ap, dict) and (ap.get("bssid") or key)
+                    }
+                else:
+                    current_aps = set()
+
+            if aps_inventory_available:
+                new_aps += len(current_aps - self._discovered_aps)
+                self._discovered_aps.update(current_aps)
+
+            stations_inventory_available = isinstance(state.get("stations_list"), list)
+            if stations_inventory_available:
+                stations_list = state["stations_list"]
+                current_stations = {
+                    str(station.get("station_mac") or station.get("mac")).strip().upper()
+                    for station in stations_list
+                    if isinstance(station, dict)
+                    and (station.get("station_mac") or station.get("mac"))
+                }
+                new_stations += len(current_stations - self._discovered_stations)
+                self._discovered_stations.update(current_stations)
+
+            # Older integrations may publish discovery events without an AP or
+            # station inventory. Use those messages only for the missing
+            # inventory, and remember normalized event identities so a rolling
+            # recent_captures buffer cannot reward the same event repeatedly.
             recent_captures = state.get("recent_captures", [])
-            if recent_captures and isinstance(recent_captures, list):
-                for capture in recent_captures[-5:]:  # Check last 5 captures
-                    msg = capture.get("message", "").lower()
-                    if "new network" in msg or "new ap" in msg:
+            if isinstance(recent_captures, list):
+                for capture in recent_captures[-5:]:
+                    if isinstance(capture, dict):
+                        msg = str(capture.get("message") or capture.get("text") or "").strip()
+                    elif isinstance(capture, str):
+                        msg = capture.strip()
+                    else:
+                        continue
+                    normalized = msg.casefold()
+                    category = None
+                    if "new network" in normalized or "new ap" in normalized:
+                        category = "ap"
+                    elif "new station" in normalized:
+                        category = "station"
+                    if category is None:
+                        continue
+
+                    if category == "ap" and aps_inventory_available:
+                        continue
+                    if category == "station" and stations_inventory_available:
+                        continue
+
+                    event_key = (category, normalized)
+                    if event_key in self._seen_discovery_events:
+                        continue
+                    self._seen_discovery_events[event_key] = None
+                    if len(self._seen_discovery_events) > 1000:
+                        self._seen_discovery_events.pop(next(iter(self._seen_discovery_events)))
+
+                    if category == "ap":
                         new_aps += 1
-                    elif "new station" in msg:
+                    else:
                         new_stations += 1
-
-            # Check aps_list for new BSSIDs
-            aps_list = state.get("aps_list", [])
-            current_aps = set()
-            for ap in aps_list:
-                if isinstance(ap, dict) and "bssid" in ap:
-                    current_aps.add(ap["bssid"])
-
-            # Calculate new discoveries
-            new_aps += len(current_aps - self._discovered_aps)
-            self._discovered_aps.update(current_aps)
 
         except Exception as e:
             logger.debug("Discovery tracking failed: %s", e)
@@ -270,4 +334,5 @@ class RewardEngine:
         """Reset discovery tracking (useful for new sessions)."""
         self._discovered_aps.clear()
         self._discovered_stations.clear()
+        self._seen_discovery_events.clear()
         logger.debug("RewardEngine discoveries reset")
