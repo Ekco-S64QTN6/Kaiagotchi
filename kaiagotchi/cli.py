@@ -17,6 +17,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 from kaiagotchi.config.config import load_config
 from kaiagotchi.data.system_types import (
@@ -79,13 +80,23 @@ def parse_arguments():
     parser.add_argument("--manual", action="store_true", help="Start in manual mode")
     parser.add_argument("--web", action="store_true", default=None, help="Enable Cyber-Deck Web UI (default: enabled)")
     parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
-    parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
+    parser.add_argument("--tui", action="store_true", help="Force curses TUI mode and disable the Web UI")
     parser.add_argument("--port", type=int, default=None, help="Port for Web UI (default: 8080)")
     parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (default: 127.0.0.1; use 0.0.0.0 for LAN access)")
     # helper flags (handled below in __main__)
     parser.add_argument("--smoke-ui", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--diag-ui", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
+
+
+def _web_enabled(args: Any, config: dict[str, Any]) -> bool:
+    """Resolve web mode flags; --tui explicitly means terminal-only mode."""
+    if getattr(args, "tui", False) or getattr(args, "no_web", False):
+        return False
+    if getattr(args, "web", None):
+        return True
+    web_config = config.get("web", {})
+    return bool(web_config.get("enabled", True)) if isinstance(web_config, dict) else True
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -235,13 +246,7 @@ async def run_agent() -> int:
 
         # Initialize Web Server (Cyber-Deck UI)
         web_server = None
-        web_enabled = True
-        if args.no_web:
-            web_enabled = False
-        elif args.web:
-            web_enabled = True
-        else:
-            web_enabled = config.get("web", {}).get("enabled", True)
+        web_enabled = _web_enabled(args, config)
 
         if args.port:
             config.setdefault("web", {})["port"] = args.port
