@@ -11,10 +11,6 @@ class TestPcapAndRecon(unittest.TestCase):
         # Create a temporary directory for storage
         self.test_dir = tempfile.TemporaryDirectory()
         self.network = PersistentNetwork(storage_dir=self.test_dir.name)
-        # This test class manipulates the private PCAP registry directly.
-        # Wait for constructor startup reconciliation to finish so independent
-        # tests don't race its background disk scan.
-        self.network._sync_thread.join(timeout=5)
         # PersistentNetwork performs an initial filesystem reconciliation in a
         # daemon thread. Wait for that initialization to finish before this test
         # mutates the private in-memory records, otherwise the startup scan can
@@ -110,15 +106,10 @@ class TestPcapAndRecon(unittest.TestCase):
         self.assertIn("00:11:22:33:44:55", md_content)
         self.assertIn("WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150", md_content)
 
-if __name__ == '__main__':
-    unittest.main()
-
-
     def test_startup_sync_does_not_overwrite_concurrent_pcap_record(self):
         """A record inserted during PCAP analysis wins over the stale scan result."""
-        # Complete the initial background sync so the race can be injected
+        # The setup fixture waits for startup sync; now inject the interleaving
         # deterministically below.
-        self.network._sync_thread.join(timeout=5)
         filename = "2026-10-21T12-00-00_airodump.pcap"
         pcap_path = Path(self.network.pcaps_dir) / filename
         pcap_path.touch()
@@ -149,3 +140,6 @@ if __name__ == '__main__':
         stored = self.network._data["pcaps"][filename]
         self.assertEqual(stored["analysis"], late_record["analysis"])
         self.assertEqual(stored["bssid"], "00:11:22:33:44:55")
+
+if __name__ == '__main__':
+    unittest.main()
