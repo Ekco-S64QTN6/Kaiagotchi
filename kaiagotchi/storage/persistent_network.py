@@ -669,9 +669,18 @@ class PersistentNetwork:
                     handshake_complete = capture.get("handshake_complete", False)
                     cap_type = capture.get("type") or "WPA Handshake"
 
-                    # Normalize MACs
-                    bssid_clean = bssid.replace(":", "").lower()
-                    client_clean = client_mac.replace(":", "").lower() if client_mac else "ffffffffffff"
+                    # Normalize MAC addresses only when they are valid 48-bit
+                    # addresses. Placeholder MACs produce misleading, unusable hashes.
+                    def clean_mac(value: str) -> str:
+                        normalized = value.strip().replace(":", "").replace("-", "").replace(".", "")
+                        if len(normalized) != 12 or any(
+                            char not in "0123456789abcdefABCDEF" for char in normalized
+                        ):
+                            return ""
+                        return normalized.lower()
+
+                    bssid_clean = clean_mac(bssid)
+                    client_clean = clean_mac(client_mac)
                     ssid_hex = ssid.encode("utf-8", errors="ignore").hex()
 
                     hashcat_22000 = ""
@@ -679,7 +688,7 @@ class PersistentNetwork:
                     ssid_is_known = bool(ssid.strip()) and ssid.strip().casefold() not in {
                         "hidden or unknown", "unknown", "<hidden>", "--"
                     }
-                    if pmkid and ssid_is_known:
+                    if pmkid and ssid_is_known and bssid_clean and client_clean:
                         hashcat_22000 = f"WPA*01*{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}***"
                         hashcat_16800 = f"{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
 
