@@ -123,7 +123,7 @@ class Automata:
         neg_low = float(self._config.get("personality", {}).get("threshold_bored", -0.05))
 
         if r >= pos_high:
-            return AgentMood.HAPPY
+            return AgentMood.CONFIDENT
         if r >= pos_mid:
             return AgentMood.HAPPY
         if r >= pos_low:
@@ -416,6 +416,22 @@ class Automata:
     async def set_confident(self): await self._apply_mood(AgentMood.CONFIDENT)
     async def set_angry(self): await self._apply_mood(AgentMood.ANGRY)
     async def set_neutral(self): await self._apply_mood(AgentMood.NEUTRAL)
+
+    def restore_state(self, mood: str | None = None, reward: float | None = None) -> None:
+        """Restore persisted mood and reward so restarts don't reset emotional state."""
+        if mood:
+            try:
+                self._current_mood = AgentMood(mood)
+            except ValueError:
+                _LOG.warning("restore_state: unknown mood %r, keeping NEUTRAL", mood)
+        if reward is not None:
+            self._ema_reward = float(reward)
+            self._last_reward = float(reward)
+        _LOG.info(
+            "Automata state restored: mood=%s, ema_reward=%s",
+            self._current_mood.name,
+            self._ema_reward,
+        )
 
     def get_emotional_state(self) -> dict[str, Any]:
         """Get comprehensive emotional state for debugging."""

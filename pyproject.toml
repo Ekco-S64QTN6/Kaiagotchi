@@ -36,9 +36,7 @@ dependencies = [
     "pydantic>=2.7.4",   # Typed SystemState / config models
     "scapy>=2.5.0",      # PCAP parsing, EAPOL/PMKID extraction
     "psutil>=5.9.0",     # Interface / system monitoring
-    "requests>=2.32.3",  # HTTP client (optional asset downloads)
     "rich>=13.0.0",      # Splash screen and progress rendering
-    "pillow>=10.0.0",    # Splash image → ASCII conversion (optional at runtime)
     "aiohttp>=3.9.0",    # Cyber-Deck Web UI HTTP & WebSocket server
 ]
 
@@ -51,6 +49,13 @@ dev = [
     "mypy>=1.0.0",
     "types-psutil",
     "types-requests",
+]
+# Optional runtime extras
+splash = [
+    "pillow>=10.0.0",    # Splash image → ASCII art conversion
+]
+net = [
+    "requests>=2.32.3",  # Used by core/utils.py::download_file() (no current callers)
 ]
 
 [project.urls]
@@ -67,7 +72,12 @@ include = ["kaiagotchi*"]
 exclude = ["tests*", "docs*", "scripts*", "venv*", "backups*", "*.egg-info*", "build*", "dist*"]
 
 [tool.setuptools.package-data]
-kaiagotchi = ["config/*.toml", "config/examples/*.toml"]
+kaiagotchi = [
+    "config/*.toml",
+    "config/examples/*.toml",
+    "ui/web/static/**/*",  # Cyber-Deck frontend (HTML, CSS, JS, assets)
+    "images/*",            # Splash screen assets
+]
 
 # ===== Code Quality & Formatting =====
 [tool.black]

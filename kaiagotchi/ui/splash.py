@@ -65,11 +65,28 @@ class SplashScreen:
                     /____/
         """
 
+    @staticmethod
+    def _is_kitty_terminal() -> bool:
+        """Return True if the current terminal supports the Kitty graphics protocol."""
+        import os
+        if os.environ.get("KITTY_WINDOW_ID"):
+            return True
+        if os.environ.get("TERM", "") == "xterm-kitty":
+            return True
+        if os.environ.get("TERM_PROGRAM", "") == "kitty":
+            return True
+        return False
+
     def _render_kitty_image(self) -> bool:
         """
         Render image using Kitty Graphics Protocol.
         Returns True if successful, False otherwise.
         """
+        # Only attempt Kitty protocol when we are actually in a Kitty terminal;
+        # other terminals silently discard the sequences and show a blank splash.
+        if not self._is_kitty_terminal():
+            return False
+
         if not Image or not self.image_path.exists():
             return False
 

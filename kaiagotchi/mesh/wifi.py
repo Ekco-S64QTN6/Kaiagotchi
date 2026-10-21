@@ -147,8 +147,11 @@ def get_band_for_channel(channel: int) -> str:
         return '2.4GHz'
     elif 36 <= channel <= 165:
         return '5GHz'
-    elif 1 <= channel <= 93:  # 6GHz channels overlap with 2.4GHz numbers
-        return '6GHz'
+    elif 1 <= channel <= 93:
+        # 6GHz channels (1–93) overlap numerically with 2.4GHz channels (1–14).
+        # The 2.4GHz branch above takes priority, so this branch is only reachable
+        # for channels 15–35 which belong to NO band — raise instead of mislabelling.
+        raise ValueError(f"Unknown band for channel: {channel}")
     else:
         raise ValueError(f"Unknown band for channel: {channel}")
 

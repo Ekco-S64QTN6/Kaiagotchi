@@ -68,11 +68,13 @@ class PersistentNetwork:
         self._data: dict[str, Any] = {"bssids": {}, "stations": {}, "pcaps": {}}
         self.load()
 
-        # Sync pcap records with filesystem on initialization
-        self._sync_pcaps_with_filesystem()
-
-        # Generate initial handshake and SSID summary reports
-        self.generate_reports()
+        # Defer the per-file PCAP sync and initial report generation to a background
+        # thread so __init__ returns quickly and doesn't block Agent startup.
+        import threading
+        self._sync_thread = threading.Thread(
+            target=self._deferred_startup_sync, daemon=True, name="pnet-startup-sync"
+        )
+        self._sync_thread.start()
 
     def _ensure_directory_permissions(self):
         """Ensure storage directories exist with proper permissions."""
@@ -118,6 +120,11 @@ class PersistentNetwork:
         }
 
     def save(self) -> bool:
+        """Atomically persist BSSID/station/pcap metadata and regenerate summary reports.
+
+        Note: _sync_pcaps_with_filesystem (the slow per-PCAP Scapy re-parse) is deferred
+        to a background thread at startup and is NOT called from here.
+        """
         try:
             payload = dict(self._data)
             payload["_last_saved"] = now_cst_iso()
@@ -125,12 +132,21 @@ class PersistentNetwork:
             if success:
                 # Ensure proper permissions after saving
                 self._ensure_file_permissions(self.filepath)
-                # Generate handshake and SSID summary reports
+                # Regenerate summary reports on each save.
+                # For very large pcap datasets, consider calling generate_reports() only
+                # on a periodic timer rather than on every save.
                 self.generate_reports()
             return success
         except Exception:
             LOGGER.exception("Failed to save network history")
             return False
+
+    def _deferred_startup_sync(self) -> None:
+        """Run the expensive PCAP filesystem sync in background so __init__ returns quickly."""
+        try:
+            self._sync_pcaps_with_filesystem()
+        except Exception:
+            LOGGER.exception("Deferred startup sync failed")
 
     # -------------------------
     # Enhanced PCAP filesystem sync with better BSSID extraction
@@ -524,7 +540,8 @@ class PersistentNetwork:
 
     def _make_pcap_filename(self, base_name: str, bssid: str | None = None) -> str:
         """Generate a proper PCAP filename without asterisks."""
-        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        # Include microseconds to prevent collisions when two captures share the same second
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S-%f")
 
         if bssid and bssid != "UNKNOWN":
             # Clean BSSID for filename (replace colons with dashes)

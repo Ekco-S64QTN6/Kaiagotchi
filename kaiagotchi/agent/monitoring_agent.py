@@ -190,8 +190,9 @@ class MonitoringAgent:
         except Exception as e:
             _LOG.error(f"[monitoring] Error restoring managed mode: {e}")
 
-        # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY
-        await self._archive_pcap()
+        # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
+        # synchronous Scapy parsing and file I/O don't stall the event loop
+        await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
 
         try:
             if self.persistent_network:
@@ -217,7 +218,7 @@ class MonitoringAgent:
     async def archive_current_pcap(self):
         """Force archiving of the current PCAP file without stopping monitoring."""
         _LOG.info("[monitoring] Force archiving current PCAP...")
-        await self._archive_pcap()
+        await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
 
     # ------------------------------------------------------------------
     async def _set_monitor_mode(self):
@@ -321,10 +322,10 @@ class MonitoringAgent:
             _LOG.debug("[monitoring] Failed to emit capture summary", exc_info=True)
 
     # ------------------------------------------------------------------
-    async def _archive_pcap(self):
-        """Copy the session PCAP from /tmp to storage/pcaps with proper filename."""
+    def _archive_pcap_sync(self):
+        """Synchronous PCAP archive worker — run via run_in_executor to avoid blocking the event loop."""
         try:
-            # FIXED: Check both possible file extensions and use the session_pcap path
+            # Check both possible file extensions and use the session_pcap path
             possible_sources = [
                 self._session_pcap,
                 Path(f"{self._base_path}-01.cap"),
@@ -354,7 +355,7 @@ class MonitoringAgent:
 
             if self.persistent_network:
                 try:
-                    # Let PersistentNetwork handle copying and registering the file directly from /tmp
+                    # Let PersistentNetwork handle copying and registering the file
                     copied_path = self.persistent_network.add_pcap_file(
                         str(src), bssid=None, src_name="airodump", analyze=True
                     )
@@ -362,21 +363,24 @@ class MonitoringAgent:
                         _LOG.info(f"[monitoring] PCAP successfully archived to: {copied_path}")
                     else:
                         _LOG.error("[monitoring] PersistentNetwork failed to archive PCAP.")
+                        return  # Don't delete source if archive failed
                 except Exception as e:
                     _LOG.error(f"[monitoring] persistent_network.add_pcap_file failed: {e}", exc_info=True)
+                    return  # Don't delete source if archive failed
             else:
                 # Fallback: copy manually to storage/pcaps if persistent_network is not available
                 timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
                 clean_filename = f"{timestamp}_airodump.pcap"
                 clean_dest = PCAP_STORAGE_DIR / clean_filename
 
-                import shutil
-                shutil.copy2(src, clean_dest)
+                import shutil as _shutil
+                _shutil.copy2(src, clean_dest)
+                if not clean_dest.exists():
+                    _LOG.error("[monitoring] Manual PCAP copy did not produce a destination file; source kept")
+                    return
                 _LOG.info(f"[monitoring] PersistentNetwork not attached; manually copied PCAP to: {clean_dest}")
 
-            await self._emit_capture_summary("Session PCAP archived.")
-
-            # FIXED: Clean up the temporary file after successful copy
+            # Only remove the temporary source file once the destination is confirmed to exist
             try:
                 src.unlink()
                 _LOG.info(f"[monitoring] Cleaned up temporary PCAP: {src}")
@@ -581,7 +585,8 @@ class MonitoringAgent:
                     "aps": ap_count,
                     "aps_max_seen": self._max_aps_seen,
                     "recent_captures": recent_captures,
-                    "chatter_log": recent_captures,
+                    # chatter_log is intentionally omitted: View.get_snapshot_dict()
+                    # builds it from _chatter_lines, so setting it here is a no-op.
                     "aps_list": aps,
                     "stations_list": stations,
                     "mode": "MONITORING",

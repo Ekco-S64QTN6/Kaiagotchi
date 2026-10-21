@@ -126,7 +126,14 @@ def __getattr__(name: str):
 # Minimal CLI entry point (used in pyproject [project.scripts])
 # ---------------------------------------------------------------------------
 def main() -> int:
-    """CLI entrypoint: handles version/name; does not preload runtime subsystems."""
+    """DEPRECATED / DEAD CODE — this function is NOT used as the console-script entry point.
+
+    The real entry point declared in pyproject.toml is ``kaiagotchi.cli:run``.
+    --version and --name are not handled here; add them to cli.parse_arguments() if needed.
+
+    This function is kept to avoid breaking any external code that may import it directly,
+    but it should be removed in a future cleanup.
+    """
     parser = argparse.ArgumentParser(prog="kaiagotchi")
     parser.add_argument("--version", action="store_true", help="print version and exit")
     parser.add_argument("--name", type=str, help="set agent name at startup")

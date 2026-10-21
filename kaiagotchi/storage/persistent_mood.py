@@ -179,7 +179,7 @@ class PersistentMood:
                         self.set(new_mood, new_reward)
                 elif points < 0:
                     self._data["energy"] = max(0.0, self._data.get("energy", 0.75) - 0.05)
-                    new_mood = "tired" if self._data["energy"] < 0.4 else "bored"
+                    new_mood = "sleepy" if self._data["energy"] < 0.4 else "bored"
                     if new_mood != self._current_mood:
                         self.set(new_mood, new_reward)
                 else:
@@ -188,8 +188,8 @@ class PersistentMood:
                     self._data["energy"] = max(0.0, self._data.get("energy", 0.75) - 0.01)
                     if self._data["curiosity"] < 0.3 and self._current_mood != "bored":
                         self.set("bored", new_reward)
-                    elif self._data["energy"] < 0.2 and self._current_mood != "tired":
-                        self.set("tired", new_reward)
+                    elif self._data["energy"] < 0.2 and self._current_mood != "sleepy":
+                        self.set("sleepy", new_reward)
 
         event_str = f" ({event})" if event else ""
         LOGGER.info(

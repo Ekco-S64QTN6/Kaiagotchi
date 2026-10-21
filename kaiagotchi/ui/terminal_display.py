@@ -92,6 +92,9 @@ class TerminalDisplay:
 
     def start(self):
         """Launch the curses rendering thread."""
+        if not self._owns_terminal:
+            _LOG.debug("TerminalDisplay.start() skipped — not attached to a TTY")
+            return
         if self._started or self._stop_event.is_set():
             return
         self._started = True
@@ -515,6 +518,13 @@ class TerminalDisplay:
     def _parse_last_seen(self, s: str) -> float:
         if not s or s == "--":
             return 0.0
+        # Try ISO formats first (what airodump-ng emits: "2026-10-20 12:00:00")
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+            try:
+                return datetime.strptime(str(s).strip(), fmt).timestamp()
+            except Exception:
+                pass
+        # Fall back to plain HH:MM:SS (legacy)
         try:
             parts = str(s).strip().split(":")
             if len(parts) == 3 and "-" not in s and "T" not in s:

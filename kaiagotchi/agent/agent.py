@@ -127,8 +127,15 @@ class Agent(kaiagotchiBase):
         self.monitoring_agent.set_epoch_tracker(self.epoch_tracker)
         self.logger.info("All persistence systems connected to MonitoringAgent.")
 
-        # Initialize Automata for emotional state
-        self.automata = Automata(self.config, self._view, on_thought=self._handle_thought)
+        # Initialize Automata for emotional state — pass shared reward/epoch so
+        # Automata.tick() uses the same reward pipeline as the rest of the agent
+        self.automata = Automata(
+            self.config,
+            self._view,
+            reward_engine=self.reward_engine,
+            epoch_tracker=self.epoch_tracker,
+            on_thought=self._handle_thought,
+        )
         self.logger.info("Automata emotional engine initialized.")
 
         # Initialize PluginManager and register it globally so that
@@ -149,9 +156,8 @@ class Agent(kaiagotchiBase):
             self.logger.info(f"Restoring last mood={last_mood}, reward={last_reward}")
             if hasattr(self.system_state, "mood"):
                 self.system_state.mood = last_mood or AgentMood.NEUTRAL.value
-            if hasattr(self.automata, "restore_state"):
-                self.automata.restore_state(mood=last_mood, reward=last_reward)
-                self.logger.info("Automata state restored from persistence.")
+            self.automata.restore_state(mood=last_mood, reward=last_reward)
+            self.logger.info("Automata state restored from persistence.")
 
         # Connect view references across subsystems
         if self._view:
@@ -275,10 +281,17 @@ class Agent(kaiagotchiBase):
         self.logger.info(f"Decision loop (delay={decision_delay}s) and UI update loop started.")
 
         try:
-            await asyncio.wait(
-                [t for t in (self._monitor_task, self._decision_task, self._update_task) if t is not None],
+            tasks = [t for t in (self._monitor_task, self._decision_task, self._update_task) if t is not None]
+            done, _pending = await asyncio.wait(
+                tasks,
                 return_when=asyncio.FIRST_EXCEPTION,
             )
+            # Inspect completed tasks and re-raise any exception so callers see it
+            for t in done:
+                exc = t.exception() if not t.cancelled() else None
+                if exc is not None:
+                    self.logger.error("Agent background task raised an exception: %s", exc)
+                    raise exc
         except asyncio.CancelledError:
             self.logger.info("Agent tasks cancelled.")
         except Exception as e:
@@ -458,6 +471,12 @@ class Agent(kaiagotchiBase):
 
         if self.persistent_network:
             self.persistent_network.save()
+            # generate_reports() was decoupled from save() to avoid per-save stalls;
+            # regenerate once on clean shutdown so summaries stay current.
+            try:
+                self.persistent_network.generate_reports()
+            except Exception as e:
+                self.logger.warning("generate_reports() failed on shutdown: %s", e)
             self.logger.info("Persistent network state saved.")
 
         try:

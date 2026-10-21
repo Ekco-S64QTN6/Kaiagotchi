@@ -362,9 +362,11 @@ async def run_agent() -> int:
             logger.info("No Manager available — starting legacy Agent directly")
 
             try:
-                # Create agent
+                # Create agent — pass the shared view so it doesn't create a
+                # second View that overwrites the display's state provider.
                 agent = Agent(
                     config=config,
+                    view=view,
                     system_state=system_state,
                     state_lock=state_lock
                 )
@@ -386,6 +388,14 @@ async def run_agent() -> int:
                          splash_task.cancel()
                          agent_start_task.cancel()
                          return 0
+                    # Splash completed first — cancel the now-unneeded shutdown_wait
+                    # so it doesn't linger as a leaked task.
+                    if shutdown_wait in pending:
+                        shutdown_wait.cancel()
+                        try:
+                            await shutdown_wait
+                        except asyncio.CancelledError:
+                            pass
                 else:
                     # If splash failed to init, just wait a bit or proceed
                     done, pending = await asyncio.wait(

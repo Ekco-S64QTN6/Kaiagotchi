@@ -167,7 +167,15 @@ class SystemTicker:
                 metrics = getattr(self.system_state, "metrics", None)
                 if metrics:
                     if hasattr(metrics, "cpu_usage") and metrics_data["cpu_load"] is not None:
-                        metrics.cpu_usage = float(metrics_data["cpu_load"])
+                        # Use psutil for an accurate percentage; fall back to load average
+                        # scaled by cpu_count if psutil is unavailable.
+                        try:
+                            import psutil as _psutil
+                            metrics.cpu_usage = _psutil.cpu_percent(interval=None)
+                        except Exception:
+                            import os
+                            cpu_count = os.cpu_count() or 1
+                            metrics.cpu_usage = min(100.0, (metrics_data["cpu_load"] / cpu_count) * 100.0)
                     if hasattr(metrics, "memory_usage") and "MemTotal" in metrics_data["meminfo"]:
                         meminfo = metrics_data["meminfo"]
                         total = float(meminfo.get("MemTotal", "0 kB").split()[0])

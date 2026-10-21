@@ -226,9 +226,9 @@ class DecisionEngine:
 
             # Targeting state
             elif self.current_state == AgentState.TARGETING:
-                # Check system load
+                # Check system load (cpu_usage is now a real 0-100 percentage)
                 cpu = float(metrics.get("cpu_usage", 0.0) or 0.0)
-                if cpu > 0.85:
+                if cpu > 85.0:
                     return await self._transition_to(AgentState.MAINTENANCE, "High load")
 
                 # Time-based targeting completion
