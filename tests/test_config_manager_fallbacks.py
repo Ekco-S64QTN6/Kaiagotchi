@@ -76,3 +76,19 @@ def test_core_utils_save_config_supports_relative_filename(tmp_path, monkeypatch
     assert save_core_config({"main": {"name": "kaiagotchi"}}, "core-config.toml")
     saved = tomlkit.parse(Path("core-config.toml").read_text(encoding="utf-8"))
     assert saved["main"]["name"] == "kaiagotchi"
+
+
+
+def test_missing_config_returns_defaults_when_directory_creation_fails(tmp_path, monkeypatch):
+    from kaiagotchi.config import manager
+
+    target = tmp_path / "unwritable" / "config.toml"
+
+    def fail_makedirs(*_args, **_kwargs):
+        raise PermissionError("simulated read-only config root")
+
+    monkeypatch.setattr(manager.os, "makedirs", fail_makedirs)
+
+    config = manager.load_config(str(target))
+
+    assert config["main"]["name"] == "kaiagotchi"
