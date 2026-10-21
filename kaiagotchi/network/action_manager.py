@@ -8,6 +8,7 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 from typing import Any
 
 
@@ -223,50 +224,74 @@ class InterfaceActionManager:
         return 0
 
     # ------------------------------------------------------------------
-    async def set_monitor_mode(self, interface: str) -> bool:
-        """Set the interface into monitor mode."""
-        try:
-            self.logger.info(f"Setting {interface} into monitor mode...")
-            # Set unmanaged in NetworkManager first to prevent interference
-            await asyncio.create_subprocess_exec("nmcli", "device", "set", interface, "managed", "no")
-
-            proc = await asyncio.create_subprocess_exec(
-                "ip", "link", "set", interface, "down",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+    async def _run_checked(self, *command: str) -> None:
+        """Run one interface command and fail if the process reports an error."""
+        proc = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            raise RuntimeError(
+                f"Command {' '.join(command)!r} failed with exit code {proc.returncode}"
+                + (f": {detail}" if detail else "")
             )
-            await proc.communicate()
-            await asyncio.create_subprocess_exec("iw", interface, "set", "monitor", "none")
-            await asyncio.create_subprocess_exec("ip", "link", "set", interface, "up")
 
-            self._monitor_interface = interface
+    async def set_monitor_mode(self, interface: str) -> bool:
+        """Set the dedicated capture interface into monitor mode."""
+        target = self._monitor_interface or interface or self._interface
+        try:
+            if not await self._interface_exists(target):
+                self.logger.error("Cannot set monitor mode: interface %s not found", target)
+                return False
+
+            self.logger.info("Setting %s into monitor mode...", target)
+            if shutil.which("nmcli"):
+                await self._run_checked("nmcli", "device", "set", target, "managed", "no")
+
+            await self._run_checked("ip", "link", "set", "dev", target, "down")
+            await self._run_checked("iw", "dev", target, "set", "type", "monitor")
+            await self._run_checked("ip", "link", "set", "dev", target, "up")
+
+            info = await self.get_interface_info(target)
+            if info.get("mode") != "monitor":
+                raise RuntimeError(f"Interface {target} did not enter monitor mode")
+
+            self._monitor_interface = target
             if self.view:
                 await self.view.async_update({"status": "Interface in monitor mode"})
             return True
         except Exception as e:
-            self.logger.error(f"Failed to set monitor mode for {interface}: {e}")
+            self.logger.error("Failed to set monitor mode for %s: %s", target, e)
             return False
 
     async def set_managed_mode(self, interface: str) -> bool:
-        """Return the interface to managed mode."""
+        """Return the dedicated capture interface to managed mode."""
+        target = self._monitor_interface or interface or self._interface
         try:
-            self.logger.info(f"Restoring managed mode for {interface}")
-            await asyncio.create_subprocess_exec(
-                "ip", "link", "set", interface, "down",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await asyncio.create_subprocess_exec("iw", interface, "set", "type", "managed")
-            await asyncio.create_subprocess_exec("ip", "link", "set", interface, "up")
+            if not await self._interface_exists(target):
+                self.logger.error("Cannot restore managed mode: interface %s not found", target)
+                return False
 
-            # Restore managed mode in NetworkManager
-            await asyncio.create_subprocess_exec("nmcli", "device", "set", interface, "managed", "yes")
+            self.logger.info("Restoring managed mode for %s", target)
+            await self._run_checked("ip", "link", "set", "dev", target, "down")
+            await self._run_checked("iw", "dev", target, "set", "type", "managed")
+            await self._run_checked("ip", "link", "set", "dev", target, "up")
+            if shutil.which("nmcli"):
+                await self._run_checked("nmcli", "device", "set", target, "managed", "yes")
 
+            info = await self.get_interface_info(target)
+            if info.get("mode") not in {"managed", "unknown"}:
+                raise RuntimeError(f"Interface {target} did not return to managed mode")
+
+            self._monitor_interface = None
             if self.view:
                 await self.view.async_update({"status": "Interface restored to managed mode"})
             return True
         except Exception as e:
-            self.logger.error(f"Failed to restore managed mode: {e}")
+            self.logger.error("Failed to restore managed mode for %s: %s", target, e)
             return False
 
     # ------------------------------------------------------------------
