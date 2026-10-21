@@ -368,8 +368,10 @@ class MonitoringAgent:
             )
         )
         try:
-            os.chmod(capture_dir, 0o700)
+            # Track the directory before chmod/spawn so every failure path can
+            # clean up an empty scratch directory safely.
             self._capture_tmp_dir = capture_dir
+            os.chmod(capture_dir, 0o700)
             self._base_path = capture_dir / "capture"
             self._csv_path = Path(f"{self._base_path}-01.csv")
             self._session_pcap = Path(f"{self._base_path}-01.cap")
