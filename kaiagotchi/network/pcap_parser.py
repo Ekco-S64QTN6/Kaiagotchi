@@ -7,7 +7,6 @@ from typing import Any
 
 from scapy.all import (
     EAPOL,
-    EAPOL_KEY,
     Dot11,
     Dot11Beacon,
     Dot11Elt,
@@ -15,6 +14,7 @@ from scapy.all import (
     PcapReader,
     rdpcap,
 )
+from scapy.layers.eap import EAPOL_KEY
 
 # Configure logging for the module
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -168,7 +168,7 @@ def detect_pmkid(packet) -> str | None:
     except (AttributeError, TypeError, ValueError):
         return None
 
-    marker = b"\\xdd\\x14\\x00\\x0f\\xac\\x04"
+    marker = b"\xdd\x14\x00\x0f\xac\x04"
     offset = key_data.find(marker)
     if offset < 0:
         return None
