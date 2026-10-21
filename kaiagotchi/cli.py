@@ -17,6 +17,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 from kaiagotchi.config.config import load_config
 from kaiagotchi.data.system_types import (
