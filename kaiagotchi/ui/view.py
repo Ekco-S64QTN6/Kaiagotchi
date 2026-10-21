@@ -151,8 +151,17 @@ class View:
         """Captured handshakes/PMKIDs recorded by the agent's persistent network store."""
         try:
             pn = getattr(self._agent, "persistent_network", None)
-            data = getattr(pn, "_data", None) or {}
-            return sum(len(r.get("analysis") or []) for r in data.get("pcaps", {}).values())
+            get_records = getattr(pn, "get_pcap_records", None)
+            if not callable(get_records):
+                return 0
+            # PersistentNetwork returns a detached snapshot under its state lock;
+            # never iterate its private dict while the capture thread mutates it.
+            records = get_records()
+            return sum(
+                len(record.get("analysis") or [])
+                for record in records.values()
+                if isinstance(record, dict)
+            )
         except Exception:
             return 0
 
