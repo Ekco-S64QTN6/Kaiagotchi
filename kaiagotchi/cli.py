@@ -169,6 +169,11 @@ async def run_agent() -> int:
     Prefer Manager (if available) to wire all subsystems. Otherwise fall back to Agent.
     Returns process exit code (0 success, non-zero error).
     """
+    global _shutdown_event
+    # Each invocation gets a fresh event. A previous run's signal must not make
+    # a later in-process run exit during startup.
+    _shutdown_event = asyncio.Event()
+
     # Clear LINES and COLUMNS from environment to bypass python/rich/shutil terminal size caching
     os.environ.pop("LINES", None)
     os.environ.pop("COLUMNS", None)
@@ -181,6 +186,9 @@ async def run_agent() -> int:
     view: View | None = None
     mgr = None
     agent = None
+    # Initialized before the try so early configuration/import failures still
+    # pass through cleanup without masking the original startup error.
+    web_server = None
 
     # Set up signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
@@ -234,7 +242,6 @@ async def run_agent() -> int:
         view.suppress_output = True  # Suppress output during splash
 
         # Initialize Web Server (Cyber-Deck UI)
-        web_server = None
         web_enabled = True
         if args.no_web:
             web_enabled = False
