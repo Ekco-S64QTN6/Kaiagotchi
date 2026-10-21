@@ -120,7 +120,7 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
             'enabled': True,
             'web': {
                 'enabled': True,
-                'host': '0.0.0.0',
+                'host': '127.0.0.1',
                 'port': 8080,
                 'authentication': True
             }
