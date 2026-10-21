@@ -592,36 +592,60 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
 
-    # Export PMKIDs for hashcat mode 16800
-    pmkid_entries = []
+    # Keep the legacy mode-16800 export for backwards compatibility.
+    # Mode 16800 is deprecated in favor of Hashcat's 22000 format.
+    pmkid_entries_16800 = []
+    pmkid_entries_22000 = []
     for capture in captures:
         if capture.pmkid:
-            bssid_clean = capture.bssid.replace(':', '') if capture.bssid else 'ffffffffffff'
-            client_clean = capture.client_mac.replace(':', '') if capture.client_mac else 'ffffffffffff'
+            bssid_clean = capture.bssid.replace(':', '').lower() if capture.bssid else 'ffffffffffff'
+            client_clean = capture.client_mac.replace(':', '').lower() if capture.client_mac else 'ffffffffffff'
             ssid_hex = capture.ssid.encode('utf-8', errors='ignore').hex() if capture.ssid else ''
-            entry = f"{capture.pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
-            pmkid_entries.append(entry)
+            pmkid_entries_16800.append(
+                f"{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}"
+            )
+            # Hashcat 22000 PMKID format has empty ANONCE and EAPOL fields,
+            # represented by the required three trailing separators.
+            pmkid_entries_22000.append(
+                f"WPA*01*{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}***"
+            )
 
-    if pmkid_entries:
+    if pmkid_entries_16800:
         pmkid_file = os.path.join(output_dir, "pmkid_hashes.txt")
-        with open(pmkid_file, 'w') as f:
-            f.write('\n'.join(pmkid_entries))
+        with open(pmkid_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(pmkid_entries_16800) + '\n')
+        # Preserve the existing key for callers relying on the legacy export.
         output_files['pmkid'] = pmkid_file
-        parser_logger.info(f"Exported {len(pmkid_entries)} PMKID hashes to {pmkid_file}")
+        output_files['pmkid_16800'] = pmkid_file
+        parser_logger.info("Exported %d legacy mode-16800 PMKIDs to %s", len(pmkid_entries_16800), pmkid_file)
 
-    # Export handshakes for hashcat mode 22000 (could be enhanced with actual packet data)
-    handshake_entries = []
-    for capture in captures:
-        if capture.handshake_complete and not capture.pmkid:
-            # Note: This would need actual EAPOL message extraction for full hashcat support
-            handshake_entries.append(f"Handshake for {capture.bssid} (SSID: {capture.ssid})")
+        pmkid_22000_file = os.path.join(output_dir, "pmkid_hashes.hc22000")
+        with open(pmkid_22000_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(pmkid_entries_22000) + '\n')
+        output_files['pmkid_22000'] = pmkid_22000_file
+        parser_logger.info("Exported %d mode-22000 PMKIDs to %s", len(pmkid_entries_22000), pmkid_22000_file)
 
-    if handshake_entries:
+    # This parser does not retain the raw EAPOL/nonce data needed to construct
+    # a valid WPA*02* Hashcat record. Keep this as human-readable metadata only.
+    handshake_info_entries = [
+        f"Handshake for {capture.bssid} (SSID: {capture.ssid})"
+        for capture in captures
+        if capture.handshake_complete and not capture.pmkid
+    ]
+
+    if handshake_info_entries:
         handshake_file = os.path.join(output_dir, "handshake_info.txt")
-        with open(handshake_file, 'w') as f:
-            f.write('\n'.join(handshake_entries))
+        with open(handshake_file, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(handshake_info_entries) + '\n')
+        # Legacy key retained for backwards compatibility; this file is not a
+        # Hashcat hash file because the source model lacks raw EAPOL data.
         output_files['handshake'] = handshake_file
-        parser_logger.info(f"Exported {len(handshake_entries)} handshake info entries to {handshake_file}")
+        output_files['handshake_info'] = handshake_file
+        parser_logger.info(
+            "Exported %d handshake metadata entries (not crackable hashes) to %s",
+            len(handshake_info_entries),
+            handshake_file,
+        )
 
     return output_files
 
