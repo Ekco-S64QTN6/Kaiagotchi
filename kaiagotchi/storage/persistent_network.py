@@ -676,7 +676,10 @@ class PersistentNetwork:
 
                     hashcat_22000 = ""
                     hashcat_16800 = ""
-                    if pmkid:
+                    ssid_is_known = bool(ssid.strip()) and ssid.strip().casefold() not in {
+                        "hidden or unknown", "unknown", "<hidden>", "--"
+                    }
+                    if pmkid and ssid_is_known:
                         hashcat_22000 = f"WPA*01*{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}***"
                         hashcat_16800 = f"{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
 
