@@ -151,17 +151,12 @@ class View:
         """Captured handshakes/PMKIDs recorded by the agent's persistent network store."""
         try:
             pn = getattr(self._agent, "persistent_network", None)
-            get_records = getattr(pn, "get_pcap_records", None)
-            if not callable(get_records):
+            count = getattr(pn, "get_capture_analysis_count", None)
+            if not callable(count):
                 return 0
-            # PersistentNetwork returns a detached snapshot under its state lock;
-            # never iterate its private dict while the capture thread mutates it.
-            records = get_records()
-            return sum(
-                len(record.get("analysis") or [])
-                for record in records.values()
-                if isinstance(record, dict)
-            )
+            # Count under PersistentNetwork's state lock without copying every
+            # nested analysis record on each dashboard refresh.
+            return int(count())
         except Exception:
             return 0
 
