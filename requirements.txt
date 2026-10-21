@@ -2,7 +2,7 @@
 #
 # Install via:
 #   pip install -e .          # core dependencies
-#   pip install -e ".[full]"  # all optional dependencies
+#   pip install -e ".[dev,splash,net]"  # tests/tools plus every optional runtime extra
 #
 # System prerequisites (not pip-installable):
 #   sudo pacman -S aircrack-ng    # includes airodump-ng
