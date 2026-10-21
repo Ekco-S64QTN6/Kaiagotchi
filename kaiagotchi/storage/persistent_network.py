@@ -5,11 +5,11 @@ import os
 import re
 import shutil
 import stat
+from copy import deepcopy
 from datetime import datetime
 from functools import wraps
-from threading import RLock
-from copy import deepcopy
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from .file_io import atomically_save_data, load_data
@@ -703,7 +703,11 @@ class PersistentNetwork:
         """Re-analyze all pcap files to extract and update BSSID and station information."""
         try:
             LOGGER.info("Re-analyzing all pcap files to extract comprehensive BSSID and station data...")
-            for filename, record in list(self._data.get("pcaps", {}).items()):
+            # Snapshot dictionary membership while locked, then keep Scapy work outside
+            # the lock so live monitoring updates are never blocked by a large capture.
+            with self._state_lock:
+                records = list(self._data.get("pcaps", {}).items())
+            for filename, record in records:
                 pcap_path = Path(record.get("path", ""))
                 if pcap_path.exists():
                     LOGGER.info(f"Re-analyzing pcap: {filename}")
