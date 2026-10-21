@@ -1,6 +1,8 @@
 import logging
 import os
 import pathlib
+import tempfile
+from copy import deepcopy
 
 # Security imports for file operations
 from typing import Any
@@ -136,11 +138,14 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         }
     }
 
+    defaults = deepcopy(config)
+
     # 1. Check if config file exists
     if not os.path.exists(config_path):
         utils_logger.warning(f"Configuration file not found at {config_path}. Using default configuration.")
         # Create directory structure for default config location
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        parent_dir = os.path.dirname(os.path.abspath(config_path))
+        os.makedirs(parent_dir, exist_ok=True)
         return config
 
     # 2. Secure file permissions before reading
@@ -170,58 +175,60 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         # 4. Validate configuration structure
         if not validate_config_structure(config):
             utils_logger.warning("Configuration validation failed, using default configuration")
-            return load_config()  # Return fresh default config
+            return defaults  # Return fresh defaults without recursive reload
 
         utils_logger.info(f"Configuration loaded successfully from {config_path}")
 
     except PermissionError as e:
         utils_logger.error(f"Permission denied accessing configuration file {config_path}: {e}")
         utils_logger.warning("Falling back to default configuration.")
+        return defaults
 
     except Exception as e:
         utils_logger.error(f"Error loading or parsing configuration from {config_path}: {e}", exc_info=True)
         utils_logger.warning("Falling back to default configuration.")
+        return defaults
 
     return config
 
 
 def save_config(config: dict[str, Any], config_path: str = DEFAULT_CONFIG_PATH) -> bool:
     """
-    Save configuration to a TOML file with security measures.
-
-    Args:
-        config: Configuration dictionary to save
-        config_path: Path where to save the configuration
-
-    Returns:
-        True if successful, False otherwise
+    Save configuration atomically and apply restrictive file permissions.
     """
+    temp_path: str | None = None
     try:
-        # Ensure directory exists
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        absolute_path = os.path.abspath(config_path)
+        parent_dir = os.path.dirname(absolute_path)
+        os.makedirs(parent_dir, exist_ok=True)
 
-        # Convert dictionary to TOML
         toml_content = tomlkit.dumps(config)
-
-        # Write to temporary file first (atomic write)
-        temp_path = f"{config_path}.tmp"
-        with open(temp_path, 'w', encoding='utf-8') as fp:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=parent_dir,
+            prefix=f".{os.path.basename(absolute_path)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fp:
+            temp_path = fp.name
             fp.write(toml_content)
+            fp.flush()
+            os.fsync(fp.fileno())
 
-        # Replace original file atomically
-        os.replace(temp_path, config_path)
-
-        # Secure file permissions
-        _secure_file_permissions(config_path)
-
-        utils_logger.info(f"Configuration saved successfully to {config_path}")
+        os.replace(temp_path, absolute_path)
+        temp_path = None
+        _secure_file_permissions(absolute_path)
+        utils_logger.info("Configuration saved successfully to %s", absolute_path)
         return True
 
     except Exception as e:
-        utils_logger.error(f"Error saving configuration to {config_path}: {e}")
-        # Clean up temporary file if it exists
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+        utils_logger.error("Error saving configuration to %s: %s", config_path, e)
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                utils_logger.warning("Could not remove temporary config file %s", temp_path)
         return False
 
 
@@ -263,30 +270,19 @@ def get_state_path(config: dict[str, Any], filename: str = DEFAULT_STATE_FILENAM
 
 
 def mask_sensitive_config(config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Create a safe version of config for logging by masking sensitive data.
+    """Return a recursively masked copy without mutating the live config."""
+    sensitive_keys = ("password", "secret", "key", "token", "auth")
 
-    Args:
-        config: Original configuration dictionary
+    def mask_recursive(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                key: "***MASKED***"
+                if any(sensitive in str(key).lower() for sensitive in sensitive_keys)
+                else mask_recursive(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [mask_recursive(item) for item in value]
+        return value
 
-    Returns:
-        Configuration with sensitive fields masked
-    """
-    masked_config = config.copy()
-    sensitive_keys = ['password', 'secret', 'key', 'token', 'auth']
-
-    def mask_recursive(obj):
-        if isinstance(obj, dict):
-            return {k: mask_recursive(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [mask_recursive(item) for item in obj]
-        else:
-            return obj
-
-    for section in masked_config:
-        if isinstance(masked_config[section], dict):
-            for key in list(masked_config[section].keys()):
-                if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                    masked_config[section][key] = '***MASKED***'
-
-    return masked_config
+    return mask_recursive(deepcopy(config))
