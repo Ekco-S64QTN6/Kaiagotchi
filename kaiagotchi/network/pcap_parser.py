@@ -2,7 +2,9 @@
 import logging
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from scapy.all import (
@@ -570,6 +572,36 @@ def parse_pcap_large(filepath: str) -> list[CaptureData]:
     return parse_pcap(filepath, use_streaming=True)
 
 
+def _write_private_text(path: str | Path, text: str) -> None:
+    """Atomically write a private export without following an existing symlink."""
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=str(destination.parent),
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            output.write(text)
+            output.flush()
+            os.fsync(output.fileno())
+        # os.replace replaces a destination symlink itself rather than opening
+        # and following its target. The temporary file is owner-only throughout.
+        os.replace(temporary_name, destination)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        try:
+            os.unlink(temporary_name)
+        except OSError:
+            pass
+        raise
+
+
 def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dict[str, str]:
     """
     Export captured data to formats compatible with hashcat.
@@ -641,16 +673,14 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
 
     if pmkid_entries_16800:
         pmkid_file = os.path.join(output_dir, "pmkid_hashes.txt")
-        with open(pmkid_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(pmkid_entries_16800) + '\n')
+        _write_private_text(pmkid_file, '\n'.join(pmkid_entries_16800) + '\n')
         # Preserve the existing key for callers relying on the legacy export.
         output_files['pmkid'] = pmkid_file
         output_files['pmkid_16800'] = pmkid_file
         parser_logger.info("Exported %d legacy mode-16800 PMKIDs to %s", len(pmkid_entries_16800), pmkid_file)
 
         pmkid_22000_file = os.path.join(output_dir, "pmkid_hashes.hc22000")
-        with open(pmkid_22000_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(pmkid_entries_22000) + '\n')
+        _write_private_text(pmkid_22000_file, '\n'.join(pmkid_entries_22000) + '\n')
         output_files['pmkid_22000'] = pmkid_22000_file
         parser_logger.info("Exported %d mode-22000 PMKIDs to %s", len(pmkid_entries_22000), pmkid_22000_file)
 
@@ -664,8 +694,7 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
 
     if handshake_info_entries:
         handshake_file = os.path.join(output_dir, "handshake_info.txt")
-        with open(handshake_file, 'w', encoding='utf-8') as f:
-            f.write('\n'.join(handshake_info_entries) + '\n')
+        _write_private_text(handshake_file, '\n'.join(handshake_info_entries) + '\n')
         # Legacy key retained for backwards compatibility; this file is not a
         # Hashcat hash file because the source model lacks raw EAPOL data.
         output_files['handshake'] = handshake_file
