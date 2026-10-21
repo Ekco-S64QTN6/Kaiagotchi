@@ -27,7 +27,7 @@ async Python core and a headless terminal UI.
 ## Requirements
 
 **Hardware**
-- A wireless adapter that supports **monitor mode** and packet injection.
+- A dedicated wireless adapter that supports **monitor mode** and packet injection. Keep your normal internet adapter in managed mode; Kaiagotchi defaults to using a separate capture dongle on `wlan1`.
 
 **Software**
 - Linux (uses `curses`, `/proc`, and Linux wireless tooling)
@@ -95,7 +95,8 @@ sudo $EDITOR /etc/kaiagotchi/config.toml
 
 Key sections:
 
-- `[main]` — instance `name` and wireless `iface`
+- `[main]` — instance `name` and primary/interface metadata (`iface`)
+- Capture uses `wlan1` by default, independently of `[main].iface`; set `KAIAGOTCHI_INTERFACE` to override the capture dongle name.
 - `[personality]` — reward smoothing and the thresholds that map reward → mood
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces
