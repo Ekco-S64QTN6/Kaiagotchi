@@ -8,7 +8,9 @@
 [main]
 # Display name for this instance.
 name = "kaiagotchi"
-# Wireless interface to use. Must support monitor mode + injection.
+# Primary/managed Wi-Fi adapter metadata. Keep this on your internet adapter.
+# Capture runs on a separate dongle (default wlan1) and must not disrupt wlan0.
+# Override the capture adapter with the KAIAGOTCHI_INTERFACE environment variable.
 iface = "wlan0"
 
 [log]
