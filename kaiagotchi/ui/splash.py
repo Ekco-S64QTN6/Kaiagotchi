@@ -20,6 +20,7 @@ _LOG = logging.getLogger("kaiagotchi.ui.splash")
 class SplashScreen:
     def __init__(self, image_path: str = "images/kaia.png"):
         self.console = Console()
+        self.display_rows: int = 0
         # Resolve absolute path relative to project root if possible
         # Assuming this runs from project root or we find it relative to this file
         self.image_path = Path(image_path)
