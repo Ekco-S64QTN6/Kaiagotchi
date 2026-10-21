@@ -200,3 +200,22 @@ def test_sync_registers_pcapng_and_uppercase_pcap_extensions(tmp_path, monkeypat
     assert "manual-capture.PCAPNG" in records
     assert "legacy-capture.PCAP" in records
 
+def test_pcap_records_getter_returns_detached_nested_records(tmp_path):
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    record = {
+        "bssid": "00:11:22:33:44:55",
+        "analysis": [{"metadata": {"ssid": "Test-AP"}}],
+    }
+    network._data.setdefault("pcaps", {})["snapshot.pcap"] = record
+
+    snapshot = network.get_pcap_records()
+    snapshot["snapshot.pcap"]["analysis"][0]["metadata"]["ssid"] = "mutated"
+    snapshot["snapshot.pcap"]["extra"] = True
+
+    stored = network.get_pcap_records()["snapshot.pcap"]
+    assert stored["analysis"][0]["metadata"]["ssid"] == "Test-AP"
+    assert "extra" not in stored
+
