@@ -5,13 +5,16 @@ import json
 import logging
 import os
 import pathlib
+import shutil
 import stat
 import sys
+import tempfile
 import zipfile
+from copy import deepcopy
 from dataclasses import dataclass
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any
 
-import requests
 import tomlkit
 
 # --- Global Configuration Constants ---
@@ -49,24 +52,52 @@ class StatusFile:
         self._data_format = data_format  # Store it even if unused
         self._load()
 
-    def _load(self):
-        """Load status data from file."""
+    def _load(self) -> None:
+        """Load a JSON object from the status file, rejecting other root types."""
         try:
             if os.path.exists(self.path):
-                with open(self.path) as f:
-                    self._data = json.load(f)
-        except Exception as e:
-            utils_logger.warning(f"Failed to load status file {self.path}: {e}")
+                with open(self.path, encoding="utf-8") as fp:
+                    loaded = json.load(fp)
+                if isinstance(loaded, dict):
+                    self._data = loaded
+                else:
+                    utils_logger.warning(
+                        "Status file %s contains a non-object JSON value; ignoring it",
+                        self.path,
+                    )
+                    self._data = {}
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as e:
+            utils_logger.warning("Failed to load status file %s: %s", self.path, e)
             self._data = {}
 
-    def _save(self):
-        """Save status data to file."""
+    def _save(self) -> None:
+        """Atomically save a status object, including for a bare relative filename."""
+        temp_path: str | None = None
         try:
-            os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with open(self.path, 'w') as f:
-                json.dump(self._data, f)
-        except Exception as e:
-            utils_logger.error(f"Failed to save status file {self.path}: {e}")
+            destination = os.path.abspath(self.path)
+            parent = os.path.dirname(destination)
+            os.makedirs(parent, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=parent,
+                prefix=f".{os.path.basename(destination)}.",
+                suffix=".tmp",
+                delete=False,
+            ) as fp:
+                temp_path = fp.name
+                json.dump(self._data, fp)
+                fp.flush()
+                os.fsync(fp.fileno())
+            os.replace(temp_path, destination)
+            temp_path = None
+        except (OSError, TypeError, ValueError) as e:
+            utils_logger.error("Failed to save status file %s: %s", self.path, e)
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except OSError:
+                    utils_logger.warning("Could not remove temporary status file %s", temp_path)
 
     def get(self, key: str, default=None):
         """Get a status value."""
@@ -89,51 +120,37 @@ class StatusFile:
             self._save()
 
 def remove_whitelisted(aps: list[Any], whitelist: list[str]) -> list[Any]:
-    """
-    Remove access points that are in the whitelist.
-
-    Args:
-        aps: List of access point objects
-        whitelist: List of BSSIDs or ESSIDs to whitelist
-
-    Returns:
-        Filtered list of access points
-    """
+    """Remove APs whose BSSID, SSID, or ESSID appears in the whitelist."""
     if not whitelist:
         return aps
 
-    filtered = []
-    for ap in aps:
-        # Handle different AP object structures
-        bssid = getattr(ap, 'bssid', None) or ap.get('bssid', '') if hasattr(ap, 'get') else ''
-        essid = getattr(ap, 'essid', None) or ap.get('essid', '') if hasattr(ap, 'get') else ''
+    def field(ap: Any, name: str) -> Any:
+        value = getattr(ap, name, None)
+        if value:
+            return value
+        getter = getattr(ap, "get", None)
+        if callable(getter):
+            return getter(name, "")
+        return ""
 
-        if bssid not in whitelist and essid not in whitelist:
-            filtered.append(ap)
-
-    utils_logger.debug(f"Filtered {len(aps)} APs to {len(filtered)} using whitelist")
+    filtered = [
+        ap for ap in aps
+        if field(ap, "bssid") not in whitelist
+        and field(ap, "essid") not in whitelist
+        and field(ap, "ssid") not in whitelist
+    ]
+    utils_logger.debug("Filtered %d APs to %d using whitelist", len(aps), len(filtered))
     return filtered
 
 def merge_config(user_config: dict[str, Any], default_config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Deep merge user configuration into default configuration.
-
-    Args:
-        user_config: User-provided configuration
-        default_config: Default configuration template
-
-    Returns:
-        Merged configuration dictionary
-    """
-    config = default_config.copy()
+    """Deep-merge user settings into independent copies of the defaults."""
+    config = deepcopy(default_config)
 
     for key, value in user_config.items():
         if key in config and isinstance(config[key], dict) and isinstance(value, dict):
-            # Recursively merge dictionaries
             config[key] = merge_config(value, config[key])
         else:
-            # Overwrite with user value
-            config[key] = value
+            config[key] = deepcopy(value)
 
     return config
 
@@ -221,7 +238,7 @@ def sanitize_config_for_logging(config: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Sanitized configuration with sensitive fields removed/masked
     """
-    sanitized = config.copy()
+    sanitized = deepcopy(config)
     sensitive_keys = ['password', 'secret', 'key', 'token', 'auth']
 
     def mask_sensitive(data, path=""):
@@ -353,43 +370,129 @@ def total_unique_handshakes(path: str) -> int:
     return len(glob.glob(expr))
 
 def download_file(url: str, dest: str, timeout: int = 60) -> bool:
-    """Downloads a file from a URL to a destination path."""
-    utils_logger.info(f"Downloading {url} to {dest}")
+    """Download a file, loading the optional requests dependency only when used."""
     try:
-        with requests.get(url, stream=True, timeout=timeout) as r:
-            r.raise_for_status()
-            with open(dest, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        import requests
+    except ImportError:
+        utils_logger.error(
+            "Downloading files requires the optional 'requests' dependency; "
+            "install kaiagotchi[net]."
+        )
+        return False
+
+    utils_logger.info("Downloading %s to %s", url, dest)
+    try:
+        with requests.get(url, stream=True, timeout=timeout) as response:
+            response.raise_for_status()
+            with open(dest, "wb") as output:
+                for chunk in response.iter_content(chunk_size=8192):
+                    output.write(chunk)
         return True
     except requests.exceptions.RequestException as e:
-        utils_logger.error(f"Failed to download file from {url}: {e}")
+        utils_logger.error("Failed to download file from %s: %s", url, e)
         return False
 
 def unzip(src: str, dest: str, strip_dirs: int = 0) -> bool:
-    """Unzips an archive, optionally stripping a number of leading directories."""
-    utils_logger.info(f"Unzipping {src} to {dest}")
+    """
+    Safely extract a ZIP archive and optionally strip leading path components.
+
+    Validate all members before writing anything. Reject absolute paths,
+    parent traversal, and symlink entries so malicious archives cannot escape
+    the destination directory.
+    """
+    utils_logger.info("Unzipping %s to %s", src, dest)
+    if strip_dirs < 0:
+        utils_logger.error("strip_dirs must be non-negative")
+        return False
+
+    root = pathlib.Path(dest).resolve()
     try:
-        with zipfile.ZipFile(src, 'r') as zip_ref:
-            # Simple unzip without stripping (for now)
-            zip_ref.extractall(dest)
+        with zipfile.ZipFile(src, "r") as zip_ref:
+            entries: list[tuple[zipfile.ZipInfo, pathlib.Path, bool]] = []
+            for info in zip_ref.infolist():
+                raw_name = info.filename
+                posix_name = PurePosixPath(raw_name)
+                windows_name = PureWindowsPath(raw_name)
+
+                if (
+                    not raw_name
+                    or posix_name.is_absolute()
+                    or windows_name.is_absolute()
+                    or bool(windows_name.drive)
+                    or ".." in posix_name.parts
+                    or ".." in windows_name.parts
+                ):
+                    raise ValueError(f"Unsafe ZIP member path: {raw_name!r}")
+
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ValueError(f"Symlink ZIP member is not allowed: {raw_name!r}")
+
+                parts = [part for part in posix_name.parts if part not in ("", ".")]
+                if len(parts) <= strip_dirs:
+                    continue
+
+                relative_path = pathlib.Path(*parts[strip_dirs:])
+                target = (root / relative_path).resolve()
+                if not target.is_relative_to(root):
+                    raise ValueError(f"ZIP member escapes destination: {raw_name!r}")
+
+                entries.append((info, target, info.is_dir()))
+
+            # Don't extract any files until the entire archive passes validation.
+            root.mkdir(parents=True, exist_ok=True)
+            for info, target, is_dir in entries:
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zip_ref.open(info, "r") as source, open(target, "wb") as output:
+                    shutil.copyfileobj(source, output)
+
         return True
     except zipfile.BadZipFile:
-        utils_logger.error(f"Invalid ZIP file: {src}")
+        utils_logger.error("Invalid ZIP file: %s", src)
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        utils_logger.error("Failed to safely unzip %s: %s", src, e)
         return False
     except Exception as e:
-        utils_logger.error(f"Failed to unzip {src}: {e}")
+        utils_logger.error("Failed to unzip %s: %s", src, e)
         return False
 
 def save_config(config: dict[str, Any], path: str) -> bool:
-    """Saves the configuration dictionary to a TOML file."""
-    utils_logger.info(f"Saving configuration to {path}")
+    """Atomically save a TOML configuration file."""
+    temp_path: str | None = None
     try:
-        with open(path, 'w', encoding='utf-8') as f:
-            f.write(tomlkit.dumps(config))
+        destination = os.path.abspath(path)
+        parent = os.path.dirname(destination)
+        os.makedirs(parent, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=parent,
+            prefix=f".{os.path.basename(destination)}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fp:
+            temp_path = fp.name
+            fp.write(tomlkit.dumps(config))
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(temp_path, destination)
+        temp_path = None
+        try:
+            os.chmod(destination, 0o600)
+        except OSError as e:
+            utils_logger.warning("Could not secure permissions for %s: %s", destination, e)
         return True
     except Exception as e:
-        utils_logger.error(f"Failed to save config to {path}: {e}")
+        utils_logger.error("Failed to save config to %s: %s", path, e)
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                utils_logger.warning("Could not remove temporary config file %s", temp_path)
         return False
 
 def md5(filename: str) -> str | None:
