@@ -180,3 +180,23 @@ def test_sync_persists_deletion_when_last_pcap_is_removed(tmp_path):
     report = json.loads((tmp_path / "handshakes_summary.json").read_text(encoding="utf-8"))
     assert report["summary"]["total_handshakes_captured"] == 0
 
+def test_sync_registers_pcapng_and_uppercase_pcap_extensions(tmp_path, monkeypatch):
+    import kaiagotchi.storage.persistent_network as persistent_network_module
+
+    monkeypatch.setattr(persistent_network_module, "parse_pcap_comprehensive", None)
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    pcap_dir = Path(network.pcaps_dir)
+    pcapng = pcap_dir / "manual-capture.PCAPNG"
+    uppercase_pcap = pcap_dir / "legacy-capture.PCAP"
+    pcapng.write_bytes(b"pcapng fixture")
+    uppercase_pcap.write_bytes(b"pcap fixture")
+
+    network._sync_pcaps_with_filesystem()
+
+    records = network.get_pcap_records()
+    assert "manual-capture.PCAPNG" in records
+    assert "legacy-capture.PCAP" in records
+
