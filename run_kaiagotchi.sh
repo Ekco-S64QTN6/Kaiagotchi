@@ -15,7 +15,20 @@ fi
 # Kaiagotchi needs elevated privileges to manage the wireless interface.
 if [ "$EUID" -ne 0 ]; then
     echo "🔐 Re-launching as root..."
-    exec sudo -E env "PATH=$PATH" "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
+
+    # Do not preserve the caller's PATH or arbitrary Python environment into
+    # a privileged process. The app resolves system tools (ip, iw, nmcli,
+    # airodump-ng) by name, so keeping a user-writable PATH could shadow them.
+    # Preserve only the explicit app selectors that are intended to cross sudo.
+    APP_ENV=()
+    if [ -n "${KAIAGOTCHI_INTERFACE:-}" ]; then
+        APP_ENV+=("KAIAGOTCHI_INTERFACE=$KAIAGOTCHI_INTERFACE")
+    fi
+    if [ -n "${KAIA_CONFIG:-}" ]; then
+        APP_ENV+=("KAIA_CONFIG=$KAIA_CONFIG")
+    fi
+
+    exec sudo env "${APP_ENV[@]}" "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
 else
     exec "$PYTHON_EXEC" -m kaiagotchi.cli --debug "$@"
 fi
