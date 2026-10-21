@@ -15,7 +15,7 @@ def test_load_config_missing_relative_path_uses_defaults(tmp_path, monkeypatch):
 
 def test_invalid_config_returns_defaults_without_recursive_reload(tmp_path):
     path = tmp_path / "invalid.toml"
-    path.write_text("main = []\\n", encoding="utf-8")
+    path.write_text("main = []" + chr(10), encoding="utf-8")
     config = load_config(str(path))
     assert isinstance(config["main"], dict)
     assert config["main"]["name"] == "kaiagotchi"
