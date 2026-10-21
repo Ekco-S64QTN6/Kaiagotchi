@@ -276,6 +276,7 @@ class WebServer:
         """Launch the server in a background daemon thread."""
         if self._started:
             return
+        self._stop_event.clear()
         self._started = True
         self._thread = threading.Thread(
             target=self._run_server_thread,
@@ -286,12 +287,14 @@ class WebServer:
         _LOG.info("WebServer thread started on %s:%d", self._host, self._port)
 
     def stop(self) -> None:
-        """Signal the server to shut down cleanly."""
+        """Signal the server loop to stop; its finally block owns cleanup."""
         self._stop_event.set()
-        if self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(self._cleanup(), self._loop)
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
+        thread = self._thread
+        if thread and thread.is_alive():
+            thread.join(timeout=5.0)
+            if thread.is_alive():
+                _LOG.warning("WebServer thread did not stop within 5 seconds")
+                return
         self._started = False
         _LOG.info("WebServer stopped")
 
@@ -332,9 +335,11 @@ class WebServer:
             _LOG.exception("WebServer thread encountered fatal error")
         finally:
             try:
-                self._loop.close()
+                if self._loop and not self._loop.is_closed():
+                    self._loop.close()
             except Exception:
-                pass
+                _LOG.debug("Error closing WebServer loop", exc_info=True)
+            self._started = False
 
     async def _cleanup(self) -> None:
         """Close active websockets and server runner."""
@@ -362,24 +367,25 @@ class WebServer:
             app.router.add_static("/static/", path=str(_STATIC_DIR), name="static")
 
         self._runner = web.AppRunner(app)
-        await self._runner.setup()
-        self._site = web.TCPSite(self._runner, self._host, self._port)
-        await self._site.start()
-
-        _log_listener_started(self._host, self._port)
-
-        # Start broadcast loop
-        broadcast_task = asyncio.create_task(self._broadcast_loop())
-
+        broadcast_task: asyncio.Task[None] | None = None
         try:
+            # Keep setup/start inside the cleanup scope too: bind failures can
+            # happen after AppRunner.setup() has already allocated resources.
+            await self._runner.setup()
+            self._site = web.TCPSite(self._runner, self._host, self._port)
+            await self._site.start()
+
+            _log_listener_started(self._host, self._port)
+
+            broadcast_task = asyncio.create_task(self._broadcast_loop())
             while not self._stop_event.is_set():
                 await asyncio.sleep(0.5)
         finally:
-            broadcast_task.cancel()
-            try:
-                await broadcast_task
-            except asyncio.CancelledError:
-                pass
+            if broadcast_task is not None:
+                broadcast_task.cancel()
+                await asyncio.gather(broadcast_task, return_exceptions=True)
+            # This is the sole cleanup owner. stop() only sets the event and
+            # joins this thread, avoiding concurrent AppRunner/WebSocket closes.
             await self._cleanup()
 
     # ── Request Handlers ──────────────────────────────────────
