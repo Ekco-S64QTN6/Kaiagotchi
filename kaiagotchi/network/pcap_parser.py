@@ -606,8 +606,25 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
                 )
                 continue
 
-            bssid_clean = capture.bssid.replace(':', '').lower() if capture.bssid else 'ffffffffffff'
-            client_clean = capture.client_mac.replace(':', '').lower() if capture.client_mac else 'ffffffffffff'
+            def clean_mac(value: str | None) -> str | None:
+                if not value:
+                    return None
+                normalized = value.strip().replace(':', '').replace('-', '').replace('.', '')
+                if len(normalized) != 12 or any(
+                    char not in "0123456789abcdefABCDEF" for char in normalized
+                ):
+                    return None
+                return normalized.lower()
+
+            bssid_clean = clean_mac(capture.bssid)
+            client_clean = clean_mac(capture.client_mac)
+            if bssid_clean is None or client_clean is None:
+                parser_logger.warning(
+                    "Skipping PMKID export for %s: valid AP and client MACs are required",
+                    capture.bssid,
+                )
+                continue
+
             ssid_hex = ssid.encode('utf-8', errors='ignore').hex()
             pmkid_entries_16800.append(
                 f"{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}"
