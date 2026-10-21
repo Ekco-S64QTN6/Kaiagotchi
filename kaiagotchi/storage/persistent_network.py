@@ -6,6 +6,7 @@ import re
 import shutil
 import stat
 from datetime import datetime
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
