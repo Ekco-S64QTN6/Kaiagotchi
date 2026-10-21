@@ -19,16 +19,70 @@ import logging
 import math
 import random
 import re
+import socket
 import threading
 import time
+from urllib.parse import urlsplit
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+import psutil
 
 from aiohttp import WSMsgType, web
 
 _LOG = logging.getLogger("kaiagotchi.ui.web.server")
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+
+def _is_same_origin_request(request: web.Request, allowed_hosts: set[str] | None = None) -> bool:
+    """Reject browser WebSocket requests initiated by a different origin.
+
+    WebSocket clients outside a browser may omit Origin; browser clients always
+    send it. For browser requests require the origin scheme/host/port to match
+    the current request, preventing a hostile website from reading the
+    unauthenticated local telemetry socket.
+    """
+    origin = request.headers.get("Origin")
+    if origin is None:
+        return True
+
+    try:
+        parsed = urlsplit(origin)
+        current = urlsplit(f"{request.scheme}://{request.host}")
+        if (
+            parsed.scheme.lower() not in {"http", "https"}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            return False
+
+        scheme = parsed.scheme.lower()
+        current_scheme = current.scheme.lower()
+        if scheme != current_scheme:
+            return False
+
+        origin_host = (parsed.hostname or "").casefold().rstrip(".")
+        if not origin_host:
+            return False
+        # Host/Origin equality by itself is vulnerable to DNS rebinding: a
+        # hostile hostname can resolve to loopback and match its own Origin.
+        if allowed_hosts is not None and origin_host not in allowed_hosts:
+            return False
+
+        origin_port = parsed.port or (443 if scheme == "https" else 80)
+        current_port = current.port or (443 if current_scheme == "https" else 80)
+        return (
+            parsed.hostname is not None
+            and current.hostname is not None
+            and parsed.hostname.casefold() == current.hostname.casefold()
+            and origin_port == current_port
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def _log_listener_started(host: str, port: int) -> None:
@@ -241,6 +295,27 @@ class WebServer:
         self._started = False
         _LOG.info("WebServer stopped")
 
+    def _allowed_origin_hosts(self) -> set[str]:
+        """Return hostnames/IPs that identify this machine, never arbitrary DNS names."""
+        allowed = {"localhost"}
+        for name in (socket.gethostname(), socket.getfqdn()):
+            normalized = name.casefold().rstrip(".")
+            if normalized:
+                allowed.add(normalized)
+
+        configured = self._host.strip("[]").casefold().rstrip(".")
+        if configured not in {"", "0.0.0.0", "::"}:
+            allowed.add(configured)
+
+        try:
+            for addresses in psutil.net_if_addrs().values():
+                for address in addresses:
+                    if address.family in {socket.AF_INET, socket.AF_INET6}:
+                        allowed.add(address.address.split("%", 1)[0].casefold())
+        except Exception:
+            _LOG.debug("Could not enumerate local interface addresses for Origin checks", exc_info=True)
+        return allowed
+
     def set_state_provider(self, provider: Callable[[], dict[str, Any]]) -> None:
         """Set or update the state provider callback."""
         self._state_provider = provider
@@ -327,6 +402,9 @@ class WebServer:
 
     async def _handle_ws(self, request: web.Request) -> web.WebSocketResponse:
         """Handle WebSocket telemetry connections."""
+        if not _is_same_origin_request(request, self._allowed_origin_hosts()):
+            raise web.HTTPForbidden(text="Cross-origin WebSocket access is not allowed")
+
         ws = web.WebSocketResponse(heartbeat=20.0)
         await ws.prepare(request)
 
