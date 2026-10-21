@@ -91,3 +91,82 @@ async def test_mode_change_fails_when_command_returns_nonzero(monkeypatch):
 
     assert await manager.set_monitor_mode("wlan0") is False
     assert manager._monitor_interface == "wlan1"
+
+
+@pytest.mark.asyncio
+async def test_timed_out_command_is_killed_and_reaped():
+    import asyncio
+
+    class HangingProcess:
+        def __init__(self):
+            self.returncode = None
+            self.killed = False
+            self._killed = asyncio.Event()
+
+        async def communicate(self):
+            await self._killed.wait()
+            self.returncode = -9
+            return b"", b"killed"
+
+        def kill(self):
+            self.killed = True
+            self._killed.set()
+
+        async def wait(self):
+            if self.returncode is None:
+                await self._killed.wait()
+                self.returncode = -9
+            return self.returncode
+
+    manager = InterfaceActionManager({"main": {"iface": "wlan1"}})
+    proc = HangingProcess()
+    with pytest.raises(TimeoutError):
+        await manager._communicate_with_timeout(proc, timeout=0.01, command="fake-tool")
+
+    assert proc.killed is True
+    assert proc.returncode == -9
+
+
+@pytest.mark.asyncio
+async def test_run_checked_uses_bounded_subprocess_communication(monkeypatch):
+    import asyncio
+
+    class HangingProcess:
+        def __init__(self):
+            self.returncode = None
+            self.killed = False
+            self._killed = asyncio.Event()
+
+        async def communicate(self):
+            await self._killed.wait()
+            self.returncode = -9
+            return b"", b"killed"
+
+        def kill(self):
+            self.killed = True
+            self._killed.set()
+
+        async def wait(self):
+            if self.returncode is None:
+                await self._killed.wait()
+                self.returncode = -9
+            return self.returncode
+
+    manager = InterfaceActionManager({"main": {"iface": "wlan1"}})
+    proc = HangingProcess()
+    original_helper = manager._communicate_with_timeout
+
+    async def short_timeout(process, *, timeout, command):
+        return await original_helper(process, timeout=0.01, command=command)
+
+    async def fake_create(*_args, **_kwargs):
+        return proc
+
+    monkeypatch.setattr(manager, "_communicate_with_timeout", short_timeout)
+    monkeypatch.setattr(action_manager_module.asyncio, "create_subprocess_exec", fake_create)
+
+    with pytest.raises(TimeoutError):
+        await manager._run_checked("fake-tool")
+
+    assert proc.killed is True
+    assert proc.returncode == -9
