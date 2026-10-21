@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import stat
+from copy import deepcopy
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
@@ -212,7 +213,8 @@ class PersistentNetwork:
                         except Exception:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
 
-                    self._data.setdefault("pcaps", {})[pcap_file.name] = record
+                    # Preserve a richer record registered during analysis.
+                    self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
             # Save the synced state
             if pcap_files:
@@ -952,6 +954,7 @@ class PersistentNetwork:
     # -------------------------
     # Retention / Storage Management
     # -------------------------
+    @_state_locked
     def _calculate_pcap_storage(self) -> int:
         total = 0
         for rec in self._data.get("pcaps", {}).values():
@@ -1010,23 +1013,27 @@ class PersistentNetwork:
     # -------------------------
     # Utilities / Introspection
     # -------------------------
+    @_state_locked
     def list_known_bssids(self) -> list[str]:
         return list(self._data.get("bssids", {}).keys())
 
+    @_state_locked
     def list_known_stations(self) -> list[str]:
         return list(self._data.get("stations", {}).keys())
 
     @_state_locked
     def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
-        return self._data.get("bssids", {}).get(bssid.upper())
+        record = self._data.get("bssids", {}).get(bssid.upper())
+        return deepcopy(record) if record is not None else None
 
     @_state_locked
     def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
-        return self._data.get("stations", {}).get(sta_mac.upper())
+        record = self._data.get("stations", {}).get(sta_mac.upper())
+        return deepcopy(record) if record is not None else None
 
     @_state_locked
     def get_pcap_records(self) -> dict[str, Any]:
-        return dict(self._data.get("pcaps", {}))
+        return deepcopy(self._data.get("pcaps", {}))
 
     @_state_locked
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
