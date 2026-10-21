@@ -8,6 +8,7 @@ import pathlib
 import stat
 import sys
 import zipfile
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
