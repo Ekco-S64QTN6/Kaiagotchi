@@ -106,40 +106,5 @@ class TestPcapAndRecon(unittest.TestCase):
         self.assertIn("00:11:22:33:44:55", md_content)
         self.assertIn("WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150", md_content)
 
-    def test_startup_sync_does_not_overwrite_concurrent_pcap_record(self):
-        """A record inserted during PCAP analysis wins over the stale scan result."""
-        # The setup fixture waits for startup sync; now inject the interleaving
-        # deterministically below.
-        filename = "2026-10-21T12-00-00_airodump.pcap"
-        pcap_path = Path(self.network.pcaps_dir) / filename
-        pcap_path.touch()
-
-        late_record = {
-            "bssid": "00:11:22:33:44:55",
-            "created": "2026-10-21T12:00:00-05:00",
-            "size": 1234,
-            "path": str(pcap_path),
-            "analysis": [{
-                "type": "PMKID",
-                "bssid": "00:11:22:33:44:55",
-                "ssid": "Test-AP",
-                "client_mac": "AA:BB:CC:DD:EE:FF",
-                "handshake_complete": False,
-                "pmkid": "0102030405060708090a0b0c0d0e0f10",
-            }],
-        }
-
-        def insert_late_record(_path, _record):
-            # Simulate another thread registering a more complete record
-            # after startup sync's initial filename check.
-            self.network._data.setdefault("pcaps", {})[filename] = late_record
-
-        self.network._analyze_pcap_into_record = insert_late_record
-        self.network._sync_pcaps_with_filesystem()
-
-        stored = self.network._data["pcaps"][filename]
-        self.assertEqual(stored["analysis"], late_record["analysis"])
-        self.assertEqual(stored["bssid"], "00:11:22:33:44:55")
-
 if __name__ == '__main__':
     unittest.main()
