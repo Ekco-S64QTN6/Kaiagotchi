@@ -149,6 +149,7 @@ class NetworkState(BaseModel):
     model_config = ConfigDict(strict=True)
     interfaces: dict[str, InterfaceState] = Field(default_factory=dict)
     access_points: dict[str, AccessPoint] = Field(default_factory=dict)
+    current_channel: NetworkChannel | None = None
     last_scan_time: NonNegativeFloat = 0.0
     scan_in_progress: bool = False
     total_aps_discovered: NonNegativeInt = 0
