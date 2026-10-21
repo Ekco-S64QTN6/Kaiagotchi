@@ -175,14 +175,23 @@ def validate_config(config: dict[str, Any]) -> None:
     if 'base_dir' not in main_config:
         raise ConfigValidationError("main.base_dir configuration is required")
 
-    # Validate paths are writable
+    # Validate paths are writable using a unique temporary file. A fixed
+    # ".write_test" name can collide with user data or be raced by another local
+    # process while this configuration code may be running with elevated rights.
     base_dir = main_config['base_dir']
     try:
-        pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
-        test_file = pathlib.Path(base_dir) / ".write_test"
-        test_file.touch()
-        test_file.unlink()
-    except (OSError, PermissionError) as e:
+        base_path = pathlib.Path(base_dir)
+        base_path.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            prefix=".kaiagotchi-write-probe-",
+            dir=base_path,
+            delete=True,
+        ) as probe:
+            probe.write("probe")
+            probe.flush()
+    except OSError as e:
         raise ConfigValidationError(f"base_dir '{base_dir}' is not writable: {e}") from e
 
     # Validate log configuration
