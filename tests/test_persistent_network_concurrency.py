@@ -56,3 +56,25 @@ def test_sync_does_not_overwrite_record_updated_during_analysis(tmp_path):
 
     assert network._data["pcaps"][filename] is late_record
     assert network._data["pcaps"][filename]["analysis"][0]["pmkid"] == "11" * 16
+
+
+
+def test_capture_storage_permissions_are_owner_only(tmp_path):
+    import stat
+
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    pcap_dir = Path(network.pcaps_dir)
+    assert stat.S_IMODE(pcap_dir.stat().st_mode) == 0o700
+
+    capture = pcap_dir / "private-capture.pcap"
+    capture.write_bytes(b"test capture")
+    network._ensure_file_permissions(str(capture))
+    assert stat.S_IMODE(capture.stat().st_mode) == 0o600
+
+    assert network.save()
+    assert stat.S_IMODE(Path(network.filepath).stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "handshakes_summary.json").stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "handshakes_summary.md").stat().st_mode) == 0o600
