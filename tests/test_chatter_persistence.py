@@ -113,6 +113,7 @@ def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
     agent = Agent(config, view=MagicMock(), system_state=SystemState())
 
     assert agent.monitoring_agent.interface == "wlan1"
+    assert agent.interface_name == "wlan1"
     assert agent.action_manager._interface == "wlan1"
     assert agent.action_manager._monitor_interface == "wlan1"
 
