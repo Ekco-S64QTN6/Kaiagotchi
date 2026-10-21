@@ -77,22 +77,33 @@ class PersistentNetwork:
         self._sync_thread.start()
 
     def _ensure_directory_permissions(self):
-        """Ensure storage directories exist with proper permissions."""
+        """Ensure storage exists and fail closed if the PCAP archive cannot be private."""
+        os.makedirs(self.storage_dir, exist_ok=True)
+        os.makedirs(self.pcaps_dir, exist_ok=True)
+
+        # storage_dir can be the installed Python package directory, so keep
+        # its conventional searchable permissions. The sensitive PCAP archive
+        # is separate and must be owner-only.
         try:
-            # Create directories if they don't exist
-            os.makedirs(self.storage_dir, exist_ok=True)
-            os.makedirs(self.pcaps_dir, exist_ok=True)
+            os.chmod(
+                self.storage_dir,
+                stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH,
+            )
+        except OSError as exc:
+            LOGGER.warning(
+                "Could not set package storage directory permissions for %s: %s",
+                self.storage_dir,
+                exc,
+            )
 
-            # Set proper permissions (read/write for user, read for group/others)
-            # Keep the metadata directory traversable to the owning user, but
-            # restrict the PCAP archive directory because captures can contain
-            # authentication material and identifiable network metadata.
-            os.chmod(self.storage_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+        try:
             os.chmod(self.pcaps_dir, stat.S_IRWXU)
+        except OSError as exc:
+            raise PermissionError(
+                f"Could not secure PCAP storage directory {self.pcaps_dir}"
+            ) from exc
 
-            LOGGER.debug(f"Ensured directory permissions for {self.storage_dir}")
-        except Exception as e:
-            LOGGER.error(f"Failed to set directory permissions: {e}")
+        LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
 
     def _ensure_file_permissions(self, filepath: str):
         """Ensure file has proper read/write permissions."""
