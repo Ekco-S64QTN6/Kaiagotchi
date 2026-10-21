@@ -111,3 +111,70 @@ async def test_monitoring_restores_interface_when_airodump_launch_fails(monkeypa
     assert restored is True
     assert monitor._loop_task is None
 
+
+
+def test_persistent_scan_counters_apply_only_new_deltas():
+    class FakePersistence:
+        def __init__(self):
+            self.bssids = {}
+            self.stations = {}
+
+        def update_bssid(self, *, bssid, essid, packets, beacons, channel, encryption):
+            record = self.bssids.setdefault(bssid, {"packets": 0, "beacons": 0})
+            record["packets"] += packets
+            record["beacons"] += beacons
+
+        def update_station(self, *, sta_mac, associated_bssid, packets, essids):
+            record = self.stations.setdefault(sta_mac, {"packets": 0})
+            record["packets"] += packets
+
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    store = FakePersistence()
+    monitor.persistent_network = store
+
+    first_aps = [{
+        "bssid": "00:11:22:33:44:55",
+        "essid": "Test-AP",
+        "iv": "50",
+        "beacons": "100",
+        "channel": "6",
+        "privacy": "WPA2",
+    }]
+    first_stations = [{
+        "station_mac": "AA:BB:CC:DD:EE:FF",
+        "packets": "10",
+        "bssid": "00:11:22:33:44:55",
+        "probed_essids": "",
+    }]
+    second_aps = [{**first_aps[0], "iv": "67", "beacons": "125"}]
+    second_stations = [{**first_stations[0], "packets": "13"}]
+
+    monitor._persist_scan_counters(first_aps, first_stations)
+    monitor._persist_scan_counters(second_aps, second_stations)
+
+    assert store.bssids["00:11:22:33:44:55"] == {"packets": 67, "beacons": 125}
+    assert store.stations["AA:BB:CC:DD:EE:FF"]["packets"] == 13
+
+
+def test_persistent_scan_counter_handles_capture_counter_reset():
+    class FakePersistence:
+        def __init__(self):
+            self.bssids = []
+
+        def update_bssid(self, **record):
+            self.bssids.append(record)
+
+        def update_station(self, **_record):
+            pass
+
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    store = FakePersistence()
+    monitor.persistent_network = store
+    ap = {"bssid": "00:11:22:33:44:55", "iv": "90", "beacons": "200"}
+    monitor._persist_scan_counters([ap], [])
+    monitor._persist_scan_counters([{**ap, "iv": "4", "beacons": "7"}], [])
+
+    assert store.bssids[0]["packets"] == 90
+    assert store.bssids[0]["beacons"] == 200
+    assert store.bssids[1]["packets"] == 4
+    assert store.bssids[1]["beacons"] == 7
