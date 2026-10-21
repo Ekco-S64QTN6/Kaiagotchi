@@ -114,7 +114,8 @@ handshakes = "/var/lib/kaiagotchi/handshakes"
 # -----------------------------------------------------------------------------
 [web]
 enabled = true
-host = "0.0.0.0"
+# Localhost by default: set host = "0.0.0.0" explicitly to allow LAN access.
+host = "127.0.0.1"
 port = 8080
 update_hz = 10.0
 
