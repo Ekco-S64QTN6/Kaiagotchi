@@ -350,7 +350,15 @@ class MonitoringAgent:
         # airodump writes sensitive capture data. Use a unique directory whose
         # permissions are private to the current user instead of predictable
         # filenames directly under shared /tmp.
-        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # The fallback archive is used when PersistentNetwork isn't attached.
+        # Enforce the same privacy boundary as the persistent archive.
+        try:
+            os.chmod(PCAP_STORAGE_DIR, 0o700)
+        except OSError as exc:
+            raise PermissionError(
+                f"Could not secure PCAP storage directory {PCAP_STORAGE_DIR}"
+            ) from exc
         _LOG.info("[monitoring] PCAP storage directory: %s", PCAP_STORAGE_DIR)
 
         capture_dir = Path(
@@ -531,6 +539,16 @@ class MonitoringAgent:
 
                 import shutil as _shutil
                 _shutil.copy2(src, clean_dest)
+                try:
+                    os.chmod(clean_dest, 0o600)
+                except OSError as exc:
+                    clean_dest.unlink(missing_ok=True)
+                    _LOG.error(
+                        "Could not secure fallback archived PCAP %s: %s",
+                        clean_dest,
+                        exc,
+                    )
+                    return
                 if not clean_dest.exists():
                     _LOG.error("[monitoring] Manual PCAP copy did not produce a destination file; source kept")
                     return
