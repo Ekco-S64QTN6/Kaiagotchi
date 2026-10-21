@@ -152,7 +152,32 @@ class MonitoringAgent:
             except Exception:
                 pass
 
-        await self._launch_airodump()
+        try:
+            await self._launch_airodump()
+        except Exception:
+            # Do not leave the adapter in monitor mode when capture startup
+            # fails (for example, airodump-ng missing or process creation denied).
+            self._running = False
+            try:
+                await self._restore_managed_mode()
+            except Exception:
+                _LOG.debug(
+                    "[monitoring] Could not restore interface after capture launch failure",
+                    exc_info=True,
+                )
+            # _launch_airodump cleans an empty private temp directory on its
+            # own; this is a second guarded cleanup for any setup residue.
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self._cleanup_capture_temp_dir
+                )
+            except Exception:
+                _LOG.debug(
+                    "[monitoring] Could not clean capture temp directory after launch failure",
+                    exc_info=True,
+                )
+            raise
+
         self._loop_task = asyncio.create_task(self._scan_loop())
 
         if self.persistent_mood:
