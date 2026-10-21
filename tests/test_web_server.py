@@ -2,6 +2,7 @@
 Tests for the Kaiagotchi Cyber-Deck web server and telemetry serialization.
 """
 from kaiagotchi.ui.web.server import WebServer, _generate_mock_snapshot
+from kaiagotchi.config.manager import load_config as load_legacy_config
 
 
 def test_mock_snapshot_structure():
@@ -28,6 +29,18 @@ def test_web_server_initialization():
     assert server._host == "127.0.0.1"
     assert server._port == 8888
     assert server._hz == 15.0
+
+
+
+
+def test_legacy_config_loader_defaults_web_to_loopback(tmp_path):
+    config = load_legacy_config(str(tmp_path / "missing.toml"))
+    assert config["ui"]["web"]["host"] == "127.0.0.1"
+
+def test_web_server_defaults_to_loopback():
+    """The unauthenticated telemetry UI is local-only unless opted into LAN."""
+    server = WebServer()
+    assert server._host == "127.0.0.1"
 
 
 def test_serialize_snapshot():

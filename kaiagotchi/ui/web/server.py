@@ -179,7 +179,9 @@ class WebServer:
     ):
         self._config = config or {}
         web_cfg = self._config.get("web", {})
-        self._host = str(web_cfg.get("host", "0.0.0.0"))
+        # The dashboard exposes live SSIDs, station MACs, and runtime telemetry.
+        # Keep it local unless the operator explicitly configures a LAN bind.
+        self._host = str(web_cfg.get("host", "127.0.0.1"))
         self._port = int(web_cfg.get("port", 8080))
         self._hz = float(web_cfg.get("update_hz", 10.0))  # 10 Hz broadcast
         self._state_provider = state_provider

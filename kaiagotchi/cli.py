@@ -81,7 +81,7 @@ def parse_arguments():
     parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
     parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
     parser.add_argument("--port", type=int, default=None, help="Port for Web UI (default: 8080)")
-    parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (default: 0.0.0.0)")
+    parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (default: 127.0.0.1; use 0.0.0.0 for LAN access)")
     # helper flags (handled below in __main__)
     parser.add_argument("--smoke-ui", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--diag-ui", action="store_true", help=argparse.SUPPRESS)
@@ -252,7 +252,7 @@ async def run_agent() -> int:
             try:
                 web_server = WebServer(config, state_provider=view.get_snapshot_dict)
                 web_server.start()
-                w_host = config.get("web", {}).get("host", "0.0.0.0")
+                w_host = config.get("web", {}).get("host", "127.0.0.1")
                 w_port = config.get("web", {}).get("port", 8080)
                 logger.info("⚡ Cyber-Deck Web UI live at http://%s:%d", "localhost" if w_host == "0.0.0.0" else w_host, w_port)
             except Exception as e:
