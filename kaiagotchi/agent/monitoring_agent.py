@@ -419,6 +419,9 @@ class MonitoringAgent:
         capture_dir = self._capture_dir
         if capture_dir is None or not capture_dir.exists():
             self._capture_dir = None
+            self._base_path = None
+            self._csv_path = None
+            self._session_pcap = None
             return
 
         remaining_pcaps = list(capture_dir.glob("*.cap")) + list(capture_dir.glob("*.pcap"))
