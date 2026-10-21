@@ -525,58 +525,6 @@ async def run_agent() -> int:
                     )
 
             except asyncio.CancelledError:
-                            pass
-                else:
-                    # If splash failed to init, just wait a bit or proceed
-                    done, pending = await asyncio.wait(
-                        [asyncio.create_task(asyncio.sleep(1.0)), shutdown_wait],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if shutdown_wait in done:
-                        agent_start_task.cancel()
-                        return 0
-
-                # Re-register signal handlers (Rich Progress might have restored defaults)
-                for sig in (signal.SIGINT, signal.SIGTERM):
-                    try:
-                        loop.add_signal_handler(sig, handle_signal)
-                    except NotImplementedError:
-                        signal.signal(sig, lambda s, f: handle_signal())
-
-                # Enable view output
-                view.suppress_output = False
-
-                # Now wait for agent task (which runs forever)
-                # But we need to handle signals, so we wait on the shutdown event
-                # shutdown_wait is already created/used, let's recreate or reuse?
-                # It might have completed if we are here? No, if we are here, splash completed first.
-                # So shutdown_wait is still pending.
-
-                done, pending = await asyncio.wait(
-                    [agent_start_task, shutdown_wait],
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-
-                if agent_start_task in done:
-                    # Agent exited on its own
-                    try:
-                        await agent_start_task
-                    except Exception:
-                        logger.exception("Agent task failed")
-                        fallback_exit_code = 1
-
-                if shutdown_wait in done:
-                    logger.info("Shutdown event triggered")
-
-                # Cancel pending
-                for task in pending:
-                    task.cancel()
-                    try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
-
-            except asyncio.CancelledError:
                 logger.info("Main task cancelled")
             except Exception as e:
                 logger.exception(f"Fatal error in agent: {e}")
