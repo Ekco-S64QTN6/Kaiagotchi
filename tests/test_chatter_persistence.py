@@ -4,6 +4,7 @@ import pytest
 
 from kaiagotchi.agent.agent import Agent
 from kaiagotchi.data.system_types import SystemState
+from kaiagotchi.agent.monitoring_agent import MonitoringAgent
 
 
 @pytest.mark.asyncio
@@ -114,3 +115,26 @@ def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
     assert agent.monitoring_agent.interface == "wlan1"
     assert agent.action_manager._interface == "wlan1"
     assert agent.action_manager._monitor_interface == "wlan1"
+
+
+
+@pytest.mark.asyncio
+async def test_monitoring_propagates_known_current_channel():
+    """Known channel hops flow into typed network state; no fake channel default."""
+    mock_view = MagicMock()
+    mock_view.state = {"channel": "6"}
+    mock_view.async_update = AsyncMock()
+    state = SystemState()
+    monitor = MonitoringAgent(
+        config={},
+        system_state=state,
+        view=mock_view,
+    )
+
+    await monitor._update_state([], [])
+
+    assert state.network.current_channel == 6
+
+
+def test_network_current_channel_is_unknown_until_observed():
+    assert SystemState().network.current_channel is None
