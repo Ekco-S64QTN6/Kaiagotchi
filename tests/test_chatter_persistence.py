@@ -3,8 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kaiagotchi.agent.agent import Agent
-from kaiagotchi.data.system_types import SystemState
 from kaiagotchi.agent.monitoring_agent import MonitoringAgent
+from kaiagotchi.data.system_types import SystemState
 
 
 @pytest.mark.asyncio
