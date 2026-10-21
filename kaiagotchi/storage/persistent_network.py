@@ -77,6 +77,11 @@ class PersistentNetwork:
         # Serialize disk writes separately from short-lived in-memory mutations.
         # This prevents an older snapshot from completing after a newer save.
         self._save_lock = Lock()
+        # Scan results arrive frequently; rebuilding large JSON/Markdown reports
+        # on every state save blocks the event loop. Refresh at most every 30s
+        # for periodic saves, while capture/archive operations can force a refresh.
+        self._reports_min_interval = 30.0
+        self._last_reports_generated_at = 0.0
 
         # Ensure directories exist with proper permissions
         self._ensure_directory_permissions()
@@ -150,11 +155,13 @@ class PersistentNetwork:
             "pcaps": raw.get("pcaps", {}),
         }
 
-    def save(self) -> bool:
-        """Atomically persist BSSID/station/pcap metadata and regenerate summary reports.
+    def save(self, *, force_reports: bool = True) -> bool:
+        """Atomically persist state and refresh reports when due.
 
-        Note: _sync_pcaps_with_filesystem (the slow per-PCAP Scapy re-parse) is deferred
-        to a background thread at startup and is NOT called from here.
+        Periodic scan updates pass force_reports=False so large JSON/Markdown
+        reports are regenerated at most every _reports_min_interval seconds.
+        Archive, re-analysis, and retention paths keep the default forced refresh.
+        The slow per-PCAP filesystem sync remains separate from this method.
         """
         try:
             with self._save_lock:
@@ -163,10 +170,14 @@ class PersistentNetwork:
                 payload["_last_saved"] = now_cst_iso()
                 success = atomically_save_data(self.filepath, payload, fmt="json")
                 if success:
-                    # Ensure proper permissions after saving
                     self._ensure_file_permissions(self.filepath)
-                    # Keep reports ordered with the persisted snapshots too.
-                    self.generate_reports()
+                    now = time.monotonic()
+                    if (
+                        force_reports
+                        or now - self._last_reports_generated_at >= self._reports_min_interval
+                    ):
+                        self.generate_reports()
+                        self._last_reports_generated_at = time.monotonic()
                 return success
         except Exception:
             LOGGER.exception("Failed to save network history")
@@ -520,7 +531,9 @@ class PersistentNetwork:
                 essids=station.get("essids", "")
             )
 
-        self.save()
+        # This runs on the live scan path; persist state now but throttle report
+        # regeneration so each scan does not rewrite large summary files.
+        self.save(force_reports=False)
         LOGGER.debug(f"Updated persistence with {len(aps)} APs and {len(stations)} stations")
 
     # -------------------------
@@ -591,9 +604,8 @@ class PersistentNetwork:
 
             record["analysis"] = analysis
 
-            # Save after updating ALL BSSIDs and stations
-            self.save()
-
+            # The caller persists after finishing the entire archive/sync/reanalysis
+            # batch; saving reports here caused duplicate full writes per PCAP.
             LOGGER.info(
                 "[pcap] Comprehensive analysis of %s → %d BSSIDs, %d stations, %d handshakes (%d complete, %d PMKID)",
                 os.path.basename(str(dst_path)),
