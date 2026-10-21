@@ -35,10 +35,17 @@ _FACE_MAP = {
     "debug": DEBUG,
 }
 
-def get_face(mood: str) -> str:
+def get_face(mood: str, overrides: dict[str, str] | None = None) -> str:
+    """Return a face for a mood, honoring optional user-configured overrides."""
     if not mood:
-        return NEUTRAL
-    key = str(mood).strip().lower()
+        key = "neutral"
+    else:
+        key = str(mood).strip().lower()
+
+    if overrides:
+        configured = overrides.get(key)
+        if isinstance(configured, str) and configured:
+            return configured
     return _FACE_MAP.get(key, NEUTRAL)
 
 class Faces:
