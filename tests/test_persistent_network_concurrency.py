@@ -219,3 +219,30 @@ def test_pcap_records_getter_returns_detached_nested_records(tmp_path):
     assert stored["analysis"][0]["metadata"]["ssid"] == "Test-AP"
     assert "extra" not in stored
 
+def test_bssid_and_station_record_getters_return_detached_records(tmp_path):
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    network._data["bssids"]["AA:BB:CC:DD:EE:FF"] = {
+        "bssid": "AA:BB:CC:DD:EE:FF",
+        "metadata": {"essids": ["TestNet"]},
+    }
+    network._data["stations"]["11:22:33:44:55:66"] = {
+        "station_mac": "11:22:33:44:55:66",
+        "essids": ["TestNet"],
+    }
+
+    ap = network.get_bssid_record("aa:bb:cc:dd:ee:ff")
+    station = network.get_station_record("11:22:33:44:55:66")
+    history = network.get_station_history("11:22:33:44:55:66")
+    all_stations = network.get_all_stations()
+
+    ap["metadata"]["essids"].append("mutated")
+    station["essids"].append("mutated")
+    history["essids"].append("mutated")
+    all_stations["11:22:33:44:55:66"]["essids"].append("mutated")
+
+    assert network._data["bssids"]["AA:BB:CC:DD:EE:FF"]["metadata"]["essids"] == ["TestNet"]
+    assert network._data["stations"]["11:22:33:44:55:66"]["essids"] == ["TestNet"]
+
