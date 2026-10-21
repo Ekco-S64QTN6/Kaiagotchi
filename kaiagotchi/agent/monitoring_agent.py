@@ -559,8 +559,19 @@ class MonitoringAgent:
                     _LOG.error(f"[monitoring] persistent_network.add_pcap_file failed: {e}", exc_info=True)
                     return  # Don't delete source if archive failed
             else:
-                # Fallback: copy manually to storage/pcaps if persistent_network is not available
-                timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
+                # Fallback: copy manually to storage/pcaps if persistent_network is not available.
+                # The archive worker can be invoked directly (or after a partial startup),
+                # so do not rely on _launch_airodump having created the directory.
+                PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+                try:
+                    os.chmod(PCAP_STORAGE_DIR, 0o700)
+                except OSError as exc:
+                    raise PermissionError(
+                        f"Could not secure fallback PCAP storage directory {PCAP_STORAGE_DIR}"
+                    ) from exc
+
+                # Keep names unique across simultaneous sessions started in one second.
+                timestamp = datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S-%f")
                 clean_filename = f"{timestamp}_airodump.pcap"
                 clean_dest = PCAP_STORAGE_DIR / clean_filename
 
