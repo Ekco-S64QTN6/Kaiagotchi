@@ -7,6 +7,7 @@ import os
 import pathlib
 import stat
 import sys
+import tempfile
 import zipfile
 from copy import deepcopy
 from dataclasses import dataclass
