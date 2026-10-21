@@ -77,24 +77,35 @@ class PersistentNetwork:
         self._sync_thread.start()
 
     def _ensure_directory_permissions(self):
-        """Ensure storage directories exist with proper permissions."""
-        try:
-            # Create directories if they don't exist
-            os.makedirs(self.storage_dir, exist_ok=True)
-            os.makedirs(self.pcaps_dir, exist_ok=True)
+        """Ensure storage directories exist and keep the PCAP archive private."""
+        os.makedirs(self.storage_dir, exist_ok=True)
+        os.makedirs(self.pcaps_dir, exist_ok=True)
 
-            # storage_dir can be the installed Python package directory,
-            # so preserve its search/read permissions. The PCAP directory is
-            # separate and owner-only because captures contain sensitive data.
+        # storage_dir may be the installed Python package directory, so keep
+        # its conventional searchable mode. This chmod is separate from the
+        # security-sensitive archive chmod below.
+        try:
             os.chmod(
                 self.storage_dir,
                 stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH,
             )
-            os.chmod(self.pcaps_dir, stat.S_IRWXU)
+        except OSError as exc:
+            LOGGER.warning(
+                "Could not set package storage directory permissions for %s: %s",
+                self.storage_dir,
+                exc,
+            )
 
-            LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
-        except Exception as e:
-            LOGGER.error(f"Failed to set directory permissions: {e}")
+        # Fail closed: do not start the capture archive if owner-only access
+        # cannot be enforced. Logging and continuing would expose saved PCAPs.
+        try:
+            os.chmod(self.pcaps_dir, stat.S_IRWXU)
+        except OSError as exc:
+            raise PermissionError(
+                f"Could not secure PCAP storage directory {self.pcaps_dir}"
+            ) from exc
+
+        LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
 
     def _ensure_file_permissions(self, filepath: str):
         """Ensure file has proper read/write permissions."""
