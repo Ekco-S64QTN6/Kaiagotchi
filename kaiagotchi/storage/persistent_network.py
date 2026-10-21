@@ -443,27 +443,27 @@ class PersistentNetwork:
         if not entry:
             return None
 
-        return {
+        return deepcopy({
             "station_mac": entry.get("station_mac", station_mac),
             "bssid": entry.get("associated_bssid", ""),
             "essids": entry.get("essids", ""),
             "first_seen": entry.get("first_seen", ""),
             "last_seen": entry.get("last_seen", ""),
             "packets": entry.get("packets", 0)
-        }
+        })
 
     def get_all_stations(self) -> dict[str, Any]:
         """Get all station history in terminal display format."""
         result = {}
         for station_mac, entry in self._data["stations"].items():
-            result[station_mac] = {
+            result[station_mac] = deepcopy({
                 "station_mac": entry.get("station_mac", station_mac),
                 "bssid": entry.get("associated_bssid", ""),
                 "essids": entry.get("essids", ""),
                 "first_seen": entry.get("first_seen", ""),
                 "last_seen": entry.get("last_seen", ""),
                 "packets": entry.get("packets", 0)
-            }
+            })
         return result
 
     # -------------------------
@@ -1031,10 +1031,14 @@ class PersistentNetwork:
         return list(self._data.get("stations", {}).keys())
 
     def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
-        return self._data.get("bssids", {}).get(bssid.upper())
+        """Return a detached BSSID record snapshot."""
+        record = self._data.get("bssids", {}).get(bssid.upper())
+        return deepcopy(record) if record is not None else None
 
     def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
-        return self._data.get("stations", {}).get(sta_mac.upper())
+        """Return a detached station record snapshot."""
+        record = self._data.get("stations", {}).get(sta_mac.upper())
+        return deepcopy(record) if record is not None else None
 
     def get_pcap_records(self) -> dict[str, Any]:
         """Return a detached snapshot so callers cannot mutate persisted state."""
