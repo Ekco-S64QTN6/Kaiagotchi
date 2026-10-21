@@ -41,6 +41,8 @@ class TerminalDisplay:
             return
         self._initialized = True
         self._config = config or {}
+        ui_config = self._config.get("ui", self._config)
+        self._ui_config = ui_config if isinstance(ui_config, dict) else {}
         self._enabled = True
         self._start_time = time.time()
 
@@ -57,9 +59,9 @@ class TerminalDisplay:
         self._started = False
 
         # Display limits
-        self._max_visible_aps = int(self._config.get("max_visible_aps", 15))
-        self._max_visible_stations = int(self._config.get("max_visible_stations", 10))
-        self._max_visible_chatter = int(self._config.get("max_visible_chatter", 6))
+        self._max_visible_aps = int(self._ui_config.get("max_visible_aps", 15))
+        self._max_visible_stations = int(self._ui_config.get("max_visible_stations", 10))
+        self._max_visible_chatter = int(self._ui_config.get("max_visible_chatter", 6))
 
         # Status tracking
         self._current_status = "Monitoring signals..."
@@ -480,15 +482,28 @@ class TerminalDisplay:
         return ssids or len(snap.get("_aps", [])), hs, comp, pmk
 
     def _get_face(self, state: dict[str, Any]) -> str:
+        mood = state.get("agent_mood") or state.get("mood")
+        overrides = self._ui_config.get("faces", {})
+        if mood:
+            try:
+                ms = str(getattr(mood, "value", mood)).strip().lower()
+                self._current_mood_from_state = ms
+                # View snapshots normally include a precomputed hardcoded face.
+                # A configured override must take precedence over that field.
+                configured = overrides.get(ms) if isinstance(overrides, dict) else None
+                if isinstance(configured, str) and configured:
+                    return configured
+            except Exception:
+                pass
+
         f = state.get("face")
         if f:
             return f
-        mood = state.get("agent_mood") or state.get("mood")
+
         if mood:
             try:
-                ms = str(mood).lower()
-                self._current_mood_from_state = ms
-                return faces.get_face(ms)
+                ms = str(getattr(mood, "value", mood)).strip().lower()
+                return faces.get_face(ms, overrides=overrides if isinstance(overrides, dict) else None)
             except Exception:
                 pass
         try:
