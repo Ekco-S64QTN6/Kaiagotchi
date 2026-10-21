@@ -145,7 +145,16 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         utils_logger.warning(f"Configuration file not found at {config_path}. Using default configuration.")
         # Create directory structure for default config location
         parent_dir = os.path.dirname(os.path.abspath(config_path))
-        os.makedirs(parent_dir, exist_ok=True)
+        try:
+            os.makedirs(parent_dir, exist_ok=True)
+        except OSError as e:
+            # A read-only /etc is common for unprivileged development runs.
+            # Defaults remain usable even when the optional config cannot be created.
+            utils_logger.warning(
+                "Could not create configuration directory %s: %s",
+                parent_dir,
+                e,
+            )
         return config
 
     # 2. Secure file permissions before reading
