@@ -90,6 +90,8 @@ def test_agent_restores_persisted_mood_to_system_state(monkeypatch):
             return 0.5
 
     monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", StoredMood)
+    # Avoid launching the unrelated on-disk PCAP reconciliation thread here.
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
     mock_view = MagicMock()
     mock_view.async_update = AsyncMock()
     agent = Agent(
@@ -105,6 +107,7 @@ def test_agent_restores_persisted_mood_to_system_state(monkeypatch):
 def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
     """A configured wlan0 must not override the capture dongle's wlan1."""
     monkeypatch.delenv("KAIAGOTCHI_INTERFACE", raising=False)
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
     config = {
         "main": {"iface": "wlan0"},
         "personality": {"channels": [1, 6, 11]},
