@@ -6,6 +6,7 @@ import re
 import shutil
 import stat
 from datetime import datetime
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -77,25 +78,39 @@ class PersistentNetwork:
         self._sync_thread.start()
 
     def _ensure_directory_permissions(self):
-        """Ensure storage directories exist with proper permissions."""
+        """Ensure storage exists and fail closed if the PCAP archive cannot be private."""
+        os.makedirs(self.storage_dir, exist_ok=True)
+        os.makedirs(self.pcaps_dir, exist_ok=True)
+
+        # storage_dir can be the installed Python package directory, so keep
+        # its conventional searchable permissions. The sensitive PCAP archive
+        # is separate and must be owner-only.
         try:
-            # Create directories if they don't exist
-            os.makedirs(self.storage_dir, exist_ok=True)
-            os.makedirs(self.pcaps_dir, exist_ok=True)
+            os.chmod(
+                self.storage_dir,
+                stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH,
+            )
+        except OSError as exc:
+            LOGGER.warning(
+                "Could not set package storage directory permissions for %s: %s",
+                self.storage_dir,
+                exc,
+            )
 
-            # Set proper permissions (read/write for user, read for group/others)
-            os.chmod(self.storage_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-            os.chmod(self.pcaps_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+        try:
+            os.chmod(self.pcaps_dir, stat.S_IRWXU)
+        except OSError as exc:
+            raise PermissionError(
+                f"Could not secure PCAP storage directory {self.pcaps_dir}"
+            ) from exc
 
-            LOGGER.debug(f"Ensured directory permissions for {self.storage_dir}")
-        except Exception as e:
-            LOGGER.error(f"Failed to set directory permissions: {e}")
+        LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
 
     def _ensure_file_permissions(self, filepath: str):
         """Ensure file has proper read/write permissions."""
         try:
             if os.path.exists(filepath):
-                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
                 LOGGER.debug(f"Set permissions for {filepath}")
         except Exception as e:
             LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
@@ -154,19 +169,39 @@ class PersistentNetwork:
     def _sync_pcaps_with_filesystem(self) -> None:
         """Sync pcap records with actual files in the pcaps directory."""
         try:
-            # Get all pcap files in the directory
-            pcap_files = list(Path(self.pcaps_dir).glob("*.pcap"))
-            existing_filenames = {f.name for f in pcap_files}
+            # Support the formats accepted by pcap_parser, including
+            # case-insensitive extensions, instead of silently ignoring PCAPNG.
+            pcap_dir = Path(self.pcaps_dir)
+            pcap_files = sorted(
+                (
+                    path
+                    for path in pcap_dir.iterdir()
+                    if path.is_file() and path.suffix.lower() in {".pcap", ".pcapng"}
+                ),
+                key=lambda path: path.name,
+            )
+            existing_filenames = {path.name for path in pcap_files}
 
-            # Remove records for files that don't exist
+            changed = False
+
+            # Reconcile against the current filesystem, not only the initial
+            # listing: another thread may finish copying/registering a PCAP after
+            # pcap_files was enumerated above.
             for filename in list(self._data.get("pcaps", {}).keys()):
                 if filename not in existing_filenames:
-                    LOGGER.info(f"Removing pcap record for deleted file: {filename}")
+                    candidate = Path(self.pcaps_dir) / filename
+                    if candidate.exists():
+                        existing_filenames.add(filename)
+                        continue
+                    LOGGER.info("Removing pcap record for deleted file: %s", filename)
                     del self._data["pcaps"][filename]
+                    changed = True
 
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
+                self._ensure_file_permissions(str(pcap_file))
                 if pcap_file.name not in self._data.get("pcaps", {}):
+                    changed = True
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
                     stat = pcap_file.stat()
                     # ENHANCED: Better BSSID extraction that handles various filename formats
@@ -192,12 +227,18 @@ class PersistentNetwork:
                         except Exception:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
 
-                    self._data.setdefault("pcaps", {})[pcap_file.name] = record
+                    # Preserve a newer record written while this file was analyzed.
+                    self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
-            # Save the synced state
-            if pcap_files:
+            # Save updates even when the directory becomes empty. Otherwise
+            # records for deleted captures remain in history and reports.
+            if changed:
                 self.save()
-                LOGGER.info(f"Synced {len(pcap_files)} pcap files with filesystem")
+                LOGGER.info(
+                    "Synced %d PCAP files with filesystem (%d records)",
+                    len(pcap_files),
+                    len(self._data.get("pcaps", {})),
+                )
 
         except Exception:
             LOGGER.exception("Failed to sync pcaps with filesystem")
@@ -402,27 +443,27 @@ class PersistentNetwork:
         if not entry:
             return None
 
-        return {
+        return deepcopy({
             "station_mac": entry.get("station_mac", station_mac),
             "bssid": entry.get("associated_bssid", ""),
             "essids": entry.get("essids", ""),
             "first_seen": entry.get("first_seen", ""),
             "last_seen": entry.get("last_seen", ""),
             "packets": entry.get("packets", 0)
-        }
+        })
 
     def get_all_stations(self) -> dict[str, Any]:
         """Get all station history in terminal display format."""
         result = {}
         for station_mac, entry in self._data["stations"].items():
-            result[station_mac] = {
+            result[station_mac] = deepcopy({
                 "station_mac": entry.get("station_mac", station_mac),
                 "bssid": entry.get("associated_bssid", ""),
                 "essids": entry.get("essids", ""),
                 "first_seen": entry.get("first_seen", ""),
                 "last_seen": entry.get("last_seen", ""),
                 "packets": entry.get("packets", 0)
-            }
+            })
         return result
 
     # -------------------------
@@ -573,6 +614,7 @@ class PersistentNetwork:
                 return str(dst)
 
             shutil.copy2(src, dst)
+            self._ensure_file_permissions(str(dst))
 
             stat = dst.stat()
             record: dict[str, Any] = {
@@ -600,6 +642,11 @@ class PersistentNetwork:
             # Use absolute path to ensure consistency
             abs_path = path.absolute()
             filename = os.path.basename(str(abs_path))
+            try:
+                if abs_path.resolve().parent == Path(self.pcaps_dir).resolve():
+                    self._ensure_file_permissions(str(abs_path))
+            except OSError:
+                LOGGER.warning("Could not secure registered PCAP path: %s", abs_path)
 
             # Check if record already exists to avoid duplicates
             if filename in self._data.get("pcaps", {}):
@@ -726,7 +773,9 @@ class PersistentNetwork:
             # Save JSON report
             json_path = os.path.join(self.storage_dir, "handshakes_summary.json")
             atomically_save_data(json_path, json_report, fmt="json")
-            self._ensure_file_permissions(json_path)            # Save MD report
+            self._ensure_file_permissions(json_path)
+
+            # Save Markdown report
             md_path = os.path.join(self.storage_dir, "handshakes_summary.md")
 
             md_lines = []
@@ -982,20 +1031,25 @@ class PersistentNetwork:
         return list(self._data.get("stations", {}).keys())
 
     def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
-        return self._data.get("bssids", {}).get(bssid.upper())
+        """Return a detached BSSID record snapshot."""
+        record = self._data.get("bssids", {}).get(bssid.upper())
+        return deepcopy(record) if record is not None else None
 
     def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
-        return self._data.get("stations", {}).get(sta_mac.upper())
+        """Return a detached station record snapshot."""
+        record = self._data.get("stations", {}).get(sta_mac.upper())
+        return deepcopy(record) if record is not None else None
 
     def get_pcap_records(self) -> dict[str, Any]:
-        return dict(self._data.get("pcaps", {}))
+        """Return a detached snapshot so callers cannot mutate persisted state."""
+        return deepcopy(self._data.get("pcaps", {}))
 
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:
             for rec in self._data.get("pcaps", {}).values():
                 if rec.get("bssid", "").upper() == bssid.upper():
-                    results.extend(rec.get("analysis", []) or [])
+                    results.extend(deepcopy(rec.get("analysis", []) or []))
         except Exception:
             LOGGER.exception("get_analysis_for_bssid failed for %s", bssid)
         return results
