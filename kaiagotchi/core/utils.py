@@ -8,6 +8,7 @@ import pathlib
 import stat
 import sys
 import zipfile
+from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
@@ -221,7 +222,7 @@ def sanitize_config_for_logging(config: dict[str, Any]) -> dict[str, Any]:
     Returns:
         Sanitized configuration with sensitive fields removed/masked
     """
-    sanitized = config.copy()
+    sanitized = deepcopy(config)
     sensitive_keys = ['password', 'secret', 'key', 'token', 'auth']
 
     def mask_sensitive(data, path=""):
