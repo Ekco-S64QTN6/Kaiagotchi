@@ -99,3 +99,45 @@ def test_pruning_retains_metadata_when_file_deletion_fails(tmp_path, monkeypatch
 
     assert capture.exists()
     assert network.get_pcap_records()[filename] == record
+
+
+def test_pruning_never_deletes_a_path_outside_the_pcap_archive(tmp_path, monkeypatch):
+    network = _network(tmp_path / "state")
+    external_capture = tmp_path / "do-not-delete.pcap"
+    external_capture.write_bytes(b"capture outside archive")
+
+    record = {
+        "bssid": "AA:BB:CC:DD:EE:FF",
+        "created": "2020-01-01T00:00:00-06:00",
+        "size": external_capture.stat().st_size,
+        "path": str(external_capture),
+    }
+    with network._state_lock:
+        network._data["pcaps"][external_capture.name] = record
+
+    monkeypatch.setattr(network, "_calculate_pcap_storage", lambda: MAX_PCAP_STORAGE_BYTES + 1)
+    monkeypatch.setattr(network, "save", lambda: True)
+
+    network._prune_old_pcaps()
+
+    assert external_capture.exists()
+    assert network.get_pcap_records()[external_capture.name] == record
+
+
+def test_storage_accounting_ignores_symlinks_outside_archive(tmp_path):
+    network = _network(tmp_path / "state")
+    external_capture = tmp_path / "external.pcap"
+    external_capture.write_bytes(b"private external data")
+    archive_link = Path(network.pcaps_dir) / "linked.pcap"
+    archive_link.symlink_to(external_capture)
+
+    with network._state_lock:
+        network._data["pcaps"]["linked.pcap"] = {
+            "bssid": "AA:BB:CC:DD:EE:FF",
+            "created": "2020-01-01T00:00:00-06:00",
+            "size": external_capture.stat().st_size,
+            "path": str(archive_link),
+        }
+
+    assert network._calculate_pcap_storage() == 0
+    assert external_capture.exists()
