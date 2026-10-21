@@ -706,12 +706,40 @@ class PersistentNetwork:
             # Snapshot dictionary membership while locked, then keep Scapy work outside
             # the lock so live monitoring updates are never blocked by a large capture.
             with self._state_lock:
-                records = list(self._data.get("pcaps", {}).items())
-            for filename, record in records:
+                # Keep detached records so Scapy can parse outside the lock.
+                records = [
+                    (
+                        filename,
+                        deepcopy(record),
+                        deepcopy(record.get("analysis", []) or []),
+                        record.get("path"),
+                        record.get("created"),
+                    )
+                    for filename, record in self._data.get("pcaps", {}).items()
+                ]
+
+            for filename, record, original_analysis, original_path, original_created in records:
                 pcap_path = Path(record.get("path", ""))
-                if pcap_path.exists():
-                    LOGGER.info(f"Re-analyzing pcap: {filename}")
-                    self._analyze_pcap_into_record(pcap_path, record)
+                if not pcap_path.exists():
+                    continue
+
+                LOGGER.info("Re-analyzing pcap: %s", filename)
+                self._analyze_pcap_into_record(pcap_path, record)
+
+                # Publish just the derived analysis when the original record is
+                # still current. If a newer scan/capture updated this record
+                # while Scapy was running, don't overwrite that newer result.
+                with self._state_lock:
+                    current = self._data.get("pcaps", {}).get(filename)
+                    if (
+                        current is not None
+                        and current.get("path") == original_path
+                        and current.get("created") == original_created
+                        and (current.get("analysis", []) or []) == original_analysis
+                    ):
+                        current["analysis"] = deepcopy(record.get("analysis", []) or [])
+                        if record.get("bssid"):
+                            current["bssid"] = record["bssid"]
             self.save()
             LOGGER.info("Completed re-analysis of all pcap files")
         except Exception:
