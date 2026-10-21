@@ -1048,16 +1048,37 @@ class PersistentNetwork:
     # -------------------------
     # Retention / Storage Management
     # -------------------------
+    def _managed_pcap_path(self, raw_path: str | Path | None) -> Path | None:
+        """Return a safe direct child of the private archive, or None.
+
+        Persisted JSON and callers of add_pcap_record() must not be able to make
+        retention/accounting follow arbitrary paths or unlink files outside the
+        managed PCAP directory. Symlinks are rejected as well.
+        """
+        if not raw_path:
+            return None
+        try:
+            candidate = Path(raw_path)
+            if candidate.is_symlink():
+                return None
+            root = Path(self.pcaps_dir).resolve()
+            resolved = candidate.resolve(strict=False)
+            if resolved.parent != root:
+                return None
+            return resolved
+        except (OSError, RuntimeError, ValueError):
+            return None
+
     def _calculate_pcap_storage(self) -> int:
         total = 0
         with self._state_lock:
             records = deepcopy(self._data.get("pcaps", {}))
         for rec in records.values():
             try:
-                p = Path(rec["path"])
-                if p.exists():
+                p = self._managed_pcap_path(rec.get("path"))
+                if p is not None and p.is_file():
                     total += p.stat().st_size
-            except Exception:
+            except OSError:
                 continue
         return total
 
@@ -1080,10 +1101,13 @@ class PersistentNetwork:
         for filename, record in pcaps_sorted:
             try:
                 raw_path = record.get("path")
-                if not raw_path:
-                    LOGGER.warning("Skipping PCAP prune for %s: record has no path", filename)
+                path = self._managed_pcap_path(raw_path)
+                if path is None:
+                    LOGGER.warning(
+                        "Skipping PCAP prune for %s: path is not a regular archive child",
+                        filename,
+                    )
                     continue
-                path = Path(raw_path)
 
                 # Revalidate membership immediately before deletion. Unlink is a
                 # short filesystem operation, so keep it with the membership
