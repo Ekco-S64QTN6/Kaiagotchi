@@ -97,3 +97,27 @@ def test_analysis_getter_returns_detached_nested_records(tmp_path):
     stored = network.get_analysis_for_bssid("00:11:22:33:44:55")
     assert stored[0]["metadata"]["ssid"] == "Test-AP"
 
+
+
+
+def test_initialization_fails_if_private_pcap_directory_cannot_be_enforced(tmp_path, monkeypatch):
+    import os
+    from pathlib import Path
+
+    import pytest
+
+    import kaiagotchi.storage.persistent_network as persistent_network_module
+
+    storage = tmp_path / "storage"
+    pcap_dir = storage / "pcaps"
+    real_chmod = os.chmod
+
+    def fail_private_pcap_chmod(path, mode):
+        if Path(path) == pcap_dir and mode == 0o700:
+            raise PermissionError("simulated chmod denial")
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(persistent_network_module.os, "chmod", fail_private_pcap_chmod)
+
+    with pytest.raises(PermissionError, match="Could not secure PCAP storage directory"):
+        PersistentNetwork(storage_dir=str(storage))
