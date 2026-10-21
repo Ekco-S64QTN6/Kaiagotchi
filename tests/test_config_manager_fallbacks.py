@@ -177,3 +177,9 @@ def test_unzip_rejects_windows_paths_and_symlinks(tmp_path):
     with zipfile.ZipFile(link_archive, "w") as zf:
         zf.writestr(link, "../../escape.txt")
     assert not unzip(str(link_archive), str(tmp_path / "out-link"))
+
+
+
+def test_legacy_web_config_defaults_to_loopback(tmp_path):
+    config = load_config(str(tmp_path / "missing-legacy-config.toml"))
+    assert config["ui"]["web"]["host"] == "127.0.0.1"
