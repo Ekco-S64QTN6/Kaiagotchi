@@ -551,6 +551,19 @@ class MonitoringAgent:
         self._max_aps_seen = max(self._max_aps_seen, ap_count)
         uptime = time.strftime("%H:%M:%S", time.gmtime(time.time() - self._start_time))
 
+        # InterfaceActionManager publishes its successful channel hop to the
+        # shared View. Copy that known value into the typed network state rather
+        # than reporting a fabricated channel when no channel is known.
+        current_channel: int | None = None
+        view_state = getattr(self.view, "state", None)
+        if isinstance(view_state, dict):
+            try:
+                candidate = int(view_state.get("channel"))
+                if 1 <= candidate <= 165:
+                    current_channel = candidate
+            except (TypeError, ValueError):
+                pass
+
         # Get recent captures for epoch tracking
         recent_captures = self._get_recent_captures_list()
 
@@ -576,9 +589,16 @@ class MonitoringAgent:
         async with self.state_lock:
             if isinstance(self.system_state, dict):
                 self.system_state.update(new_state)
+                if current_channel is not None:
+                    network = self.system_state.setdefault("network", {})
+                    if isinstance(network, dict):
+                        network["current_channel"] = current_channel
             else:
                 for k, v in new_state.items():
                     setattr(self.system_state, k, v)
+                network = getattr(self.system_state, "network", None)
+                if current_channel is not None and network is not None:
+                    network.current_channel = current_channel
 
         if self.view:
             try:
