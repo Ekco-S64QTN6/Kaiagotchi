@@ -2,7 +2,9 @@
 import logging
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from scapy.all import (
