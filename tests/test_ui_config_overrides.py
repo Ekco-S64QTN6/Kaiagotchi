@@ -22,6 +22,8 @@ def test_terminal_display_reads_nested_ui_limits_and_custom_faces():
         assert display._max_visible_chatter == 2
         assert display._get_face({"mood": "happy"}) == "(custom-happy)"
         assert display._get_face({"mood": "neutral"}) == "(custom-neutral)"
+        # View supplies this field in real snapshots; config should still win.
+        assert display._get_face({"mood": "happy", "face": "(hardcoded-happy)"}) == "(custom-happy)"
     finally:
         TerminalDisplay._instance = previous
 
