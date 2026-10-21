@@ -11,6 +11,65 @@ permissions:
   contents: read
 
 jobs:
+  build-wheel:
+    name: Build wheel and verify runtime assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel
+        run: python -m pip wheel . --no-deps --wheel-dir dist
+
+      - name: Verify packaged web and splash assets
+        run: |
+          python - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel, = Path("dist").glob("*.whl")
+
+          class StaticReferences(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.paths = []
+
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  value = attrs.get("src") if tag == "script" else attrs.get("href")
+                  if value and value.startswith("/static/"):
+                      self.paths.append("kaiagotchi/ui/web/static/" + value.removeprefix("/static/"))
+
+          with ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+              required = {
+                  "kaiagotchi/ui/web/static/index.html",
+                  "kaiagotchi/ui/web/static/css/cyberdeck.css",
+                  "kaiagotchi/ui/web/static/js/app.js",
+                  "kaiagotchi/ui/web/static/js/telemetry.js",
+                  "kaiagotchi/ui/web/static/js/charts.js",
+                  "kaiagotchi/ui/web/static/js/kaia/kaia-codec.js",
+              }
+              missing = required - names
+              assert not missing, f"wheel is missing required web assets: {sorted(missing)}"
+
+              index = archive.read("kaiagotchi/ui/web/static/index.html").decode("utf-8")
+              refs = StaticReferences()
+              refs.feed(index)
+              missing_refs = sorted(set(refs.paths) - names)
+              assert not missing_refs, f"index.html references missing wheel assets: {missing_refs}"
+
+              splash = [n for n in names if n.endswith(".data/data/share/kaiagotchi/images/kaia.png")]
+              assert splash, "wheel does not contain share/kaiagotchi/images/kaia.png"
+          print(f"Verified {len(refs.paths)} static references and packaged splash image in {wheel.name}")
+          PY
+
   pytest:
     name: pytest (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
