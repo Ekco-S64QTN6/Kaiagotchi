@@ -16,6 +16,7 @@ import csv
 import logging
 import os
 import shutil
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,7 @@ class MonitoringAgent:
         self._process: asyncio.subprocess.Process | None = None
         self._csv_path: Path | None = None
         self._base_path: Path | None = None
+        self._capture_dir: Path | None = None
         self._loop_task: asyncio.Task | None = None
         self._start_time = time.time()
 
@@ -193,6 +195,7 @@ class MonitoringAgent:
         # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
         # synchronous Scapy parsing and file I/O don't stall the event loop
         await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
+        self._cleanup_capture_directory()
 
         try:
             if self.persistent_network:
@@ -265,13 +268,29 @@ class MonitoringAgent:
                 "airodump-ng not found. Install aircrack-ng: sudo pacman -S aircrack-ng"
             )
 
-        datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
-        self._base_path = Path("/tmp") / f"kaiagotchi_{os.getpid()}"
+        # Don't orphan a previous capture if its archive failed. All temporary
+        # capture material lives in an owner-only directory under /tmp.
+        if self._capture_dir is not None and self._capture_dir.exists():
+            leftovers = list(self._capture_dir.glob("*.cap")) + list(self._capture_dir.glob("*.pcap"))
+            if leftovers:
+                raise RuntimeError(
+                    f"Previous capture is still unarchived in {self._capture_dir}; "
+                    "archive or remove it before restarting"
+                )
+            shutil.rmtree(self._capture_dir, ignore_errors=True)
+
+        self._capture_dir = Path(
+            tempfile.mkdtemp(prefix=f"kaiagotchi_{os.getpid()}_", dir="/tmp")
+        )
+        os.chmod(self._capture_dir, 0o700)
+        self._base_path = self._capture_dir / "capture"
         self._csv_path = Path(f"{self._base_path}-01.csv")
         self._session_pcap = Path(f"{self._base_path}-01.cap")
-        # FIXED: Ensure the storage directory exists
-        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        _LOG.info(f"[monitoring] PCAP storage directory: {PCAP_STORAGE_DIR}")
+
+        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(PCAP_STORAGE_DIR, 0o700)
+        _LOG.info("Private capture directory: %s", self._capture_dir)
+        _LOG.info("PCAP storage directory: %s", PCAP_STORAGE_DIR)
 
         args = [
             "airodump-ng",
@@ -285,10 +304,14 @@ class MonitoringAgent:
         ]
 
         _LOG.info(f"[monitoring] Launching airodump: {' '.join(args)}")
-        self._process = await asyncio.create_subprocess_exec(
-            *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
-        _LOG.info(f"[monitoring] airodump started; CSV: {self._csv_path}, PCAP: {self._session_pcap}")
+        try:
+            self._process = await asyncio.create_subprocess_exec(
+                *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+        except Exception:
+            self._cleanup_capture_directory()
+            raise
+        _LOG.info("[monitoring] airodump started; CSV: %s, PCAP: %s", self._csv_path, self._session_pcap)
 
     # ------------------------------------------------------------------
     async def _emit_capture_summary(self, message: str):
@@ -341,11 +364,11 @@ class MonitoringAgent:
 
             if not src or not src.exists():
                 _LOG.warning(f"[monitoring] No .cap/.pcap file found to archive. Checked: {[str(p) for p in possible_sources if p]}")
-                # Try to find any kaiagotchi_*.cap files in /tmp as fallback
-                fallback_files = list(Path("/tmp").glob(f"kaiagotchi_{os.getpid()}-*.cap"))
+                # Search only this process's private capture directory.
+                fallback_files = sorted(self._capture_dir.glob("*.cap")) if self._capture_dir else []
                 if fallback_files:
                     src = fallback_files[0]
-                    _LOG.info(f"[monitoring] Using fallback PCAP file: {src}")
+                    _LOG.info("[monitoring] Using fallback PCAP file: %s", src)
                 else:
                     _LOG.error("[monitoring] No PCAP files found for archiving")
                     return
@@ -389,6 +412,35 @@ class MonitoringAgent:
 
         except Exception as e:
             _LOG.exception(f"[monitoring] Failed to archive PCAP: {e}")
+
+    # ------------------------------------------------------------------
+    def _cleanup_capture_directory(self) -> None:
+        """Remove private session scratch files after all PCAPs are archived."""
+        capture_dir = self._capture_dir
+        if capture_dir is None or not capture_dir.exists():
+            self._capture_dir = None
+            return
+
+        remaining_pcaps = list(capture_dir.glob("*.cap")) + list(capture_dir.glob("*.pcap"))
+        if remaining_pcaps:
+            _LOG.error(
+                "Preserving private capture directory %s because PCAP archiving did not "
+                "complete for: %s",
+                capture_dir,
+                ", ".join(str(path.name) for path in remaining_pcaps),
+            )
+            return
+
+        try:
+            shutil.rmtree(capture_dir)
+        except OSError:
+            _LOG.warning("Could not remove private capture directory %s", capture_dir, exc_info=True)
+            return
+
+        self._capture_dir = None
+        self._base_path = None
+        self._csv_path = None
+        self._session_pcap = None
 
     # ------------------------------------------------------------------
     async def _scan_loop(self):
