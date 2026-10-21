@@ -95,7 +95,8 @@ def freq_to_channel(freq: int) -> int:
     # 6 GHz 20 MHz channel centers are 5950 + 5 * channel (ch 1 = 5955 MHz).
     if 5955 <= freq <= 7115 and (freq - 5950) % 5 == 0:
         channel = (freq - 5950) // 5
-        if channel in BANDS['6GHz'].channels:
+        # Channel 2 is valid only at its special 5935 MHz center, not 5960 MHz.
+        if channel in BANDS['6GHz'].channels and channel != 2:
             return channel
 
     raise ValueError(f"Invalid Wi-Fi channel-center frequency: {freq} MHz")
