@@ -8,8 +8,19 @@ from kaiagotchi.data.system_types import SystemState
 
 
 @pytest.mark.asyncio
-async def test_thought_persistence():
+async def test_thought_persistence(monkeypatch):
     """Verify thoughts are persisted in system state and not overwritten."""
+    # Avoid touching the repository's persistent files from a unit test.
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
+
+    class EmptyMood:
+        def get_last_mood(self):
+            return "neutral"
+
+        def get_last_reward(self):
+            return 0.0
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", EmptyMood)
     # Setup
     config = {
         "personality": {"default_mood": "neutral"},
@@ -108,6 +119,15 @@ def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
     """A configured wlan0 must not override the capture dongle's wlan1."""
     monkeypatch.delenv("KAIAGOTCHI_INTERFACE", raising=False)
     monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
+
+    class EmptyMood:
+        def get_last_mood(self):
+            return "neutral"
+
+        def get_last_reward(self):
+            return 0.0
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", EmptyMood)
     config = {
         "main": {"iface": "wlan0"},
         "personality": {"channels": [1, 6, 11]},
