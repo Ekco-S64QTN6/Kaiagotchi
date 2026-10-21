@@ -74,7 +74,7 @@ sudo python -m kaiagotchi.cli --debug
 ```
 
 Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
-`--debug`, `--manual`.
+`--debug`, `--manual`, `--tui` (terminal-only; disables the Web UI), `--web` (force the Web UI on), and `--no-web` (disable the Web UI).
 
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.
