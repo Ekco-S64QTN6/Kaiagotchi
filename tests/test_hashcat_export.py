@@ -108,3 +108,54 @@ def test_malformed_pmkid_is_not_exported(tmp_path):
 
     assert files == {}
     assert list(tmp_path.iterdir()) == []
+
+
+def test_hashcat_exports_are_owner_only(tmp_path):
+    import stat
+
+    capture = CaptureData(
+        type="PMKID",
+        bssid="00:11:22:33:44:55",
+        ssid="Test-AP",
+        packet_index=12,
+        source_file="capture.pcap",
+        raw_data_present=True,
+        client_mac="AA:BB:CC:DD:EE:FF",
+        handshake_complete=False,
+        pmkid="0102030405060708090a0b0c0d0e0f10",
+    )
+
+    files = export_to_hashcat([capture], str(tmp_path))
+    for key in ("pmkid_16800", "pmkid_22000"):
+        assert stat.S_IMODE(Path(files[key]).stat().st_mode) == 0o600
+
+
+def test_hashcat_export_replaces_symlink_without_modifying_its_target(tmp_path):
+    import stat
+
+    output_dir = tmp_path / "exports"
+    output_dir.mkdir()
+    protected = tmp_path / "protected.txt"
+    protected.write_text("do not overwrite", encoding="utf-8")
+    pmkid_file = output_dir / "pmkid_hashes.txt"
+    pmkid_file.symlink_to(protected)
+
+    capture = CaptureData(
+        type="PMKID",
+        bssid="00:11:22:33:44:55",
+        ssid="Test-AP",
+        packet_index=12,
+        source_file="capture.pcap",
+        raw_data_present=True,
+        client_mac="AA:BB:CC:DD:EE:FF",
+        handshake_complete=False,
+        pmkid="0102030405060708090a0b0c0d0e0f10",
+    )
+    files = export_to_hashcat([capture], str(output_dir))
+
+    assert protected.read_text(encoding="utf-8") == "do not overwrite"
+    assert not pmkid_file.is_symlink()
+    assert Path(files["pmkid_16800"]).read_text(encoding="utf-8").startswith(
+        "0102030405060708090a0b0c0d0e0f10*"
+    )
+    assert stat.S_IMODE(pmkid_file.stat().st_mode) == 0o600
