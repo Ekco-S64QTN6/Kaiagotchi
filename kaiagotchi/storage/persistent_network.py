@@ -163,9 +163,7 @@ class PersistentNetwork:
             # pcap_files was enumerated above.
             for filename in list(self._data.get("pcaps", {}).keys()):
                 if filename not in existing_filenames:
-                    record = self._data.get("pcaps", {}).get(filename, {})
-                    record_path = record.get("path") if isinstance(record, dict) else None
-                    candidate = Path(record_path) if record_path else Path(self.pcaps_dir) / filename
+                    candidate = Path(self.pcaps_dir) / filename
                     if candidate.exists():
                         existing_filenames.add(filename)
                         continue
