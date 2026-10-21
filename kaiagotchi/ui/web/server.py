@@ -365,16 +365,22 @@ class WebServer:
     # ── Data Pipeline ─────────────────────────────────────────
 
     def _get_latest_snapshot(self) -> dict[str, Any]:
-        """Fetch snapshot from state provider, or generate simulated data if none."""
-        if self._state_provider:
-            try:
-                snap = self._state_provider()
-                if snap:
-                    return self._serialize_snapshot(snap)
-            except Exception:
-                _LOG.debug("State provider error", exc_info=True)
+        """Fetch live state; use simulated data only when no provider was supplied."""
+        if self._state_provider is None:
+            return _generate_mock_snapshot()
 
-        return _generate_mock_snapshot()
+        try:
+            snap = self._state_provider()
+            if not isinstance(snap, dict):
+                raise TypeError(
+                    f"state provider must return a dict, got {type(snap).__name__}"
+                )
+            # An empty dict is a valid startup/empty state. Do not replace it
+            # with fictional APs or stations just because it contains no keys.
+            return self._serialize_snapshot(snap)
+        except Exception:
+            _LOG.warning("Live state provider failed; publishing an empty snapshot", exc_info=True)
+            return self._serialize_snapshot({})
 
     async def _broadcast_loop(self) -> None:
         """Continuously broadcast state snapshots to all connected clients."""
