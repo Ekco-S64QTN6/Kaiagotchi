@@ -6,6 +6,8 @@ import re
 import shutil
 import stat
 from datetime import datetime
+from functools import wraps
+from threading import RLock
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -25,6 +27,15 @@ except Exception:
     parse_pcap = None
 
 LOGGER = logging.getLogger(__name__)
+
+
+def _state_locked(method):
+    """Lock quick state operations without holding the lock during file/PCAP I/O."""
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._state_lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 DEFAULT_FILENAME = "network_history.json"
 PCAP_DIRNAME = "pcaps"
@@ -62,6 +73,7 @@ class PersistentNetwork:
 
         self.filepath = os.path.join(self.storage_dir, DEFAULT_FILENAME)
         self.pcaps_dir = os.path.join(self.storage_dir, PCAP_DIRNAME)
+        self._state_lock = RLock()
 
         # Ensure directories exist with proper permissions
         self._ensure_directory_permissions()
@@ -115,6 +127,7 @@ class PersistentNetwork:
         except Exception as e:
             LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
 
+    @_state_locked
     def load(self) -> None:
         try:
             raw = load_data(self.filepath, default={})
@@ -141,7 +154,8 @@ class PersistentNetwork:
         to a background thread at startup and is NOT called from here.
         """
         try:
-            payload = dict(self._data)
+            with self._state_lock:
+                payload = deepcopy(self._data)
             payload["_last_saved"] = now_cst_iso()
             success = atomically_save_data(self.filepath, payload, fmt="json")
             if success:
@@ -187,20 +201,23 @@ class PersistentNetwork:
             # Reconcile against the current filesystem, not only the initial
             # listing: another thread may finish copying/registering a PCAP after
             # pcap_files was enumerated above.
-            for filename in list(self._data.get("pcaps", {}).keys()):
-                if filename not in existing_filenames:
-                    candidate = Path(self.pcaps_dir) / filename
-                    if candidate.exists():
-                        existing_filenames.add(filename)
-                        continue
-                    LOGGER.info("Removing pcap record for deleted file: %s", filename)
-                    del self._data["pcaps"][filename]
-                    changed = True
+            with self._state_lock:
+                for filename in list(self._data.get("pcaps", {}).keys()):
+                    if filename not in existing_filenames:
+                        candidate = Path(self.pcaps_dir) / filename
+                        if candidate.exists():
+                            existing_filenames.add(filename)
+                            continue
+                        LOGGER.info("Removing pcap record for deleted file: %s", filename)
+                        del self._data["pcaps"][filename]
+                        changed = True
 
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
                 self._ensure_file_permissions(str(pcap_file))
-                if pcap_file.name not in self._data.get("pcaps", {}):
+                with self._state_lock:
+                    needs_record = pcap_file.name not in self._data.get("pcaps", {})
+                if needs_record:
                     changed = True
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
                     stat = pcap_file.stat()
@@ -228,7 +245,8 @@ class PersistentNetwork:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
 
                     # Preserve a newer record written while this file was analyzed.
-                    self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
+                    with self._state_lock:
+                        self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
             # Save updates even when the directory becomes empty. Otherwise
             # records for deleted captures remain in history and reports.
@@ -273,6 +291,7 @@ class PersistentNetwork:
     # -------------------------
     # BSSID helpers
     # -------------------------
+    @_state_locked
     def get_first_seen(self, mac: str) -> str | None:
         if not mac:
             return None
@@ -280,6 +299,7 @@ class PersistentNetwork:
         entry = self._data["bssids"].get(mac) or self._data["stations"].get(mac)
         return entry.get("first_seen") if entry else None
 
+    @_state_locked
     def update_bssid(
         self,
         bssid: str,
@@ -348,6 +368,7 @@ class PersistentNetwork:
     # -------------------------
     # Station helpers
     # -------------------------
+    @_state_locked
     def update_station(
         self,
         sta_mac: str,
@@ -397,6 +418,7 @@ class PersistentNetwork:
     # -------------------------
     # Methods for terminal display compatibility
     # -------------------------
+    @_state_locked
     def get_bssid_history(self, bssid: str) -> dict[str, Any] | None:
         """Get historical data for a BSSID in terminal display format."""
         if not bssid:
@@ -418,6 +440,7 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         }
 
+    @_state_locked
     def get_all_bssids(self) -> dict[str, Any]:
         """Get all BSSID history in terminal display format."""
         result = {}
@@ -434,6 +457,7 @@ class PersistentNetwork:
             }
         return result
 
+    @_state_locked
     def get_station_history(self, station_mac: str) -> dict[str, Any] | None:
         """Get historical data for a station in terminal display format."""
         if not station_mac:
@@ -452,6 +476,7 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         })
 
+    @_state_locked
     def get_all_stations(self) -> dict[str, Any]:
         """Get all station history in terminal display format."""
         result = {}
@@ -627,7 +652,8 @@ class PersistentNetwork:
             if analyze:
                 self._analyze_pcap_into_record(dst, record)
 
-            self._data.setdefault("pcaps", {})[filename] = record
+            with self._state_lock:
+                self._data.setdefault("pcaps", {})[filename] = record
             self.enforce_storage_limit()
             self.save()
             LOGGER.info("Archived PCAP %s for BSSID %s", filename, bssid)
@@ -662,7 +688,8 @@ class PersistentNetwork:
             if analyze and parse_pcap_comprehensive is not None and abs_path.exists():
                 self._analyze_pcap_into_record(abs_path, record)
 
-            self._data.setdefault("pcaps", {})[filename] = record
+            with self._state_lock:
+                self._data.setdefault("pcaps", {})[filename] = record
             self.enforce_storage_limit()
             self.save()
             LOGGER.info("Registered PCAP record for %s (%s bytes)", bssid, size)
@@ -692,9 +719,12 @@ class PersistentNetwork:
     def generate_reports(self) -> None:
         """Generate handshakes_summary.md and handshakes_summary.json in storage_dir."""
         try:
+            with self._state_lock:
+                data = deepcopy(self._data)
+
             # 1. Gather all unique SSIDs ever seen
             unique_ssids: dict[str, list[dict[str, Any]]] = {}
-            for _bssid, entry in self._data.get("bssids", {}).items():
+            for _bssid, entry in data.get("bssids", {}).items():
                 ssid = entry.get("essid", "") or "Hidden or Unknown"
                 if ssid not in unique_ssids:
                     unique_ssids[ssid] = []
@@ -705,7 +735,7 @@ class PersistentNetwork:
 
             # 2. Gather all handshakes and PMKIDs
             handshakes_list = []
-            for filename, record in self._data.get("pcaps", {}).items():
+            for filename, record in data.get("pcaps", {}).items():
                 analysis = record.get("analysis", []) or []
                 created = record.get("created", "")
                 for capture in analysis:
@@ -795,7 +825,7 @@ class PersistentNetwork:
 
             # Group channels
             chan_map: dict[int, int] = {}
-            for entry in self._data.get("bssids", {}).values():
+            for entry in data.get("bssids", {}).values():
                 ch_val = entry.get("channel")
                 if ch_val:
                     try:
@@ -865,7 +895,7 @@ class PersistentNetwork:
             md_lines.append("Identified Open or insecure legacy networks in the wireless vicinity:\n")
 
             vulnerable_networks = []
-            for _bssid, entry in self._data.get("bssids", {}).items():
+            for _bssid, entry in data.get("bssids", {}).items():
                 enc = (entry.get("encryption") or "").upper()
                 if "OPEN" in enc or "WEP" in enc or "WPA" in enc or not enc:
                     vulnerable_networks.append(entry)
@@ -903,7 +933,7 @@ class PersistentNetwork:
             md_lines.append("Access points broadcasting in stealth mode (Hidden SSIDs):\n")
 
             hidden_aps = []
-            for _bssid, entry in self._data.get("bssids", {}).items():
+            for _bssid, entry in data.get("bssids", {}).items():
                 ssid = entry.get("essid", "")
                 if ssid == "Hidden or Unknown" or not ssid or ssid.strip() == "":
                     hidden_aps.append(entry)
@@ -970,7 +1000,9 @@ class PersistentNetwork:
     # -------------------------
     def _calculate_pcap_storage(self) -> int:
         total = 0
-        for rec in self._data.get("pcaps", {}).values():
+        with self._state_lock:
+            records = deepcopy(self._data.get("pcaps", {}))
+        for rec in records.values():
             try:
                 p = Path(rec["path"])
                 if p.exists():
@@ -989,10 +1021,11 @@ class PersistentNetwork:
             total / (1024**3),
         )
 
-        pcaps_sorted = sorted(
-            self._data.get("pcaps", {}).items(),
-            key=lambda kv: kv[1].get("created", ""),
-        )
+        with self._state_lock:
+            pcaps_sorted = sorted(
+                deepcopy(self._data.get("pcaps", {})).items(),
+                key=lambda kv: kv[1].get("created", ""),
+            )
 
         for filename, record in pcaps_sorted:
             try:
@@ -1003,7 +1036,8 @@ class PersistentNetwork:
                         LOGGER.info("Deleted old PCAP file: %s", path)
                     except Exception:
                         LOGGER.exception("Failed to delete PCAP file %s", path)
-                self._data.get("pcaps", {}).pop(filename, None)
+                with self._state_lock:
+                    self._data.get("pcaps", {}).pop(filename, None)
                 total = self._calculate_pcap_storage()
                 if total <= MAX_PCAP_STORAGE_BYTES:
                     break
@@ -1024,26 +1058,32 @@ class PersistentNetwork:
     # -------------------------
     # Utilities / Introspection
     # -------------------------
+    @_state_locked
     def list_known_bssids(self) -> list[str]:
         return list(self._data.get("bssids", {}).keys())
 
+    @_state_locked
     def list_known_stations(self) -> list[str]:
         return list(self._data.get("stations", {}).keys())
 
+    @_state_locked
     def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
         """Return a detached BSSID record snapshot."""
         record = self._data.get("bssids", {}).get(bssid.upper())
         return deepcopy(record) if record is not None else None
 
+    @_state_locked
     def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
         """Return a detached station record snapshot."""
         record = self._data.get("stations", {}).get(sta_mac.upper())
         return deepcopy(record) if record is not None else None
 
+    @_state_locked
     def get_pcap_records(self) -> dict[str, Any]:
         """Return a detached snapshot so callers cannot mutate persisted state."""
         return deepcopy(self._data.get("pcaps", {}))
 
+    @_state_locked
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:
