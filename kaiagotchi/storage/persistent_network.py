@@ -9,7 +9,7 @@ from copy import deepcopy
 from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 from typing import Any
 
 from .file_io import atomically_save_data, load_data
@@ -74,6 +74,9 @@ class PersistentNetwork:
         self.filepath = os.path.join(self.storage_dir, DEFAULT_FILENAME)
         self.pcaps_dir = os.path.join(self.storage_dir, PCAP_DIRNAME)
         self._state_lock = RLock()
+        # Serialize disk writes separately from short-lived in-memory mutations.
+        # This prevents an older snapshot from completing after a newer save.
+        self._save_lock = Lock()
 
         # Ensure directories exist with proper permissions
         self._ensure_directory_permissions()
@@ -154,18 +157,17 @@ class PersistentNetwork:
         to a background thread at startup and is NOT called from here.
         """
         try:
-            with self._state_lock:
-                payload = deepcopy(self._data)
-            payload["_last_saved"] = now_cst_iso()
-            success = atomically_save_data(self.filepath, payload, fmt="json")
-            if success:
-                # Ensure proper permissions after saving
-                self._ensure_file_permissions(self.filepath)
-                # Regenerate summary reports on each save.
-                # For very large pcap datasets, consider calling generate_reports() only
-                # on a periodic timer rather than on every save.
-                self.generate_reports()
-            return success
+            with self._save_lock:
+                with self._state_lock:
+                    payload = deepcopy(self._data)
+                payload["_last_saved"] = now_cst_iso()
+                success = atomically_save_data(self.filepath, payload, fmt="json")
+                if success:
+                    # Ensure proper permissions after saving
+                    self._ensure_file_permissions(self.filepath)
+                    # Keep reports ordered with the persisted snapshots too.
+                    self.generate_reports()
+                return success
         except Exception:
             LOGGER.exception("Failed to save network history")
             return False
@@ -1077,15 +1079,30 @@ class PersistentNetwork:
 
         for filename, record in pcaps_sorted:
             try:
-                path = Path(record.get("path", ""))
-                if path.exists():
-                    try:
-                        path.unlink()
-                        LOGGER.info("Deleted old PCAP file: %s", path)
-                    except Exception:
-                        LOGGER.exception("Failed to delete PCAP file %s", path)
+                raw_path = record.get("path")
+                if not raw_path:
+                    LOGGER.warning("Skipping PCAP prune for %s: record has no path", filename)
+                    continue
+                path = Path(raw_path)
+
+                # Revalidate membership immediately before deletion. Unlink is a
+                # short filesystem operation, so keep it with the membership
+                # check to prevent a concurrent registration replacing this record.
                 with self._state_lock:
+                    current = self._data.get("pcaps", {}).get(filename)
+                    if current != record:
+                        continue
+                    if path.exists():
+                        try:
+                            path.unlink()
+                            LOGGER.info("Deleted old PCAP file: %s", path)
+                        except OSError:
+                            # Keep the record so storage accounting and future
+                            # pruning attempts can still see the undeleted file.
+                            LOGGER.exception("Failed to delete PCAP file %s; record retained", path)
+                            continue
                     self._data.get("pcaps", {}).pop(filename, None)
+
                 total = self._calculate_pcap_storage()
                 if total <= MAX_PCAP_STORAGE_BYTES:
                     break
