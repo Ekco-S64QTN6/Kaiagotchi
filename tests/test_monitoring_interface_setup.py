@@ -84,3 +84,30 @@ async def test_monitoring_aborts_startup_if_monitor_mode_setup_fails(monkeypatch
     assert monitor._running is False
     assert restored is True
     assert launched is False
+
+@pytest.mark.asyncio
+async def test_monitoring_restores_interface_when_airodump_launch_fails(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    restored = False
+
+    async def set_monitor_mode():
+        return None
+
+    async def restore_managed_mode():
+        nonlocal restored
+        restored = True
+
+    async def fail_launch():
+        raise RuntimeError("simulated airodump launch failure")
+
+    monkeypatch.setattr(monitor, "_set_monitor_mode", set_monitor_mode)
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_launch_airodump", fail_launch)
+
+    with pytest.raises(RuntimeError, match="simulated airodump launch failure"):
+        await monitor.start()
+
+    assert monitor._running is False
+    assert restored is True
+    assert monitor._loop_task is None
+

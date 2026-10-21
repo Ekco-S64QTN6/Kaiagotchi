@@ -16,6 +16,7 @@ import csv
 import logging
 import os
 import shutil
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -64,6 +65,7 @@ class MonitoringAgent:
         self._seen_bssids: set[str] = set()
         self._seen_stations: set[str] = set()
         self._session_pcap: Path | None = None
+        self._capture_tmp_dir: Path | None = None
 
         self._max_aps_seen: int = 0
 
@@ -150,7 +152,32 @@ class MonitoringAgent:
             except Exception:
                 pass
 
-        await self._launch_airodump()
+        try:
+            await self._launch_airodump()
+        except Exception:
+            # Do not leave the adapter in monitor mode when capture startup
+            # fails (for example, airodump-ng missing or process creation denied).
+            self._running = False
+            try:
+                await self._restore_managed_mode()
+            except Exception:
+                _LOG.debug(
+                    "[monitoring] Could not restore interface after capture launch failure",
+                    exc_info=True,
+                )
+            # _launch_airodump cleans an empty private temp directory on its
+            # own; this is a second guarded cleanup for any setup residue.
+            try:
+                await asyncio.get_running_loop().run_in_executor(
+                    None, self._cleanup_capture_temp_dir
+                )
+            except Exception:
+                _LOG.debug(
+                    "[monitoring] Could not clean capture temp directory after launch failure",
+                    exc_info=True,
+                )
+            raise
+
         self._loop_task = asyncio.create_task(self._scan_loop())
 
         if self.persistent_mood:
@@ -202,6 +229,11 @@ class MonitoringAgent:
         # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
         # synchronous Scapy parsing and file I/O don't stall the event loop
         await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
+        # Remove private temporary files only after archiving. If archiving failed
+        # and a PCAP remains, _cleanup_capture_temp_dir keeps it for recovery.
+        await asyncio.get_running_loop().run_in_executor(
+            None, self._cleanup_capture_temp_dir
+        )
 
         try:
             if self.persistent_network:
@@ -324,30 +356,125 @@ class MonitoringAgent:
                 "airodump-ng not found. Install aircrack-ng: sudo pacman -S aircrack-ng"
             )
 
-        datetime.now(TZ).strftime("%Y-%m-%dT%H-%M-%S")
-        self._base_path = Path("/tmp") / f"kaiagotchi_{os.getpid()}"
-        self._csv_path = Path(f"{self._base_path}-01.csv")
-        self._session_pcap = Path(f"{self._base_path}-01.cap")
-        # FIXED: Ensure the storage directory exists
-        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
-        _LOG.info(f"[monitoring] PCAP storage directory: {PCAP_STORAGE_DIR}")
+        # Don't lose access to a previous session if its PCAP archive failed.
+        # Refuse to start a second session while an old capture remains private
+        # and unarchived; the operator can retry archiving it first.
+        if self._capture_tmp_dir is not None and self._capture_tmp_dir.exists():
+            leftovers = [
+                path
+                for pattern in ("*.cap", "*.pcap", "*.pcapng")
+                for path in self._capture_tmp_dir.glob(pattern)
+            ]
+            if leftovers:
+                raise RuntimeError(
+                    "Previous PCAP session is still unarchived in "
+                    f"{self._capture_tmp_dir}; archive it before restarting"
+                )
+            self._cleanup_capture_temp_dir()
 
-        args = [
-            "airodump-ng",
-            "--write",
-            str(self._base_path),
-            "--output-format",
-            "csv,pcap",
-            "--write-interval",
-            "2",
-            self.interface,
-        ]
+        # airodump writes sensitive capture data. Use a unique directory whose
+        # permissions are private to the current user instead of predictable
+        # filenames directly under shared /tmp.
+        PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # The fallback archive is used when PersistentNetwork isn't attached.
+        # Enforce the same privacy boundary as the persistent archive.
+        try:
+            os.chmod(PCAP_STORAGE_DIR, 0o700)
+        except OSError as exc:
+            raise PermissionError(
+                f"Could not secure PCAP storage directory {PCAP_STORAGE_DIR}"
+            ) from exc
+        _LOG.info("[monitoring] PCAP storage directory: %s", PCAP_STORAGE_DIR)
 
-        _LOG.info(f"[monitoring] Launching airodump: {' '.join(args)}")
-        self._process = await asyncio.create_subprocess_exec(
-            *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        capture_dir = Path(
+            tempfile.mkdtemp(
+                prefix=f"kaiagotchi_{os.getpid()}_",
+                dir=tempfile.gettempdir(),
+            )
         )
-        _LOG.info(f"[monitoring] airodump started; CSV: {self._csv_path}, PCAP: {self._session_pcap}")
+        try:
+            # Track the directory before chmod/spawn so every failure path can
+            # clean up an empty scratch directory safely.
+            self._capture_tmp_dir = capture_dir
+            os.chmod(capture_dir, 0o700)
+            self._base_path = capture_dir / "capture"
+            self._csv_path = Path(f"{self._base_path}-01.csv")
+            self._session_pcap = Path(f"{self._base_path}-01.cap")
+
+            args = [
+                "airodump-ng",
+                "--write",
+                str(self._base_path),
+                "--output-format",
+                "csv,pcap",
+                "--write-interval",
+                "2",
+                self.interface,
+            ]
+
+            _LOG.info("[monitoring] Launching airodump: %s", " ".join(args))
+            self._process = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+        except Exception:
+            # Avoid leaving empty temp folders behind if process launch fails.
+            self._cleanup_capture_temp_dir()
+            self._base_path = None
+            self._csv_path = None
+            self._session_pcap = None
+            raise
+
+        _LOG.info(
+            "[monitoring] airodump started; CSV: %s, PCAP: %s",
+            self._csv_path,
+            self._session_pcap,
+        )
+
+    def _cleanup_capture_temp_dir(self) -> None:
+        """Remove this session's private temp directory unless a PCAP remains."""
+        capture_dir = self._capture_tmp_dir
+        if capture_dir is None:
+            return
+
+        try:
+            # Only clean a directory created by this code inside tempfile's
+            # configured temp root; refuse to traverse unexpected paths/symlinks.
+            temp_root = Path(tempfile.gettempdir()).resolve()
+            if (
+                capture_dir.is_symlink()
+                or not capture_dir.name.startswith(f"kaiagotchi_{os.getpid()}_")
+                or capture_dir.resolve(strict=True).parent != temp_root
+            ):
+                _LOG.error(
+                    "[monitoring] Refusing to clean unexpected capture temp path: %s",
+                    capture_dir,
+                )
+                return
+
+            leftovers = [
+                path
+                for pattern in ("*.cap", "*.pcap", "*.pcapng")
+                for path in capture_dir.glob(pattern)
+            ]
+            if leftovers:
+                _LOG.warning(
+                    "[monitoring] Keeping private capture directory because PCAPs remain unarchived: %s",
+                    ", ".join(str(path) for path in leftovers),
+                )
+                return
+
+            shutil.rmtree(capture_dir)
+            self._capture_tmp_dir = None
+            _LOG.debug("[monitoring] Removed temporary capture directory: %s", capture_dir)
+        except FileNotFoundError:
+            self._capture_tmp_dir = None
+        except Exception:
+            _LOG.exception(
+                "[monitoring] Failed to clean temporary capture directory: %s",
+                capture_dir,
+            )
 
     # ------------------------------------------------------------------
     async def _emit_capture_summary(self, message: str):
@@ -400,11 +527,16 @@ class MonitoringAgent:
 
             if not src or not src.exists():
                 _LOG.warning(f"[monitoring] No .cap/.pcap file found to archive. Checked: {[str(p) for p in possible_sources if p]}")
-                # Try to find any kaiagotchi_*.cap files in /tmp as fallback
-                fallback_files = list(Path("/tmp").glob(f"kaiagotchi_{os.getpid()}-*.cap"))
+                # Legacy fallback only applies to pre-private-directory sessions.
+                # Never guess at a file in shared /tmp for a current session.
+                fallback_files = []
+                if self._capture_tmp_dir is None:
+                    fallback_files = list(
+                        Path("/tmp").glob(f"kaiagotchi_{os.getpid()}-*.cap")
+                    )
                 if fallback_files:
                     src = fallback_files[0]
-                    _LOG.info(f"[monitoring] Using fallback PCAP file: {src}")
+                    _LOG.info("[monitoring] Using legacy fallback PCAP file: %s", src)
                 else:
                     _LOG.error("[monitoring] No PCAP files found for archiving")
                     return
@@ -432,8 +564,32 @@ class MonitoringAgent:
                 clean_filename = f"{timestamp}_airodump.pcap"
                 clean_dest = PCAP_STORAGE_DIR / clean_filename
 
-                import shutil as _shutil
-                _shutil.copy2(src, clean_dest)
+                try:
+                    # Don't rely on _launch_airodump() having created the
+                    # archive directory, and keep it private to this user.
+                    PCAP_STORAGE_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+                    os.chmod(PCAP_STORAGE_DIR, 0o700)
+                    # Create the destination as 0600 from the start so the
+                    # capture is never readable by others, even briefly
+                    # (copy2 would inherit the source's permissions).
+                    fd = os.open(
+                        clean_dest,
+                        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                        0o600,
+                    )
+                    try:
+                        with os.fdopen(fd, "wb") as dst, open(src, "rb") as srcf:
+                            shutil.copyfileobj(srcf, dst)
+                    except BaseException:
+                        clean_dest.unlink(missing_ok=True)
+                        raise
+                except OSError as exc:
+                    _LOG.error(
+                        "Could not securely archive fallback PCAP to %s: %s; source kept",
+                        clean_dest,
+                        exc,
+                    )
+                    return
                 if not clean_dest.exists():
                     _LOG.error("[monitoring] Manual PCAP copy did not produce a destination file; source kept")
                     return
