@@ -230,6 +230,20 @@ class SystemState(BaseModel):
     last_state_update: NonNegativeFloat = Field(default_factory=time.time)
     config_hash: str | None = None
 
+    # Runtime and UI state is shared through this model by Agent,
+    # MonitoringAgent, the decision/reward engines, and the web snapshot.
+    mood: str = "neutral"
+    aps: int = 0
+    aps_max_seen: int = 0
+    mode: str = "AUTO"
+    status: str = ""
+    substatus: str = ""
+    uptime: str = "00:00:00"
+    aps_list: list[dict[str, Any]] = Field(default_factory=list)
+    stations_list: list[dict[str, Any]] = Field(default_factory=list)
+    recent_captures: list[dict[str, Any]] = Field(default_factory=list)
+    chatter_log: list[dict[str, Any]] = Field(default_factory=list)
+
     @field_validator("current_system_state", mode="before")
     @classmethod
     def ensure_enum(cls, v):
