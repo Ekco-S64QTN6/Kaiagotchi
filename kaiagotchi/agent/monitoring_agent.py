@@ -43,8 +43,9 @@ class MonitoringAgent:
     ):
         self.view = view
         self.config = config or {}
-        self.system_state = system_state or {}
-        self.state_lock = state_lock or asyncio.Lock()
+        self.system_state = system_state if system_state is not None else {}
+        self.state_lock = state_lock if state_lock is not None else asyncio.Lock()
+        self._fallback_captures: list[dict[str, Any]] = []
 
         self.interface = (
             interface
