@@ -361,6 +361,11 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                 continue
 
 
+    except Exception as e:
+        # A truncated/corrupt capture may fail midway through iteration. Keep
+        # the packets already analyzed, report the problem, and always release
+        # the reader instead of unexpectedly crashing the caller.
+        parser_logger.error("Error iterating PCAP file %s: %s", filepath, e)
     finally:
         if reader is not None:
             reader.close()
@@ -514,6 +519,11 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
                 continue
 
 
+    except Exception as e:
+        # A truncated/corrupt capture may fail midway through iteration. Keep
+        # the packets already analyzed, report the problem, and always release
+        # the reader instead of unexpectedly crashing the caller.
+        parser_logger.error("Error iterating PCAP file %s: %s", filepath, e)
     finally:
         if reader is not None:
             reader.close()
