@@ -1,6 +1,6 @@
 import asyncio
-import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -26,7 +26,8 @@ async def test_airodump_uses_private_temp_directory(tmp_path, monkeypatch):
     await agent._launch_airodump()
 
     assert agent._capture_dir is not None
-    assert agent._capture_dir.parent == tmp_path if False else str(agent._capture_dir).startswith("/tmp/kaiagotchi_")
+    assert agent._capture_dir.parent == Path("/tmp")
+    assert agent._capture_dir.name.startswith("kaiagotchi_")
     assert stat.S_IMODE(agent._capture_dir.stat().st_mode) == 0o700
     assert agent._base_path is not None and agent._base_path.parent == agent._capture_dir
     assert agent._csv_path is not None and agent._csv_path.parent == agent._capture_dir
