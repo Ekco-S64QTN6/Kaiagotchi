@@ -4,7 +4,12 @@ from pathlib import Path
 import tomlkit
 
 from kaiagotchi.config.manager import load_config, mask_sensitive_config, save_config
-from kaiagotchi.core.utils import download_file, sanitize_config_for_logging
+from kaiagotchi.core.utils import (
+    StatusFile,
+    download_file,
+    save_config as save_core_config,
+    sanitize_config_for_logging,
+)
 
 
 def test_load_config_missing_relative_path_uses_defaults(tmp_path, monkeypatch):
@@ -55,3 +60,19 @@ def test_download_file_handles_missing_optional_requests(tmp_path, monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", without_requests)
     assert not download_file("https://example.invalid/file", str(tmp_path / "file"))
+
+
+
+def test_status_file_saves_bare_relative_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    status = StatusFile("plugin-status.json")
+    status.set("state", "ready")
+
+    assert StatusFile("plugin-status.json").get("state") == "ready"
+
+
+def test_core_utils_save_config_supports_relative_filename(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert save_core_config({"main": {"name": "kaiagotchi"}}, "core-config.toml")
+    saved = tomlkit.parse(Path("core-config.toml").read_text(encoding="utf-8"))
+    assert saved["main"]["name"] == "kaiagotchi"
