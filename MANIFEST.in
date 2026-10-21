@@ -2,6 +2,7 @@ include README.md
 include LICENSE.md
 recursive-include kaiagotchi *.py
 recursive-include kaiagotchi *.toml
+recursive-include images *.png
 global-exclude *.py[cod]
 global-exclude __pycache__/*
 prune kaiagotchi/storage/pcaps

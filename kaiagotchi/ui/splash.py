@@ -18,17 +18,29 @@ from rich.text import Text
 _LOG = logging.getLogger("kaiagotchi.ui.splash")
 
 class SplashScreen:
-    def __init__(self, image_path: str = "images/kaia.png"):
+    def __init__(self, image_path: str | Path | None = None):
         self.console = Console()
         self.display_rows: int = 0
-        # Resolve absolute path relative to project root if possible
-        # Assuming this runs from project root or we find it relative to this file
-        self.image_path = Path(image_path)
-        if not self.image_path.exists():
-            # Try finding it relative to the package
-            root = Path(__file__).parent.parent.parent
-            self.image_path = root / image_path
 
+        # Wheel-installed assets live under sys.prefix/share. Source checkouts
+        # keep the same image under the repository-level images/ directory.
+        # Prefer known application assets to arbitrary CWD-relative files.
+        if image_path is None:
+            candidates = [
+                Path(sys.prefix) / "share" / "kaiagotchi" / "images" / "kaia.png",
+                Path(__file__).resolve().parents[2] / "images" / "kaia.png",
+                Path.cwd() / "images" / "kaia.png",
+            ]
+        else:
+            requested = Path(image_path)
+            candidates = [requested]
+            if not requested.is_absolute():
+                candidates.extend([
+                    Path(__file__).resolve().parents[2] / requested,
+                    Path(sys.prefix) / "share" / "kaiagotchi" / "images" / requested.name,
+                ])
+
+        self.image_path = next((path for path in candidates if path.is_file()), candidates[0])
         self.ascii_art = self._load_image_as_ascii()
 
     def _load_image_as_ascii(self, width: int = 60) -> str:

@@ -76,7 +76,6 @@ kaiagotchi = [
     "config/*.toml",
     "config/examples/*.toml",
     "ui/web/static/**/*",  # Cyber-Deck frontend (HTML, CSS, JS, assets)
-    "images/*",            # Splash screen assets
 ]
 
 # ===== Code Quality & Formatting =====
@@ -152,3 +151,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[tool.setuptools.data-files]
+"share/kaiagotchi/images" = ["images/*.png"]
