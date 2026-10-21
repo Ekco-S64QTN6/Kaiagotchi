@@ -68,3 +68,23 @@ def test_unknown_ssid_pmkid_is_not_exported_as_a_fake_hash(tmp_path):
 
     assert files == {}
     assert list(tmp_path.iterdir()) == []
+
+
+
+def test_pmkid_without_client_mac_is_not_exported_as_a_fake_hash(tmp_path):
+    capture = CaptureData(
+        type="PMKID",
+        bssid="00:11:22:33:44:55",
+        ssid="Test-AP",
+        packet_index=12,
+        source_file="capture.pcap",
+        raw_data_present=True,
+        client_mac=None,
+        handshake_complete=False,
+        pmkid="0102030405060708090a0b0c0d0e0f10",
+    )
+
+    files = export_to_hashcat([capture], str(tmp_path))
+
+    assert files == {}
+    assert list(tmp_path.iterdir()) == []
