@@ -1014,7 +1014,7 @@ class PersistentNetwork:
         try:
             for rec in self._data.get("pcaps", {}).values():
                 if rec.get("bssid", "").upper() == bssid.upper():
-                    results.extend(rec.get("analysis", []) or [])
+                    results.extend(deepcopy(rec.get("analysis", []) or []))
         except Exception:
             LOGGER.exception("get_analysis_for_bssid failed for %s", bssid)
         return results
