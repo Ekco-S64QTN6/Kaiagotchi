@@ -84,8 +84,11 @@ class PersistentNetwork:
             os.makedirs(self.pcaps_dir, exist_ok=True)
 
             # Set proper permissions (read/write for user, read for group/others)
+            # Keep the metadata directory traversable to the owning user, but
+            # restrict the PCAP archive directory because captures can contain
+            # authentication material and identifiable network metadata.
             os.chmod(self.storage_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-            os.chmod(self.pcaps_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+            os.chmod(self.pcaps_dir, stat.S_IRWXU)
 
             LOGGER.debug(f"Ensured directory permissions for {self.storage_dir}")
         except Exception as e:
@@ -95,7 +98,7 @@ class PersistentNetwork:
         """Ensure file has proper read/write permissions."""
         try:
             if os.path.exists(filepath):
-                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
                 LOGGER.debug(f"Set permissions for {filepath}")
         except Exception as e:
             LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
@@ -172,6 +175,7 @@ class PersistentNetwork:
 
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
+                self._ensure_file_permissions(str(pcap_file))
                 if pcap_file.name not in self._data.get("pcaps", {}):
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
                     stat = pcap_file.stat()
@@ -580,6 +584,7 @@ class PersistentNetwork:
                 return str(dst)
 
             shutil.copy2(src, dst)
+            self._ensure_file_permissions(str(dst))
 
             stat = dst.stat()
             record: dict[str, Any] = {
@@ -607,6 +612,11 @@ class PersistentNetwork:
             # Use absolute path to ensure consistency
             abs_path = path.absolute()
             filename = os.path.basename(str(abs_path))
+            try:
+                if abs_path.resolve().parent == Path(self.pcaps_dir).resolve():
+                    self._ensure_file_permissions(str(abs_path))
+            except OSError:
+                LOGGER.warning("Could not secure registered PCAP path: %s", abs_path)
 
             # Check if record already exists to avoid duplicates
             if filename in self._data.get("pcaps", {}):
@@ -733,7 +743,9 @@ class PersistentNetwork:
             # Save JSON report
             json_path = os.path.join(self.storage_dir, "handshakes_summary.json")
             atomically_save_data(json_path, json_report, fmt="json")
-            self._ensure_file_permissions(json_path)            # Save MD report
+            self._ensure_file_permissions(json_path)
+
+            # Save Markdown report
             md_path = os.path.join(self.storage_dir, "handshakes_summary.md")
 
             md_lines = []
