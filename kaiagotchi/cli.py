@@ -266,7 +266,7 @@ async def run_agent() -> int:
                 web_server.start()
                 w_host = config.get("web", {}).get("host", "127.0.0.1")
                 w_port = config.get("web", {}).get("port", 8080)
-                logger.info("⚡ Cyber-Deck Web UI live at http://%s:%d", "localhost" if w_host == "0.0.0.0" else w_host, w_port)
+                logger.info("Cyber-Deck Web UI configured at bind address %s:%d", w_host, w_port)
             except Exception as e:
                 logger.warning(f"Could not start Cyber-Deck WebServer: {e}")
 

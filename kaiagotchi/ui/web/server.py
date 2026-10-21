@@ -31,6 +31,23 @@ _LOG = logging.getLogger("kaiagotchi.ui.web.server")
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
+def _log_listener_started(host: str, port: int) -> None:
+    """Log the actual bind address and warn when unauthenticated telemetry is exposed."""
+    normalized_host = host.strip().lower()
+    if normalized_host in {"", "0.0.0.0", "::", "[::]"}:
+        _LOG.warning(
+            "Cyber-Deck HUD is bound to all network interfaces (%s:%d). "
+            "The telemetry UI has no authentication; expose it only on a trusted network.",
+            host or "*",
+            port,
+        )
+        return
+
+    # IPv6 URLs require brackets around the literal address.
+    display_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
+    _LOG.info("Cyber-Deck HUD live at http://%s:%d", display_host, port)
+
+
 _MOCK_APS = [
     ("EC:1A:59:2B:3C:4D", "Cyberdyne_Guest", 11, -44, "WPA2"),
     ("88:9F:12:45:67:89", "NovaCorp_Office", 6, -51, "WPA3"),
@@ -274,11 +291,7 @@ class WebServer:
         self._site = web.TCPSite(self._runner, self._host, self._port)
         await self._site.start()
 
-        _LOG.info(
-            "Cyber-Deck HUD live at http://%s:%d",
-            "localhost" if self._host == "0.0.0.0" else self._host,
-            self._port,
-        )
+        _log_listener_started(self._host, self._port)
 
         # Start broadcast loop
         broadcast_task = asyncio.create_task(self._broadcast_loop())
