@@ -28,6 +28,7 @@ from kaiagotchi.mesh.wifi import (
         (5720, 144),
         (5745, 149),
         (5825, 165),
+        (5935, 2),
         (5955, 1),
         (5975, 5),
         (5995, 9),
@@ -50,6 +51,7 @@ def test_frequency_to_channel_uses_standard_channel_center_formula(frequency, ch
         (104, "5GHz", 5520),
         (149, "5GHz", 5745),
         (165, "5GHz", 5825),
+        (2, "6GHz", 5935),
         (1, "6GHz", 5955),
         (5, "6GHz", 5975),
         (9, "6GHz", 5995),
@@ -74,10 +76,13 @@ def test_overlapping_channel_numbers_can_be_disambiguated():
 
 
 def test_six_ghz_channel_grids_match_20_mhz_centers():
-    assert BANDS["6GHz"].channels == list(range(1, 234, 4))
-    assert CHANNEL_PLANS["FCC"]["6GHz"] == list(range(1, 234, 4))
+    six_ghz_grid = sorted([2, *range(1, 234, 4)])
+    assert BANDS["6GHz"].channels == six_ghz_grid
+    assert CHANNEL_PLANS["FCC"]["6GHz"] == six_ghz_grid
     assert CHANNEL_PLANS["ETSI"]["6GHz"] == list(range(1, 94, 4))
     assert get_channel_range("6GHz") == (1, 233)
+    assert is_valid_channel(2, "FCC", band="6GHz")
+    assert not is_valid_channel(2, "ETSI", band="6GHz")
     assert is_valid_channel(233, "FCC", band="6GHz")
     assert not is_valid_channel(233, "ETSI", band="6GHz")
     assert is_valid_channel(93, "ETSI", band="6GHz")
@@ -98,7 +103,6 @@ def test_non_channel_center_frequencies_are_rejected(frequency):
         (0, "2.4GHz"),
         (15, "2.4GHz"),
         (37, "5GHz"),
-        (2, "6GHz"),
         (14, "6GHz"),
         (234, "6GHz"),
     ],
