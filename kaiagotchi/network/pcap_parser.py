@@ -598,9 +598,17 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
     pmkid_entries_22000 = []
     for capture in captures:
         if capture.pmkid:
+            ssid = (capture.ssid or "").strip()
+            if not ssid or ssid.casefold() in {"hidden or unknown", "unknown", "<hidden>", "--"}:
+                parser_logger.warning(
+                    "Skipping PMKID export for %s: a known SSID is required for Hashcat input",
+                    capture.bssid,
+                )
+                continue
+
             bssid_clean = capture.bssid.replace(':', '').lower() if capture.bssid else 'ffffffffffff'
             client_clean = capture.client_mac.replace(':', '').lower() if capture.client_mac else 'ffffffffffff'
-            ssid_hex = capture.ssid.encode('utf-8', errors='ignore').hex() if capture.ssid else ''
+            ssid_hex = ssid.encode('utf-8', errors='ignore').hex()
             pmkid_entries_16800.append(
                 f"{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}"
             )
