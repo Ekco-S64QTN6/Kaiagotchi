@@ -688,9 +688,13 @@ class PersistentNetwork:
                     ssid_is_known = bool(ssid.strip()) and ssid.strip().casefold() not in {
                         "hidden or unknown", "unknown", "<hidden>", "--"
                     }
-                    if pmkid and ssid_is_known and bssid_clean and client_clean:
-                        hashcat_22000 = f"WPA*01*{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}***"
-                        hashcat_16800 = f"{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
+                    pmkid_clean = str(pmkid or "").strip().lower()
+                    pmkid_is_valid = len(pmkid_clean) == 32 and all(
+                        char in "0123456789abcdef" for char in pmkid_clean
+                    )
+                    if pmkid_is_valid and ssid_is_known and bssid_clean and client_clean:
+                        hashcat_22000 = f"WPA*01*{pmkid_clean}*{bssid_clean}*{client_clean}*{ssid_hex}***"
+                        hashcat_16800 = f"{pmkid_clean}*{bssid_clean}*{client_clean}*{ssid_hex}"
 
                     handshakes_list.append({
                         "pcap_file": filename,
