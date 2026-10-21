@@ -12,7 +12,7 @@ CHANNEL_PLANS = {
     'FCC': {  # USA
         '2.4GHz': list(range(1, 12)),  # Channels 1-11
         '5GHz': [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165],
-        '6GHz': list(range(1, 234, 4))  # 20 MHz channels 1, 5, ..., 233
+        '6GHz': sorted([2, *range(1, 234, 4)])  # Includes special channel 2 at 5935 MHz
     },
     'ETSI': {  # Europe
         '2.4GHz': list(range(1, 14)),  # Channels 1-13
@@ -48,8 +48,8 @@ class WiFiBand:
             channels.extend(range(149, 166, 4))
             return channels
         elif self.name == '6GHz':
-            # 20 MHz channel centers are numbered 1, 5, 9, ..., 233.
-            return list(range(1, 234, 4))
+            # Channel 2 at 5935 MHz is a special 6 GHz channel.
+            return sorted([2, *range(1, 234, 4)])
         else:
             return []
 
@@ -88,6 +88,10 @@ def freq_to_channel(freq: int) -> int:
         if channel in BANDS['5GHz'].channels:
             return channel
 
+    # Channel 2 is the special 5935 MHz 6 GHz channel.
+    if freq == 5935:
+        return 2
+
     # 6 GHz 20 MHz channel centers are 5950 + 5 * channel (ch 1 = 5955 MHz).
     if 5955 <= freq <= 7115 and (freq - 5950) % 5 == 0:
         channel = (freq - 5950) // 5
@@ -112,7 +116,10 @@ def channel_to_freq(channel: int, band: str | None = None) -> int:
         return 2484 if channel == 14 else 2412 + (channel - 1) * 5
     if resolved_band == '5GHz':
         return 5000 + channel * 5
-    # 6 GHz: channel 1 = 5955 MHz, channel 5 = 5975 MHz, etc.
+    # 6 GHz channel 2 is a special 5935 MHz channel.
+    if channel == 2:
+        return 5935
+    # Other 20 MHz centers: channel 1 = 5955 MHz, channel 5 = 5975 MHz, etc.
     return 5950 + channel * 5
 
 def get_band_for_channel(channel: int, band: str | None = None) -> str:
