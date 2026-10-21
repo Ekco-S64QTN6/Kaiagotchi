@@ -1,9 +1,10 @@
+import builtins
 from pathlib import Path
 
 import tomlkit
 
 from kaiagotchi.config.manager import load_config, mask_sensitive_config, save_config
-from kaiagotchi.core.utils import sanitize_config_for_logging
+from kaiagotchi.core.utils import download_file, sanitize_config_for_logging
 
 
 def test_load_config_missing_relative_path_uses_defaults(tmp_path, monkeypatch):
@@ -41,3 +42,16 @@ def test_config_redaction_is_recursive_and_does_not_mutate_input():
     assert source == original
     assert sanitized["main"]["api_token"] == "***MASKED***"
     assert sanitized["plugins"][0]["password"] == "***MASKED***"
+
+
+
+def test_download_file_handles_missing_optional_requests(tmp_path, monkeypatch):
+    real_import = builtins.__import__
+
+    def without_requests(name, *args, **kwargs):
+        if name == "requests":
+            raise ImportError("requests intentionally unavailable")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_requests)
+    assert not download_file("https://example.invalid/file", str(tmp_path / "file"))
