@@ -88,8 +88,7 @@ def test_analysis_getter_returns_detached_nested_records(tmp_path):
         "bssid": "00:11:22:33:44:55",
         "analysis": [{"type": "PMKID", "metadata": {"ssid": "Test-AP"}}],
     }
-    with network._state_lock:
-        network._data.setdefault("pcaps", {})["snapshot.pcap"] = record
+    network._data.setdefault("pcaps", {})["snapshot.pcap"] = record
 
     result = network.get_analysis_for_bssid("00:11:22:33:44:55")
     result[0]["metadata"]["ssid"] = "mutated outside lock"
@@ -121,3 +120,24 @@ def test_initialization_fails_if_private_pcap_directory_cannot_be_enforced(tmp_p
 
     with pytest.raises(PermissionError, match="Could not secure PCAP storage directory"):
         PersistentNetwork(storage_dir=str(storage))
+
+
+
+def test_sync_restricts_permissions_on_preexisting_pcaps(tmp_path):
+    import stat
+
+    storage = tmp_path / "storage"
+    pcap_dir = storage / "pcaps"
+    pcap_dir.mkdir(parents=True)
+    pcap = pcap_dir / "old-capture.pcap"
+    pcap.write_bytes(b"existing capture")
+    pcap.chmod(0o644)
+    pcap_dir.chmod(0o755)
+
+    network = PersistentNetwork(storage_dir=str(storage))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    assert stat.S_IMODE(pcap_dir.stat().st_mode) == 0o700
+    assert stat.S_IMODE(pcap.stat().st_mode) == 0o600
+    assert pcap.name in network.get_pcap_records()
