@@ -90,51 +90,37 @@ class StatusFile:
             self._save()
 
 def remove_whitelisted(aps: list[Any], whitelist: list[str]) -> list[Any]:
-    """
-    Remove access points that are in the whitelist.
-
-    Args:
-        aps: List of access point objects
-        whitelist: List of BSSIDs or ESSIDs to whitelist
-
-    Returns:
-        Filtered list of access points
-    """
+    """Remove APs whose BSSID, SSID, or ESSID appears in the whitelist."""
     if not whitelist:
         return aps
 
-    filtered = []
-    for ap in aps:
-        # Handle different AP object structures
-        bssid = getattr(ap, 'bssid', None) or ap.get('bssid', '') if hasattr(ap, 'get') else ''
-        essid = getattr(ap, 'essid', None) or ap.get('essid', '') if hasattr(ap, 'get') else ''
+    def field(ap: Any, name: str) -> Any:
+        value = getattr(ap, name, None)
+        if value:
+            return value
+        getter = getattr(ap, "get", None)
+        if callable(getter):
+            return getter(name, "")
+        return ""
 
-        if bssid not in whitelist and essid not in whitelist:
-            filtered.append(ap)
-
-    utils_logger.debug(f"Filtered {len(aps)} APs to {len(filtered)} using whitelist")
+    filtered = [
+        ap for ap in aps
+        if field(ap, "bssid") not in whitelist
+        and field(ap, "essid") not in whitelist
+        and field(ap, "ssid") not in whitelist
+    ]
+    utils_logger.debug("Filtered %d APs to %d using whitelist", len(aps), len(filtered))
     return filtered
 
 def merge_config(user_config: dict[str, Any], default_config: dict[str, Any]) -> dict[str, Any]:
-    """
-    Deep merge user configuration into default configuration.
-
-    Args:
-        user_config: User-provided configuration
-        default_config: Default configuration template
-
-    Returns:
-        Merged configuration dictionary
-    """
-    config = default_config.copy()
+    """Deep-merge user settings into independent copies of the defaults."""
+    config = deepcopy(default_config)
 
     for key, value in user_config.items():
         if key in config and isinstance(config[key], dict) and isinstance(value, dict):
-            # Recursively merge dictionaries
             config[key] = merge_config(value, config[key])
         else:
-            # Overwrite with user value
-            config[key] = value
+            config[key] = deepcopy(value)
 
     return config
 
