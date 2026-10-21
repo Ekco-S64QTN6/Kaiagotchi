@@ -172,6 +172,8 @@ class PersistentNetwork:
             pcap_files = list(Path(self.pcaps_dir).glob("*.pcap"))
             existing_filenames = {f.name for f in pcap_files}
 
+            changed = False
+
             # Reconcile against the current filesystem, not only the initial
             # listing: another thread may finish copying/registering a PCAP after
             # pcap_files was enumerated above.
@@ -183,11 +185,13 @@ class PersistentNetwork:
                         continue
                     LOGGER.info("Removing pcap record for deleted file: %s", filename)
                     del self._data["pcaps"][filename]
+                    changed = True
 
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
                 self._ensure_file_permissions(str(pcap_file))
                 if pcap_file.name not in self._data.get("pcaps", {}):
+                    changed = True
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
                     stat = pcap_file.stat()
                     # ENHANCED: Better BSSID extraction that handles various filename formats
@@ -216,10 +220,15 @@ class PersistentNetwork:
                     # Preserve a newer record written while this file was analyzed.
                     self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
-            # Save the synced state
-            if pcap_files:
+            # Save updates even when the directory becomes empty. Otherwise
+            # records for deleted captures remain in history and reports.
+            if changed:
                 self.save()
-                LOGGER.info(f"Synced {len(pcap_files)} pcap files with filesystem")
+                LOGGER.info(
+                    "Synced %d PCAP files with filesystem (%d records)",
+                    len(pcap_files),
+                    len(self._data.get("pcaps", {})),
+                )
 
         except Exception:
             LOGGER.exception("Failed to sync pcaps with filesystem")
