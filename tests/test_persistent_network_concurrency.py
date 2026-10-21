@@ -78,3 +78,22 @@ def test_capture_storage_permissions_are_owner_only(tmp_path):
     assert stat.S_IMODE(Path(network.filepath).stat().st_mode) == 0o600
     assert stat.S_IMODE((tmp_path / "handshakes_summary.json").stat().st_mode) == 0o600
     assert stat.S_IMODE((tmp_path / "handshakes_summary.md").stat().st_mode) == 0o600
+
+def test_analysis_getter_returns_detached_nested_records(tmp_path):
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    record = {
+        "bssid": "00:11:22:33:44:55",
+        "analysis": [{"type": "PMKID", "metadata": {"ssid": "Test-AP"}}],
+    }
+    with network._state_lock:
+        network._data.setdefault("pcaps", {})["snapshot.pcap"] = record
+
+    result = network.get_analysis_for_bssid("00:11:22:33:44:55")
+    result[0]["metadata"]["ssid"] = "mutated outside lock"
+
+    stored = network.get_analysis_for_bssid("00:11:22:33:44:55")
+    assert stored[0]["metadata"]["ssid"] == "Test-AP"
+
