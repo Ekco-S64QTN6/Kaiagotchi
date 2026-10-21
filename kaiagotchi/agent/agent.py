@@ -120,6 +120,7 @@ class Agent(kaiagotchiBase):
             state_lock=self.state_lock,
             view=self._view,
         )
+        self.interface_name = self.monitoring_agent.interface
         # Keep every channel operation on the capture dongle. [main].iface can
         # name the internet-facing adapter (for example wlan0), while the
         # MonitoringAgent intentionally defaults to wlan1.
