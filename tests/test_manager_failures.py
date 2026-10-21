@@ -119,3 +119,67 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
     monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
 
     assert await cli.run_agent() == 1
+
+
+
+@pytest.mark.asyncio
+async def test_cli_observes_manager_bootstrap_failure_before_splash_finishes(monkeypatch):
+    class FakeView:
+        def __init__(self, _config):
+            self.suppress_output = False
+            self.display = None
+
+        def get_snapshot_dict(self):
+            return {}
+
+        async def stop(self):
+            return None
+
+    class BlockingSplash:
+        def __init__(self):
+            self.cancelled = False
+
+        async def show(self, duration=0):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.cancelled = True
+
+    class FailingManager:
+        def __init__(self, **_kwargs):
+            pass
+
+        async def bootstrap(self):
+            raise RuntimeError("bootstrap failed immediately")
+
+    args = SimpleNamespace(
+        debug=False,
+        config="test-config.toml",
+        manual=False,
+        no_web=True,
+        web=None,
+        port=None,
+        host=None,
+        tui=False,
+    )
+    splash = BlockingSplash()
+    monkeypatch.setattr(cli, "parse_arguments", lambda: args)
+    monkeypatch.setattr(cli, "setup_logging", lambda _debug=False: None)
+    monkeypatch.setattr(cli, "load_config", lambda _path: {"log": {"level": "INFO"}})
+    monkeypatch.setattr(cli, "View", FakeView)
+    monkeypatch.setattr(cli, "SplashScreen", lambda: splash)
+    monkeypatch.setattr(cli, "WebServer", None)
+    monkeypatch.setattr(cli, "Manager", FailingManager)
+    monkeypatch.setattr(cli, "Agent", None)
+    monkeypatch.setattr(cli, "_shutdown_event", asyncio.Event())
+
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
+
+    # The old implementation waited for the 15-second splash before noticing
+    # that bootstrap had already failed. This bound makes the regression test
+    # fail instead of hanging if startup stops observing manager_task.
+    exit_code = await asyncio.wait_for(cli.run_agent(), timeout=1.0)
+
+    assert exit_code == 1
+    assert splash.cancelled is True
