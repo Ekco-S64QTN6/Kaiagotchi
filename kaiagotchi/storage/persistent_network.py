@@ -1037,7 +1037,8 @@ class PersistentNetwork:
         return self._data.get("stations", {}).get(sta_mac.upper())
 
     def get_pcap_records(self) -> dict[str, Any]:
-        return dict(self._data.get("pcaps", {}))
+        """Return a detached snapshot so callers cannot mutate persisted state."""
+        return deepcopy(self._data.get("pcaps", {}))
 
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
