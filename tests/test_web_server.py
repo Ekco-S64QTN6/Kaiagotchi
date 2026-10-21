@@ -1,6 +1,10 @@
 """
 Tests for the Kaiagotchi Cyber-Deck web server and telemetry serialization.
 """
+from types import SimpleNamespace
+
+import pytest
+
 from kaiagotchi.ui.web.server import WebServer, _generate_mock_snapshot
 from kaiagotchi.config.manager import load_config as load_legacy_config
 
@@ -123,3 +127,70 @@ def test_mock_telemetry_is_used_only_without_a_live_provider():
     snapshot = WebServer()._get_latest_snapshot()
     assert snapshot["aps"]
     assert snapshot["stations"]
+
+
+def test_web_server_stop_signals_worker_without_scheduling_duplicate_cleanup(monkeypatch):
+    import kaiagotchi.ui.web.server as server_module
+
+    server = WebServer()
+    server._started = True
+    server._loop = SimpleNamespace(is_running=lambda: True)
+
+    class FakeThread:
+        def __init__(self):
+            self.alive = True
+            self.joined = False
+
+        def is_alive(self):
+            return self.alive
+
+        def join(self, timeout=None):
+            self.joined = True
+            self.alive = False
+
+    thread = FakeThread()
+    server._thread = thread
+    monkeypatch.setattr(
+        server_module.asyncio,
+        "run_coroutine_threadsafe",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("cleanup must be owned by _serve")),
+    )
+
+    server.stop()
+
+    assert server._stop_event.is_set()
+    assert thread.joined
+    assert not server._started
+
+
+@pytest.mark.asyncio
+async def test_web_server_cleans_runner_when_site_start_fails(monkeypatch):
+    import kaiagotchi.ui.web.server as server_module
+
+    class FakeRunner:
+        def __init__(self, _app):
+            self.cleaned = False
+            self.setup_called = False
+
+        async def setup(self):
+            self.setup_called = True
+
+        async def cleanup(self):
+            self.cleaned = True
+
+    class FakeSite:
+        def __init__(self, _runner, _host, _port):
+            pass
+
+        async def start(self):
+            raise OSError("simulated bind failure")
+
+    monkeypatch.setattr(server_module.web, "AppRunner", FakeRunner)
+    monkeypatch.setattr(server_module.web, "TCPSite", FakeSite)
+    server = WebServer({"web": {"host": "127.0.0.1", "port": 0}})
+
+    with pytest.raises(OSError, match="simulated bind failure"):
+        await server._serve()
+
+    assert server._runner.setup_called
+    assert server._runner.cleaned
