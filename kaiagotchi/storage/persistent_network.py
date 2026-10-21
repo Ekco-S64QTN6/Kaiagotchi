@@ -1149,6 +1149,15 @@ class PersistentNetwork:
         return deepcopy(self._data.get("pcaps", {}))
 
     @_state_locked
+    def get_capture_analysis_count(self) -> int:
+        """Count analyzed captures without copying the complete PCAP archive."""
+        return sum(
+            len(record.get("analysis") or [])
+            for record in self._data.get("pcaps", {}).values()
+            if isinstance(record, dict)
+        )
+
+    @_state_locked
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:
