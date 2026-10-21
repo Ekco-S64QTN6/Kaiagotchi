@@ -136,11 +136,11 @@ class RewardEngine:
                 }
             else:
                 access_points = (
-                    network.get("access_points", {})
+                    network.get("access_points")
                     if isinstance(network, dict)
-                    else {}
+                    else None
                 )
-                if isinstance(access_points, dict):
+                if "access_points" in network and isinstance(access_points, dict):
                     aps_inventory_available = True
                     current_aps = {
                         str(ap.get("bssid") or key).strip().upper()
