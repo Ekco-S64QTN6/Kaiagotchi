@@ -120,17 +120,21 @@ class Manager:
                 self.system_state = {}
 
         # ---------- AGENT (owns AI subsystems + monitoring) ----------
-        if Agent:
-            try:
-                self.agent = Agent(
-                    config=self.config,
-                    view=self.view,
-                    system_state=self.system_state,
-                    state_lock=self._state_lock,
-                )
-                logger.info("Manager: Agent initialized (shares View and SystemState)")
-            except Exception:
-                logger.exception("Manager: Agent initialization failed")
+        if Agent is None:
+            raise RuntimeError(
+                "Agent implementation is unavailable; Manager cannot start without it"
+            )
+
+        try:
+            self.agent = Agent(
+                config=self.config,
+                view=self.view,
+                system_state=self.system_state,
+                state_lock=self._state_lock,
+            )
+        except Exception as exc:
+            logger.exception("Manager: Agent initialization failed")
+            raise RuntimeError("Manager could not initialize the Agent") from exc
 
         self._bootstrap_done = True
         logger.info("Manager: bootstrap complete")
@@ -162,20 +166,28 @@ class Manager:
             except Exception:
                 logger.exception("Manager: ticker start failed")
 
+        if self.agent is None:
+            raise RuntimeError("Manager has no Agent; bootstrap did not complete")
+
         self._run_event = asyncio.Event()
         self._started = True
         self._stopping = False
 
         # The Agent runs its own monitoring / decision / UI loops and blocks
-        # until shutdown, so start it last.
-        if self.agent:
-            try:
-                await self.agent.start()
-                logger.info("Manager: Agent finished")
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                logger.exception("Manager: agent.start() failed")
+        # until shutdown, so start it last. Do not swallow failures here:
+        # callers must know if the core service stopped unexpectedly.
+        try:
+            await self.agent.start()
+            logger.info("Manager: Agent finished")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("Manager: agent.start() failed")
+            raise RuntimeError("Manager Agent runtime failed") from exc
+        finally:
+            self._started = False
+            if self._run_event is not None:
+                self._run_event.set()
 
     async def stop(self) -> None:
         """Stop the Agent, ticker, and View safely."""

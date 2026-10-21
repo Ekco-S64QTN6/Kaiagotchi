@@ -361,6 +361,7 @@ async def run_agent() -> int:
                 raise RuntimeError("No Manager or Agent implementation available to start Kaiagotchi")
             logger.info("No Manager available — starting legacy Agent directly")
 
+            fallback_exit_code = 0
             try:
                 # Create agent — pass the shared view so it doesn't create a
                 # second View that overwrites the display's state provider.
@@ -431,8 +432,9 @@ async def run_agent() -> int:
                     # Agent exited on its own
                     try:
                         await agent_start_task
-                    except Exception as e:
-                        logger.error(f"Agent task failed: {e}")
+                    except Exception:
+                        logger.exception("Agent task failed")
+                        fallback_exit_code = 1
 
                 if shutdown_wait in done:
                     logger.info("Shutdown event triggered")
@@ -449,6 +451,7 @@ async def run_agent() -> int:
                 logger.info("Main task cancelled")
             except Exception as e:
                 logger.exception(f"Fatal error in agent: {e}")
+                fallback_exit_code = 1
             finally:
                 if agent:
                     try:
@@ -456,7 +459,7 @@ async def run_agent() -> int:
                     except Exception as stop_err:
                         logger.error(f"Error stopping agent: {stop_err}")
 
-            return 0 # Agent path returns 0 on successful completion/shutdown
+            return fallback_exit_code
 
         # ------------------------------------------------------------------
         # 3. Run Manager (Preferred)
@@ -479,11 +482,13 @@ async def run_agent() -> int:
             if shutdown_task in done:
                 logger.info("Shutdown event triggered")
 
+            manager_exit_code = 0
             if main_task in done:
                 try:
                     await main_task
-                except Exception as e:
-                    logger.error(f"Manager task failed: {e}")
+                except Exception:
+                    logger.exception("Manager task failed")
+                    manager_exit_code = 1
 
             # Cancel pending tasks
             for task in pending:
@@ -492,6 +497,9 @@ async def run_agent() -> int:
                     await task
                 except asyncio.CancelledError:
                     pass
+
+            if manager_exit_code:
+                return manager_exit_code
 
         # Normal exit
         return 0
