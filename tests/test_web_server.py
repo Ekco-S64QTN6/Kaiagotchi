@@ -94,3 +94,32 @@ def test_serialize_does_not_invent_metrics():
     assert out["total_packets"] is None
     assert out["current_rssi"] is None
     assert out["current_channel"] is None
+
+
+def test_empty_live_state_does_not_fabricate_network_activity():
+    server = WebServer(state_provider=lambda: {})
+    snapshot = server._get_latest_snapshot()
+
+    assert snapshot["aps"] == []
+    assert snapshot["stations"] == []
+    assert snapshot["aps_count"] == 0
+    assert snapshot["pwnd_count"] == 0
+    assert snapshot["packet_rate"] is None
+
+
+def test_live_provider_failure_returns_empty_snapshot_not_mock_data():
+    def broken_provider():
+        raise RuntimeError("simulated provider failure")
+
+    server = WebServer(state_provider=broken_provider)
+    snapshot = server._get_latest_snapshot()
+
+    assert snapshot["aps"] == []
+    assert snapshot["stations"] == []
+    assert snapshot["aps_count"] == 0
+
+
+def test_mock_telemetry_is_used_only_without_a_live_provider():
+    snapshot = WebServer()._get_latest_snapshot()
+    assert snapshot["aps"]
+    assert snapshot["stations"]
