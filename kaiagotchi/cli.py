@@ -210,7 +210,7 @@ async def run_agent() -> int:
         shutdown_requested += 1
         if shutdown_requested > 1:
             logger.warning("Force exiting Kaiagotchi immediately...")
-            os._exit(0)
+            os._exit(130)
         logger.info("Signal received, initiating shutdown...")
         _shutdown_event.set()
         if view and view.display:
