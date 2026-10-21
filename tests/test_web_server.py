@@ -30,6 +30,13 @@ def test_web_server_initialization():
     assert server._hz == 15.0
 
 
+
+def test_web_server_defaults_to_loopback():
+    """The unauthenticated telemetry UI is local-only unless opted into LAN."""
+    server = WebServer()
+    assert server._host == "127.0.0.1"
+
+
 def test_serialize_snapshot():
     """View snapshot (airodump-style string fields) converts to the wire format."""
     server = WebServer()
