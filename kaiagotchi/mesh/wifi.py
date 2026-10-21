@@ -12,12 +12,12 @@ CHANNEL_PLANS = {
     'FCC': {  # USA
         '2.4GHz': list(range(1, 12)),  # Channels 1-11
         '5GHz': [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144, 149, 153, 157, 161, 165],
-        '6GHz': list(range(1, 94))  # Channels 1-93
+        '6GHz': list(range(1, 234, 4))  # 20 MHz channels 1, 5, ..., 233
     },
     'ETSI': {  # Europe
         '2.4GHz': list(range(1, 14)),  # Channels 1-13
         '5GHz': [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140],
-        '6GHz': list(range(1, 94))  # With restrictions
+        '6GHz': list(range(1, 94, 4))  # 20 MHz channels 1, 5, ..., 93 in the ETSI allocation
     },
     # Add more regulatory domains as needed
 }
@@ -48,7 +48,8 @@ class WiFiBand:
             channels.extend(range(149, 166, 4))
             return channels
         elif self.name == '6GHz':
-            return list(range(1, 94))  # Standard 6GHz channels
+            # 20 MHz channel centers are numbered 1, 5, 9, ..., 233.
+            return list(range(1, 234, 4))
         else:
             return []
 
@@ -66,95 +67,77 @@ BANDS = {
 
 def freq_to_channel(freq: int) -> int:
     """
-    Convert a Wi-Fi frequency (in MHz) to its corresponding channel number.
-    Supports 2.4 GHz, 5 GHz, and 6 GHz Wi-Fi bands.
+    Convert a Wi-Fi channel-center frequency in MHz to its channel number.
 
-    Args:
-        freq: The frequency in MHz.
-
-    Returns:
-        The Wi-Fi channel as an integer.
+    Frequency identifies the band, so this conversion is unambiguous even where
+    channel numbers overlap between the 2.4 GHz and 6 GHz bands. Only standard
+    20 MHz channel centers represented by this module are accepted.
 
     Raises:
-        ValueError: If the frequency is invalid.
+        ValueError: If the frequency is not a supported channel center.
     """
-    # 2.4 GHz Wi-Fi channels
-    if 2412 <= freq <= 2472:  # 2.4 GHz standard channels
-        return ((freq - 2412) // 5) + 1
-    elif freq == 2484:  # Channel 14 (Japan)
+    # 2.4 GHz: channels 1–13 are spaced 5 MHz apart; channel 14 is special.
+    if 2412 <= freq <= 2472 and (freq - 2412) % 5 == 0:
+        return (freq - 2412) // 5 + 1
+    if freq == 2484:
         return 14
 
-    # 5 GHz Wi-Fi channels
-    elif 5150 <= freq <= 5350:  # UNII-1 (36-64)
-        return ((freq - 5180) // 20) + 36
-    elif 5470 <= freq <= 5725:  # UNII-2 (100-144)
-        return ((freq - 5500) // 20) + 100
-    elif 5745 <= freq <= 5850:  # UNII-3 (149-165)
-        return ((freq - 5745) // 20) + 149
+    # 5 GHz channel centers follow 5000 + 5 * channel (e.g. ch 40 = 5200 MHz).
+    if BANDS['5GHz'].start_freq <= freq <= BANDS['5GHz'].end_freq and (freq - 5000) % 5 == 0:
+        channel = (freq - 5000) // 5
+        if channel in BANDS['5GHz'].channels:
+            return channel
 
-    # 6 GHz Wi-Fi channels
-    elif 5925 <= freq <= 7125:  # 6 GHz band
-        return ((freq - 5950) // 20) + 11
+    # 6 GHz 20 MHz channel centers are 5950 + 5 * channel (ch 1 = 5955 MHz).
+    if 5955 <= freq <= 7115 and (freq - 5950) % 5 == 0:
+        channel = (freq - 5950) // 5
+        if channel in BANDS['6GHz'].channels:
+            return channel
 
-    raise ValueError(f"Invalid Wi-Fi frequency: {freq} MHz")
+    raise ValueError(f"Invalid Wi-Fi channel-center frequency: {freq} MHz")
 
-
-def channel_to_freq(channel: int) -> int:
+def channel_to_freq(channel: int, band: str | None = None) -> int:
     """
-    Convert a Wi-Fi channel number to its center frequency.
+    Convert a channel number to its center frequency in MHz.
 
-    Args:
-        channel: The Wi-Fi channel number.
-
-    Returns:
-        The center frequency in MHz.
+    When band is omitted, overlapping channel numbers default to their legacy
+    interpretation (channels 1–14 are 2.4 GHz). Pass band='6GHz' to convert
+    overlapping 6 GHz channels explicitly.
 
     Raises:
-        ValueError: If the channel is invalid.
+        ValueError: If the channel is unsupported in the requested band.
     """
-    # 2.4 GHz band
-    if 1 <= channel <= 13:
-        return 2412 + (channel - 1) * 5
-    elif channel == 14:
-        return 2484
+    resolved_band = get_band_for_channel(channel, band=band)
+    if resolved_band == '2.4GHz':
+        return 2484 if channel == 14 else 2412 + (channel - 1) * 5
+    if resolved_band == '5GHz':
+        return 5000 + channel * 5
+    # 6 GHz: channel 1 = 5955 MHz, channel 5 = 5975 MHz, etc.
+    return 5950 + channel * 5
 
-    # 5 GHz band
-    elif 36 <= channel <= 64:
-        return 5180 + (channel - 36) * 20
-    elif 100 <= channel <= 144:
-        return 5500 + (channel - 100) * 20
-    elif 149 <= channel <= 165:
-        return 5745 + (channel - 149) * 20
-
-    # 6 GHz band
-    elif 1 <= channel <= 93:  # 6GHz channels are 1-93
-        return 5950 + (channel - 1) * 20
-
-    raise ValueError(f"Invalid Wi-Fi channel: {channel}")
-
-
-def get_band_for_channel(channel: int) -> str:
+def get_band_for_channel(channel: int, band: str | None = None) -> str:
     """
-    Get the frequency band for a given channel.
+    Resolve the band for a channel number.
 
-    Args:
-        channel: The Wi-Fi channel number.
-
-    Returns:
-        The band name ('2.4GHz', '5GHz', '6GHz').
+    Channel numbers 1–14 overlap between 2.4 GHz and 6 GHz, so omission of
+    band preserves the legacy 2.4 GHz interpretation. Supply band to select a
+    band explicitly and validate the channel against that band's channel grid.
     """
-    if 1 <= channel <= 14:
+    if band is not None:
+        if band not in BANDS:
+            raise ValueError(f"Unknown Wi-Fi band: {band}")
+        if channel not in BANDS[band].channels:
+            raise ValueError(f"Invalid Wi-Fi channel {channel} for band {band}")
+        return band
+
+    # Preserve the API's historic default for ambiguous channel IDs.
+    if channel in BANDS['2.4GHz'].channels:
         return '2.4GHz'
-    elif 36 <= channel <= 165:
+    if channel in BANDS['5GHz'].channels:
         return '5GHz'
-    elif 1 <= channel <= 93:
-        # 6GHz channels (1–93) overlap numerically with 2.4GHz channels (1–14).
-        # The 2.4GHz branch above takes priority, so this branch is only reachable
-        # for channels 15–35 which belong to NO band — raise instead of mislabelling.
-        raise ValueError(f"Unknown band for channel: {channel}")
-    else:
-        raise ValueError(f"Unknown band for channel: {channel}")
-
+    if channel in BANDS['6GHz'].channels:
+        return '6GHz'
+    raise ValueError(f"Unknown band for channel: {channel}")
 
 def get_non_overlapping_channels(regulatory_domain: str = 'FCC') -> list[int]:
     """
@@ -177,22 +160,20 @@ def get_non_overlapping_channels(regulatory_domain: str = 'FCC') -> list[int]:
     return non_overlapping
 
 
-def is_valid_channel(channel: int, regulatory_domain: str = 'FCC') -> bool:
+def is_valid_channel(
+    channel: int,
+    regulatory_domain: str = 'FCC',
+    band: str | None = None,
+) -> bool:
     """
-    Check if a channel is valid for the regulatory domain.
+    Check whether a channel is included in a regulatory domain's plan.
 
-    Args:
-        channel: The channel number to check.
-        regulatory_domain: Regulatory domain to check against.
-
-    Returns:
-        True if the channel is valid.
+    The optional band argument disambiguates overlapping 2.4 GHz and 6 GHz
+    channel numbers. Without it, the legacy 2.4 GHz default is retained.
     """
     plan = CHANNEL_PLANS.get(regulatory_domain, CHANNEL_PLANS['FCC'])
-
-    band = get_band_for_channel(channel)
-    return channel in plan.get(band, [])
-
+    resolved_band = get_band_for_channel(channel, band=band)
+    return channel in plan.get(resolved_band, [])
 
 def get_channel_range(band: str) -> tuple[int, int]:
     """
@@ -207,6 +188,6 @@ def get_channel_range(band: str) -> tuple[int, int]:
     bands = {
         '2.4GHz': (1, 14),
         '5GHz': (36, 165),
-        '6GHz': (1, 93)
+        '6GHz': (1, 233)
     }
     return bands.get(band, (0, 0))
