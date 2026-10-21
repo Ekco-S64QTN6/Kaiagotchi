@@ -103,3 +103,31 @@ def test_cleanup_preserves_directory_when_pcap_was_not_archived(tmp_path, monkey
     assert capture_dir.is_dir()
     assert pcap.read_bytes() == b"unarchived capture"
     assert monitor._capture_tmp_dir == capture_dir
+
+
+
+@pytest.mark.asyncio
+async def test_launch_refuses_to_replace_session_with_unarchived_pcap(tmp_path, monkeypatch):
+    monkeypatch.setattr(monitoring_module.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(monitoring_module.shutil, "which", lambda _command: "/usr/bin/airodump-ng")
+    monkeypatch.setattr(monitoring_module, "PCAP_STORAGE_DIR", tmp_path / "archive")
+
+    capture_dir = Path(
+        monitoring_module.tempfile.mkdtemp(
+            prefix=f"kaiagotchi_{os.getpid()}_",
+            dir=str(tmp_path),
+        )
+    )
+    os.chmod(capture_dir, 0o700)
+    pcap = capture_dir / "capture-01.cap"
+    pcap.write_bytes(b"unarchived")
+
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    monitor._capture_tmp_dir = capture_dir
+
+    with pytest.raises(RuntimeError, match="Previous PCAP session is still unarchived"):
+        await monitor._launch_airodump()
+
+    assert monitor._capture_tmp_dir == capture_dir
+    assert pcap.read_bytes() == b"unarchived"
+    assert len(list(tmp_path.glob(f"kaiagotchi_{os.getpid()}_*"))) == 1
