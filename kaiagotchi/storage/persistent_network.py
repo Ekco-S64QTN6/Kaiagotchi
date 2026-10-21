@@ -677,7 +677,7 @@ class PersistentNetwork:
                     hashcat_22000 = ""
                     hashcat_16800 = ""
                     if pmkid:
-                        hashcat_22000 = f"WPA*01*{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
+                        hashcat_22000 = f"WPA*01*{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}***"
                         hashcat_16800 = f"{pmkid}*{bssid_clean}*{client_clean}*{ssid_hex}"
 
                     handshakes_list.append({
