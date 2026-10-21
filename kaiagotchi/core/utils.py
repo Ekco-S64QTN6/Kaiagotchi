@@ -6,6 +6,8 @@ import logging
 import os
 import pathlib
 import stat
+import shutil
+from pathlib import PurePosixPath, PureWindowsPath
 import sys
 import zipfile
 from dataclasses import dataclass
@@ -367,18 +369,71 @@ def download_file(url: str, dest: str, timeout: int = 60) -> bool:
         return False
 
 def unzip(src: str, dest: str, strip_dirs: int = 0) -> bool:
-    """Unzips an archive, optionally stripping a number of leading directories."""
-    utils_logger.info(f"Unzipping {src} to {dest}")
+    """
+    Safely extract a ZIP archive and optionally strip leading path components.
+
+    All member names are validated before writing any files so a malicious
+    archive cannot use absolute paths, parent traversal, or symlink entries to
+    escape the selected destination directory.
+    """
+    utils_logger.info("Unzipping %s to %s", src, dest)
+    if strip_dirs < 0:
+        utils_logger.error("strip_dirs must be non-negative")
+        return False
+
+    root = pathlib.Path(dest).resolve()
     try:
-        with zipfile.ZipFile(src, 'r') as zip_ref:
-            # Simple unzip without stripping (for now)
-            zip_ref.extractall(dest)
+        with zipfile.ZipFile(src, "r") as zip_ref:
+            entries: list[tuple[zipfile.ZipInfo, pathlib.Path, bool]] = []
+            for info in zip_ref.infolist():
+                raw_name = info.filename
+                posix_name = PurePosixPath(raw_name)
+                windows_name = PureWindowsPath(raw_name)
+
+                if (
+                    not raw_name
+                    or posix_name.is_absolute()
+                    or windows_name.is_absolute()
+                    or bool(windows_name.drive)
+                    or ".." in posix_name.parts
+                    or ".." in windows_name.parts
+                ):
+                    raise ValueError(f"Unsafe ZIP member path: {raw_name!r}")
+
+                mode = info.external_attr >> 16
+                if stat.S_ISLNK(mode):
+                    raise ValueError(f"Symlink ZIP member is not allowed: {raw_name!r}")
+
+                parts = [part for part in posix_name.parts if part not in ("", ".")]
+                if len(parts) <= strip_dirs:
+                    continue
+
+                relative_path = pathlib.Path(*parts[strip_dirs:])
+                target = (root / relative_path).resolve()
+                if not target.is_relative_to(root):
+                    raise ValueError(f"ZIP member escapes destination: {raw_name!r}")
+
+                entries.append((info, target, info.is_dir()))
+
+            # Only begin extraction after every archive member has passed checks.
+            root.mkdir(parents=True, exist_ok=True)
+            for info, target, is_dir in entries:
+                if is_dir:
+                    target.mkdir(parents=True, exist_ok=True)
+                    continue
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with zip_ref.open(info, "r") as source, open(target, "wb") as output:
+                    shutil.copyfileobj(source, output)
+
         return True
     except zipfile.BadZipFile:
-        utils_logger.error(f"Invalid ZIP file: {src}")
+        utils_logger.error("Invalid ZIP file: %s", src)
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        utils_logger.error("Failed to safely unzip %s: %s", src, e)
         return False
     except Exception as e:
-        utils_logger.error(f"Failed to unzip {src}: {e}")
+        utils_logger.error("Failed to unzip %s: %s", src, e)
         return False
 
 def save_config(config: dict[str, Any], path: str) -> bool:
