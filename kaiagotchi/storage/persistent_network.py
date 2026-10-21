@@ -163,10 +163,10 @@ class PersistentNetwork:
                 payload["_last_saved"] = now_cst_iso()
                 success = atomically_save_data(self.filepath, payload, fmt="json")
                 if success:
-                    # Ensure proper permissions after saving
+                    # Ensure proper permissions after saving. Summary reports
+                    # are refreshed by lifecycle/PCAP mutation paths, not every
+                    # metadata save, to keep this hot path bounded.
                     self._ensure_file_permissions(self.filepath)
-                    # Keep reports ordered with the persisted snapshots too.
-                    self.generate_reports()
                 return success
         except Exception:
             LOGGER.exception("Failed to save network history")
@@ -176,6 +176,9 @@ class PersistentNetwork:
         """Run the expensive PCAP filesystem sync in background so __init__ returns quickly."""
         try:
             self._sync_pcaps_with_filesystem()
+            # Startup may repair metadata from the filesystem. Emit one report
+            # set after that reconciliation completes instead of from save().
+            self.generate_reports()
         except Exception:
             LOGGER.exception("Deferred startup sync failed")
 
@@ -657,7 +660,8 @@ class PersistentNetwork:
             with self._state_lock:
                 self._data.setdefault("pcaps", {})[filename] = record
             self.enforce_storage_limit()
-            self.save()
+            if self.save():
+                self.generate_reports()
             LOGGER.info("Archived PCAP %s for BSSID %s", filename, bssid)
             return str(dst)
         except Exception:
@@ -693,7 +697,8 @@ class PersistentNetwork:
             with self._state_lock:
                 self._data.setdefault("pcaps", {})[filename] = record
             self.enforce_storage_limit()
-            self.save()
+            if self.save():
+                self.generate_reports()
             LOGGER.info("Registered PCAP record for %s (%s bytes)", bssid, size)
         except Exception:
             LOGGER.exception("Failed to add PCAP record (metadata only)")
@@ -742,7 +747,8 @@ class PersistentNetwork:
                         current["analysis"] = deepcopy(record.get("analysis", []) or [])
                         if record.get("bssid"):
                             current["bssid"] = record["bssid"]
-            self.save()
+            if self.save():
+                self.generate_reports()
             LOGGER.info("Completed re-analysis of all pcap files")
         except Exception:
             LOGGER.exception("Failed to re-analyze pcaps")
