@@ -80,7 +80,7 @@ class InterfaceActionManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            stdout, stderr = await self._communicate_with_timeout(proc, timeout=5.0, command=' '.join(('iw', 'dev', iface_to_use, 'set', 'channel', str(next_channel))))
 
             if proc.returncode == 0:
                 self.logger.debug(f"Hopped to channel {next_channel} via iw")
@@ -121,7 +121,7 @@ class InterfaceActionManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            stdout, stderr = await self._communicate_with_timeout(proc, timeout=5.0, command=' '.join(('iwconfig', interface, 'channel', str(channel))))
 
             if proc.returncode == 0:
                 self.logger.info(f"iwconfig hop success: {interface} → channel {channel}")
@@ -170,7 +170,7 @@ class InterfaceActionManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            stdout, stderr = await self._communicate_with_timeout(proc, timeout=3.0, command=f'iw dev {interface} info')
             if proc.returncode != 0:
                 return {}
 
@@ -195,7 +195,7 @@ class InterfaceActionManager:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3.0)
+            stdout, stderr = await self._communicate_with_timeout(proc, timeout=3.0, command=f'iwconfig {interface}')
             if proc.returncode != 0:
                 return {}
 
@@ -224,6 +224,48 @@ class InterfaceActionManager:
         return 0
 
     # ------------------------------------------------------------------
+    async def _communicate_with_timeout(
+        self,
+        proc: asyncio.subprocess.Process,
+        *,
+        timeout: float,
+        command: str,
+    ) -> tuple[bytes, bytes]:
+        """Communicate with a subprocess under a deadline and always reap it.
+
+        Shield the communication task so timeout cancellation does not interrupt
+        pipe draining before we terminate the child. Cancellation follows the
+        same cleanup path so shutdown cannot orphan a privileged tool.
+        """
+        communicate_task = asyncio.create_task(proc.communicate())
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(communicate_task),
+                timeout=max(0.01, float(timeout)),
+            )
+        except (TimeoutError, asyncio.CancelledError):
+            if proc.returncode is None:
+                try:
+                    proc.kill()
+                except (ProcessLookupError, OSError):
+                    pass
+
+            # Killing the process should close its pipes and let communicate()
+            # reap it. Bound this cleanup too, in case a descendant inherited a
+            # pipe handle or a test double violates subprocess semantics.
+            try:
+                await asyncio.wait_for(asyncio.shield(communicate_task), timeout=1.0)
+            except TimeoutError:
+                communicate_task.cancel()
+                await asyncio.gather(communicate_task, return_exceptions=True)
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=1.0)
+                except (TimeoutError, ProcessLookupError):
+                    self.logger.error("Timed out reaping wireless command %s", command)
+            except Exception:
+                self.logger.debug("Error draining terminated command %s", command, exc_info=True)
+            raise
+
     async def _run_checked(self, *command: str) -> None:
         """Run one interface command and fail if the process reports an error."""
         proc = await asyncio.create_subprocess_exec(
@@ -231,7 +273,7 @@ class InterfaceActionManager:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _stdout, stderr = await proc.communicate()
+        _stdout, stderr = await self._communicate_with_timeout(proc, timeout=5.0, command=' '.join(command))
         if proc.returncode != 0:
             detail = stderr.decode(errors="replace").strip()
             raise RuntimeError(
@@ -304,8 +346,15 @@ class InterfaceActionManager:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await proc.communicate()
-            self.logger.info("Network services restarted.")
+                _stdout, stderr = await self._communicate_with_timeout(
+                    proc, timeout=15.0, command=f"systemctl restart {svc}"
+                )
+                if proc.returncode != 0:
+                    self.logger.warning(
+                        "systemctl restart %s exited %s: %s",
+                        svc, proc.returncode, stderr.decode(errors="replace").strip(),
+                    )
+            self.logger.info("Network services restart attempts completed.")
         except Exception as e:
             self.logger.warning(f"Failed to restart network services: {e}")
 
