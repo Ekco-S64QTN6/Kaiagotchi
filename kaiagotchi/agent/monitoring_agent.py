@@ -331,6 +331,22 @@ class MonitoringAgent:
                 "airodump-ng not found. Install aircrack-ng: sudo pacman -S aircrack-ng"
             )
 
+        # Don't lose access to a previous session if its PCAP archive failed.
+        # Refuse to start a second session while an old capture remains private
+        # and unarchived; the operator can retry archiving it first.
+        if self._capture_tmp_dir is not None and self._capture_tmp_dir.exists():
+            leftovers = [
+                path
+                for pattern in ("*.cap", "*.pcap", "*.pcapng")
+                for path in self._capture_tmp_dir.glob(pattern)
+            ]
+            if leftovers:
+                raise RuntimeError(
+                    "Previous PCAP session is still unarchived in "
+                    f"{self._capture_tmp_dir}; archive it before restarting"
+                )
+            self._cleanup_capture_temp_dir()
+
         # airodump writes sensitive capture data. Use a unique directory whose
         # permissions are private to the current user instead of predictable
         # filenames directly under shared /tmp.
