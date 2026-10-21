@@ -400,8 +400,11 @@ async def run_agent() -> int:
                     pass
 
             except Exception as e:
-                logger.exception("Manager failed to boot; falling back to Agent start", exc_info=e)
-                mgr = None
+                # Manager bootstrap may already have constructed part of an Agent
+                # and started resources. Falling back to a second legacy Agent can
+                # duplicate resource owners and hide the original failure.
+                logger.exception("Manager failed to boot; refusing legacy fallback", exc_info=e)
+                raise RuntimeError("Manager startup failed") from e
 
         # If Manager wasn't used, fall back to legacy Agent
         # ------------------------------------------------------------------
