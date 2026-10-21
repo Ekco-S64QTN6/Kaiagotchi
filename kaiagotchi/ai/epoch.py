@@ -78,6 +78,9 @@ class Epoch:
         self._observation_ready = threading.Event()
         self._epoch_data_ready = threading.Event()
         self._lock = threading.Lock()
+        # Serialize epoch transitions without holding the shared state lock
+        # across synchronous persistence I/O.
+        self._next_lock = threading.Lock()
 
         # ARCHITECTURE FIX: Remove duplicate instances - use shared ones from Agent
         self._reward_engine: RewardEngine | None = None  # Will be set by Agent
@@ -201,125 +204,136 @@ class Epoch:
 
     # --------------------------------------------------------------
     def next(self) -> None:
-        """Advance epoch, compute reward with real network data, update mood persistence."""
-        with self._lock:
-            # ARCHITECTURE FIX: Validate shared dependencies
-            if self._reward_engine is None:
-                _LOG.error("EpochTracker.next() called before RewardEngine was set!")
-                return
+        """Advance the epoch, then persist its reward outside the shared state lock."""
+        # A separate lock prevents concurrent next() calls from overwriting the
+        # epoch snapshot while its reward is being persisted. Ordinary activity
+        # tracking can still acquire _lock during that I/O.
+        with self._next_lock:
+            with self._lock:
+                if self._reward_engine is None:
+                    _LOG.error("EpochTracker.next() called before RewardEngine was set!")
+                    return
 
-            if self._persistent_mood is None:
-                _LOG.error("EpochTracker.next() called before PersistentMood was set!")
-                return
+                if self._persistent_mood is None:
+                    _LOG.error("EpochTracker.next() called before PersistentMood was set!")
+                    return
 
-            # Detect activity using both action tracking and network state
-            network_activity = self.current_aps > 0 or self.current_stations > 0
-            has_activity = self.any_activity or network_activity or self.did_handshakes
+                # Detect activity using both action tracking and network state.
+                network_activity = self.current_aps > 0 or self.current_stations > 0
+                has_activity = self.any_activity or network_activity or self.did_handshakes
 
-            if not has_activity:
-                self.inactive_for += 1
-                self.active_for = 0
-            else:
-                self.active_for += 1
-                self.inactive_for = 0
-                self.sad_for = 0
-                self.bored_for = 0
+                if not has_activity:
+                    self.inactive_for += 1
+                    self.active_for = 0
+                else:
+                    self.active_for += 1
+                    self.inactive_for = 0
+                    self.sad_for = 0
+                    self.bored_for = 0
 
-            # Emotional thresholds
-            sad_thresh = self.config.get("personality", {}).get("sad_num_epochs", 5)
-            bored_thresh = self.config.get("personality", {}).get("bored_num_epochs", 3)
+                sad_thresh = self.config.get("personality", {}).get("sad_num_epochs", 5)
+                bored_thresh = self.config.get("personality", {}).get("bored_num_epochs", 3)
 
-            mood = "neutral"
-            if self.inactive_for >= sad_thresh:
-                self.sad_for += 1
-                mood = "sad"
-            elif self.inactive_for >= bored_thresh:
-                self.bored_for += 1
-                mood = "bored"
-            elif self.active_for > 0:
-                mood = "curious"
+                mood = "neutral"
+                if self.inactive_for >= sad_thresh:
+                    self.sad_for += 1
+                    mood = "sad"
+                elif self.inactive_for >= bored_thresh:
+                    self.bored_for += 1
+                    mood = "bored"
+                elif self.active_for > 0:
+                    mood = "curious"
 
-            now = time.time()
-            cpu = self._safe_metric(cpu_load, "load")
-            mem = self._safe_metric(mem_usage, "usage")
-            temp = temperature() or 0.0
-            self.epoch_duration = now - self.epoch_started
+                now = time.time()
+                cpu = self._safe_metric(cpu_load, "load")
+                mem = self._safe_metric(mem_usage, "usage")
+                temp = temperature() or 0.0
+                self.epoch_duration = now - self.epoch_started
 
-            # Build comprehensive state for RewardEngine with actual network data
-            reward_state = {
-                "metrics": {"uptime_seconds": self.epoch_duration},
-                "network": {
-                    "access_points": {ap.get("bssid", ""): ap for ap in self.aps_list},
-                    "current_channel": self._get_current_channel(),
-                },
-                "agents": {
-                    "epoch": {
-                        "handshakes": self.num_shakes,
+                reward_state = {
+                    "metrics": {"uptime_seconds": self.epoch_duration},
+                    "network": {
+                        "access_points": {ap.get("bssid", ""): ap for ap in self.aps_list},
+                        "current_channel": self._get_current_channel(),
+                    },
+                    "agents": {
+                        "epoch": {
+                            "handshakes": self.num_shakes,
+                            "handshakes_secured": self.num_shakes,
+                        }
+                    },
+                    "agent_mood": mood,
+                    "aps": self.current_aps,
+                    "aps_list": self.aps_list,
+                    "stations_list": self.stations_list,
+                    "recent_captures": self.recent_captures,
+                    "session_metrics": {
                         "handshakes_secured": self.num_shakes,
-                    }
-                },
-                "agent_mood": mood,
-                "aps": self.current_aps,
-                "aps_list": self.aps_list,
-                "stations_list": self.stations_list,
-                "recent_captures": self.recent_captures,
-                "session_metrics": {
-                    "handshakes_secured": self.num_shakes,
-                    "duration_seconds": self.epoch_duration,
+                        "duration_seconds": self.epoch_duration,
+                    },
                 }
-            }
 
-            # ARCHITECTURE FIX: Use shared RewardEngine instance
-            reward = float(self._reward_engine.evaluate(reward_state))
-            self._last_reward = reward
-            self._last_mood = mood
+                reward = float(self._reward_engine.evaluate(reward_state))
+                self._last_reward = reward
+                self._last_mood = mood
 
-            # Store comprehensive metrics
-            self._epoch_data = {
-                "epoch": self.epoch,
-                "duration_secs": self.epoch_duration,
-                "inactive_for_epochs": self.inactive_for,
-                "active_for_epochs": self.active_for,
-                "sad_for_epochs": self.sad_for,
-                "bored_for_epochs": self.bored_for,
-                "cpu_load": cpu,
-                "mem_usage": mem,
-                "temperature": temp,
-                "mood": mood,
-                "reward": reward,
-                "aps_count": self.current_aps,
-                "stations_count": self.current_stations,
-                "handshakes": self.num_shakes,
-                "deauths": self.num_deauths,
-                "associations": self.num_assocs,
-            }
+                # Store a detached, flat snapshot for persistence after _lock is released.
+                self._epoch_data = {
+                    "epoch": self.epoch,
+                    "duration_secs": self.epoch_duration,
+                    "inactive_for_epochs": self.inactive_for,
+                    "active_for_epochs": self.active_for,
+                    "sad_for_epochs": self.sad_for,
+                    "bored_for_epochs": self.bored_for,
+                    "cpu_load": cpu,
+                    "mem_usage": mem,
+                    "temperature": temp,
+                    "mood": mood,
+                    "reward": reward,
+                    "aps_count": self.current_aps,
+                    "stations_count": self.current_stations,
+                    "handshakes": self.num_shakes,
+                    "deauths": self.num_deauths,
+                    "associations": self.num_assocs,
+                }
+                persistent_mood = self._persistent_mood
+                epoch_data = dict(self._epoch_data)
 
-            # ARCHITECTURE FIX: Use shared PersistentMood instance
+                # Capture log values before opening the next epoch.
+                log_epoch = self.epoch
+                log_duration = self.epoch_duration
+                log_inactive = self.inactive_for
+                log_sad = self.sad_for
+                log_bored = self.bored_for
+                log_aps = self.current_aps
+
+                # Close this epoch while the state lock is held so activity that
+                # arrives during persistence belongs to the next one.
+                self._reset_counters()
+                self.epoch += 1
+                self.epoch_started = now
+
+            # PersistentMood.save() performs synchronous filesystem I/O. It must
+            # not hold _lock, which is also needed by monitor/action updates.
             try:
-                self._persistent_mood.apply_reward(reward, epoch_data=self._epoch_data)
+                persistent_mood.apply_reward(reward, epoch_data=epoch_data)
                 _LOG.debug("Shared PersistentMood updated with reward: %.3f", reward)
-            except Exception as e:
-                _LOG.warning("Failed to sync shared PersistentMood: %s", e)
+            except Exception as exc:
+                _LOG.warning("Failed to sync shared PersistentMood: %s", exc)
 
             self._epoch_data_ready.set()
-
             _LOG.info(
                 "[epoch %03d] mood=%-7s dur=%.1fs inactive=%d sad=%d bored=%d aps=%d reward=%.3f",
-                self.epoch,
+                log_epoch,
                 mood,
-                self.epoch_duration,
-                self.inactive_for,
-                self.sad_for,
-                self.bored_for,
-                self.current_aps,
+                log_duration,
+                log_inactive,
+                log_sad,
+                log_bored,
+                log_aps,
                 reward,
             )
 
-            self._reset_counters()
-            self.epoch += 1
-            self.epoch_started = now
-
-    # --------------------------------------------------------------
     def _get_current_channel(self) -> str:
         """Extract current channel from network data."""
         try:
