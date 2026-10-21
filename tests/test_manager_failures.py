@@ -114,5 +114,8 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
     monkeypatch.setattr(cli, "WebServer", None)
     monkeypatch.setattr(cli, "Manager", FailingManager)
     monkeypatch.setattr(cli, "_shutdown_event", asyncio.Event())
+    # Avoid replacing pytest's own process signal handlers during this test.
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
 
     assert await cli.run_agent() == 1
