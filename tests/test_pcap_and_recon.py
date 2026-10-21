@@ -11,6 +11,10 @@ class TestPcapAndRecon(unittest.TestCase):
         # Create a temporary directory for storage
         self.test_dir = tempfile.TemporaryDirectory()
         self.network = PersistentNetwork(storage_dir=self.test_dir.name)
+        # This test class manipulates the private PCAP registry directly.
+        # Wait for constructor startup reconciliation to finish so independent
+        # tests don't race its background disk scan.
+        self.network._sync_thread.join(timeout=5)
         # PersistentNetwork performs an initial filesystem reconciliation in a
         # daemon thread. Wait for that initialization to finish before this test
         # mutates the private in-memory records, otherwise the startup scan can
