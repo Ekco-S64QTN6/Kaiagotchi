@@ -11,6 +11,15 @@ class TestPcapAndRecon(unittest.TestCase):
         # Create a temporary directory for storage
         self.test_dir = tempfile.TemporaryDirectory()
         self.network = PersistentNetwork(storage_dir=self.test_dir.name)
+        # PersistentNetwork performs an initial filesystem reconciliation in a
+        # daemon thread. Wait for that initialization to finish before this test
+        # mutates the private in-memory records, otherwise the startup scan can
+        # race the fixture setup and remove the synthetic PCAP record.
+        self.network._sync_thread.join(timeout=5.0)
+        self.assertFalse(
+            self.network._sync_thread.is_alive(),
+            "PersistentNetwork startup sync did not finish during test setup",
+        )
 
     def tearDown(self):
         # Clean up temporary directory
