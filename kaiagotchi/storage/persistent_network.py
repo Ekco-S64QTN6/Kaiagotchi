@@ -169,9 +169,18 @@ class PersistentNetwork:
     def _sync_pcaps_with_filesystem(self) -> None:
         """Sync pcap records with actual files in the pcaps directory."""
         try:
-            # Get all pcap files in the directory
-            pcap_files = list(Path(self.pcaps_dir).glob("*.pcap"))
-            existing_filenames = {f.name for f in pcap_files}
+            # Support the formats accepted by pcap_parser, including
+            # case-insensitive extensions, instead of silently ignoring PCAPNG.
+            pcap_dir = Path(self.pcaps_dir)
+            pcap_files = sorted(
+                (
+                    path
+                    for path in pcap_dir.iterdir()
+                    if path.is_file() and path.suffix.lower() in {".pcap", ".pcapng"}
+                ),
+                key=lambda path: path.name,
+            )
+            existing_filenames = {path.name for path in pcap_files}
 
             changed = False
 
