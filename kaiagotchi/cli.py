@@ -426,27 +426,105 @@ async def run_agent() -> int:
                 # Signal handlers (registered once in run_agent) set
                 # _shutdown_event; the finally block performs agent teardown.
 
-                # Start agent in background while splash runs
+                # Run legacy Agent startup alongside the splash, but observe the
+                # Agent task throughout. A failed start must not be hidden by the
+                # full splash delay, and the same shutdown waiter must remain live
+                # after the splash ends.
                 agent_start_task = asyncio.create_task(agent.start())
                 shutdown_wait = asyncio.create_task(_shutdown_event.wait())
+                startup_barrier = (
+                    asyncio.create_task(splash.show(duration=15.0))
+                    if splash
+                    else asyncio.create_task(asyncio.sleep(1.0))
+                )
 
-                if splash:
-                    splash_task = asyncio.create_task(splash.show(duration=15.0))
-                    done, pending = await asyncio.wait(
-                        [splash_task, shutdown_wait],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if shutdown_wait in done:
-                         splash_task.cancel()
-                         agent_start_task.cancel()
-                         return 0
-                    # Splash completed first — cancel the now-unneeded shutdown_wait
-                    # so it doesn't linger as a leaked task.
-                    if shutdown_wait in pending:
-                        shutdown_wait.cancel()
+                try:
+                    while not startup_barrier.done():
+                        if shutdown_wait.done():
+                            logger.info("Shutdown requested during Agent startup")
+                            return 0
+
+                        if agent_start_task.done():
+                            # Consume a startup exception immediately rather than
+                            # waiting until the splash finishes.
+                            await agent_start_task
+                            if not _shutdown_event.is_set():
+                                logger.error("Agent exited before startup completed")
+                                fallback_exit_code = 1
+                            return fallback_exit_code
+
+                        done, _pending = await asyncio.wait(
+                            [startup_barrier, shutdown_wait, agent_start_task],
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if shutdown_wait in done:
+                            logger.info("Shutdown requested during Agent startup")
+                            return 0
+
+                    try:
+                        startup_barrier.result()
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.warning("Splash/startup delay failed", exc_info=True)
+
+                    if agent_start_task.done():
                         try:
-                            await shutdown_wait
+                            await agent_start_task
                         except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            logger.exception("Agent failed during startup")
+                            fallback_exit_code = 1
+                        else:
+                            if not _shutdown_event.is_set():
+                                logger.error("Agent exited before the main wait loop")
+                                fallback_exit_code = 1
+                        return fallback_exit_code
+
+                    # Re-register signal handlers (Rich Progress might have restored defaults)
+                    for sig in (signal.SIGINT, signal.SIGTERM):
+                        try:
+                            loop.add_signal_handler(sig, handle_signal)
+                        except NotImplementedError:
+                            signal.signal(sig, lambda s, f: handle_signal())
+
+                    view.suppress_output = False
+
+                    done, pending = await asyncio.wait(
+                        [agent_start_task, shutdown_wait],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    if agent_start_task in done:
+                        try:
+                            await agent_start_task
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception:
+                            logger.exception("Agent task failed")
+                            fallback_exit_code = 1
+
+                    if shutdown_wait in done:
+                        logger.info("Shutdown event triggered")
+
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
+                    return fallback_exit_code
+
+                finally:
+                    # Every exit path owns and reaps these tasks. In particular,
+                    # never cancel and then reuse shutdown_wait.
+                    for task in (startup_barrier, shutdown_wait, agent_start_task):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(
+                        startup_barrier, shutdown_wait, agent_start_task,
+                        return_exceptions=True,
+                    )
+
+            except asyncio.CancelledError:
                             pass
                 else:
                     # If splash failed to init, just wait a bit or proceed
