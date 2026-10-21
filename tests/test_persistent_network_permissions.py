@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import os
 import stat
+
+import pytest
+
+import kaiagotchi.storage.persistent_network as persistent_network_module
 from pathlib import Path
 
 from kaiagotchi.storage.persistent_network import PersistentNetwork
@@ -52,3 +56,19 @@ def test_startup_sync_restricts_permissions_on_preexisting_pcaps(tmp_path):
     assert _mode(pcaps) == 0o700
     assert _mode(pcap) == 0o600
     assert pcap.name in network.get_pcap_records()
+
+
+def test_initialization_fails_if_private_pcap_directory_cannot_be_enforced(tmp_path, monkeypatch):
+    storage = tmp_path / "storage"
+    pcap_dir = storage / "pcaps"
+    real_chmod = os.chmod
+
+    def fail_private_pcap_chmod(path, mode):
+        if Path(path) == pcap_dir and mode == 0o700:
+            raise PermissionError("simulated chmod denial")
+        return real_chmod(path, mode)
+
+    monkeypatch.setattr(persistent_network_module.os, "chmod", fail_private_pcap_chmod)
+
+    with pytest.raises(PermissionError, match="Could not secure PCAP storage directory"):
+        PersistentNetwork(storage_dir=str(storage))
