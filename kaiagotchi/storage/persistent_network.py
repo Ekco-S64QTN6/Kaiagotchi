@@ -5,12 +5,9 @@ import os
 import re
 import shutil
 import stat
-from copy import deepcopy
 from datetime import datetime
-from functools import wraps
 from pathlib import Path
-from threading import RLock
-from typing import Any, TypeVar
+from typing import Any
 
 from .file_io import atomically_save_data, load_data
 from .utils_time import TZ, now_cst_iso
@@ -27,18 +24,6 @@ except Exception:
     parse_pcap = None
 
 LOGGER = logging.getLogger(__name__)
-
-_ResultT = TypeVar("_ResultT")
-
-
-def _state_locked(method) -> Any:
-    """Serialize access to PersistentNetwork's shared in-memory state."""
-    @wraps(method)
-    def wrapped(self, *args: Any, **kwargs: Any) -> _ResultT:
-        with self._state_lock:
-            return method(self, *args, **kwargs)
-
-    return wrapped
 
 DEFAULT_FILENAME = "network_history.json"
 PCAP_DIRNAME = "pcaps"
@@ -76,9 +61,6 @@ class PersistentNetwork:
 
         self.filepath = os.path.join(self.storage_dir, DEFAULT_FILENAME)
         self.pcaps_dir = os.path.join(self.storage_dir, PCAP_DIRNAME)
-        # The startup filesystem sync runs in a background thread and shares
-        # _data with live capture updates; serialize all state operations.
-        self._state_lock = RLock()
 
         # Ensure directories exist with proper permissions
         self._ensure_directory_permissions()
@@ -118,7 +100,6 @@ class PersistentNetwork:
         except Exception as e:
             LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
 
-    @_state_locked
     def load(self) -> None:
         try:
             raw = load_data(self.filepath, default={})
@@ -138,7 +119,6 @@ class PersistentNetwork:
             "pcaps": raw.get("pcaps", {}),
         }
 
-    @_state_locked
     def save(self) -> bool:
         """Atomically persist BSSID/station/pcap metadata and regenerate summary reports.
 
@@ -171,7 +151,6 @@ class PersistentNetwork:
     # -------------------------
     # Enhanced PCAP filesystem sync with better BSSID extraction
     # -------------------------
-    @_state_locked
     def _sync_pcaps_with_filesystem(self) -> None:
         """Sync pcap records with actual files in the pcaps directory."""
         try:
@@ -179,10 +158,18 @@ class PersistentNetwork:
             pcap_files = list(Path(self.pcaps_dir).glob("*.pcap"))
             existing_filenames = {f.name for f in pcap_files}
 
-            # Remove records for files that don't exist
+            # Reconcile against the current filesystem, not only the initial
+            # listing: another thread may finish copying/registering a PCAP after
+            # pcap_files was enumerated above.
             for filename in list(self._data.get("pcaps", {}).keys()):
                 if filename not in existing_filenames:
-                    LOGGER.info(f"Removing pcap record for deleted file: {filename}")
+                    record = self._data.get("pcaps", {}).get(filename, {})
+                    record_path = record.get("path") if isinstance(record, dict) else None
+                    candidate = Path(record_path) if record_path else Path(self.pcaps_dir) / filename
+                    if candidate.exists():
+                        existing_filenames.add(filename)
+                        continue
+                    LOGGER.info("Removing pcap record for deleted file: %s", filename)
                     del self._data["pcaps"][filename]
 
             # Add records for files that exist but aren't in our records
@@ -213,7 +200,7 @@ class PersistentNetwork:
                         except Exception:
                             LOGGER.debug(f"Could not analyze existing pcap {pcap_file.name}")
 
-                    # Preserve a richer record registered during analysis.
+                    # Preserve a newer record written while this file was analyzed.
                     self._data.setdefault("pcaps", {}).setdefault(pcap_file.name, record)
 
             # Save the synced state
@@ -254,7 +241,6 @@ class PersistentNetwork:
     # -------------------------
     # BSSID helpers
     # -------------------------
-    @_state_locked
     def get_first_seen(self, mac: str) -> str | None:
         if not mac:
             return None
@@ -262,7 +248,6 @@ class PersistentNetwork:
         entry = self._data["bssids"].get(mac) or self._data["stations"].get(mac)
         return entry.get("first_seen") if entry else None
 
-    @_state_locked
     def update_bssid(
         self,
         bssid: str,
@@ -331,7 +316,6 @@ class PersistentNetwork:
     # -------------------------
     # Station helpers
     # -------------------------
-    @_state_locked
     def update_station(
         self,
         sta_mac: str,
@@ -381,7 +365,6 @@ class PersistentNetwork:
     # -------------------------
     # Methods for terminal display compatibility
     # -------------------------
-    @_state_locked
     def get_bssid_history(self, bssid: str) -> dict[str, Any] | None:
         """Get historical data for a BSSID in terminal display format."""
         if not bssid:
@@ -403,7 +386,6 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         }
 
-    @_state_locked
     def get_all_bssids(self) -> dict[str, Any]:
         """Get all BSSID history in terminal display format."""
         result = {}
@@ -420,7 +402,6 @@ class PersistentNetwork:
             }
         return result
 
-    @_state_locked
     def get_station_history(self, station_mac: str) -> dict[str, Any] | None:
         """Get historical data for a station in terminal display format."""
         if not station_mac:
@@ -439,7 +420,6 @@ class PersistentNetwork:
             "packets": entry.get("packets", 0)
         }
 
-    @_state_locked
     def get_all_stations(self) -> dict[str, Any]:
         """Get all station history in terminal display format."""
         result = {}
@@ -457,7 +437,6 @@ class PersistentNetwork:
     # -------------------------
     # Batch update methods for monitoring agent
     # -------------------------
-    @_state_locked
     def update_from_scan_results(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]) -> None:
         """Update persistence from a full scan result set."""
         current_time = now_cst_iso()
@@ -488,7 +467,6 @@ class PersistentNetwork:
     # -------------------------
     # Enhanced PCAP analysis to extract ALL networks and devices
     # -------------------------
-    @_state_locked
     def _analyze_pcap_into_record(self, dst_path: Path, record: dict[str, Any]) -> None:
         """Enhanced analysis that extracts ALL BSSIDs and stations from PCAP, not just handshakes."""
         if parse_pcap_comprehensive is None:
@@ -581,7 +559,6 @@ class PersistentNetwork:
         else:
             return f"{timestamp}_airodump.pcap"
 
-    @_state_locked
     def add_pcap_file(
         self,
         src_path: str,
@@ -626,7 +603,6 @@ class PersistentNetwork:
             LOGGER.exception("Failed to add PCAP file")
             return None
 
-    @_state_locked
     def add_pcap_record(self, path: Path, bssid: str, size: int, timestamp: str, analyze: bool = True) -> None:
         """Register existing PCAP file without copying - for files already in storage."""
         try:
@@ -658,7 +634,6 @@ class PersistentNetwork:
     # -------------------------
     # NEW: Force re-analysis of all pcaps to ingest BSSIDs and stations
     # -------------------------
-    @_state_locked
     def reanalyze_all_pcaps(self) -> None:
         """Re-analyze all pcap files to extract and update BSSID and station information."""
         try:
@@ -676,7 +651,6 @@ class PersistentNetwork:
     # -------------------------
     # Generate Reconnaissance & Handshake summary reports
     # -------------------------
-    @_state_locked
     def generate_reports(self) -> None:
         """Generate handshakes_summary.md and handshakes_summary.json in storage_dir."""
         try:
@@ -954,7 +928,6 @@ class PersistentNetwork:
     # -------------------------
     # Retention / Storage Management
     # -------------------------
-    @_state_locked
     def _calculate_pcap_storage(self) -> int:
         total = 0
         for rec in self._data.get("pcaps", {}).values():
@@ -966,7 +939,6 @@ class PersistentNetwork:
                 continue
         return total
 
-    @_state_locked
     def _prune_old_pcaps(self) -> None:
         total = self._calculate_pcap_storage()
         if total <= MAX_PCAP_STORAGE_BYTES:
@@ -1001,7 +973,6 @@ class PersistentNetwork:
         LOGGER.info("Cleanup complete. Current usage: %.2f GB", self._calculate_pcap_storage() / (1024**3))
         self.save()
 
-    @_state_locked
     def enforce_storage_limit(self) -> None:
         try:
             total = self._calculate_pcap_storage()
@@ -1013,29 +984,21 @@ class PersistentNetwork:
     # -------------------------
     # Utilities / Introspection
     # -------------------------
-    @_state_locked
     def list_known_bssids(self) -> list[str]:
         return list(self._data.get("bssids", {}).keys())
 
-    @_state_locked
     def list_known_stations(self) -> list[str]:
         return list(self._data.get("stations", {}).keys())
 
-    @_state_locked
     def get_bssid_record(self, bssid: str) -> dict[str, Any] | None:
-        record = self._data.get("bssids", {}).get(bssid.upper())
-        return deepcopy(record) if record is not None else None
+        return self._data.get("bssids", {}).get(bssid.upper())
 
-    @_state_locked
     def get_station_record(self, sta_mac: str) -> dict[str, Any] | None:
-        record = self._data.get("stations", {}).get(sta_mac.upper())
-        return deepcopy(record) if record is not None else None
+        return self._data.get("stations", {}).get(sta_mac.upper())
 
-    @_state_locked
     def get_pcap_records(self) -> dict[str, Any]:
-        return deepcopy(self._data.get("pcaps", {}))
+        return dict(self._data.get("pcaps", {}))
 
-    @_state_locked
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:
