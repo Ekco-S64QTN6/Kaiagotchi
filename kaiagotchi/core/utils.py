@@ -12,7 +12,6 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
 
-import requests
 import tomlkit
 
 # --- Global Configuration Constants ---
@@ -354,17 +353,26 @@ def total_unique_handshakes(path: str) -> int:
     return len(glob.glob(expr))
 
 def download_file(url: str, dest: str, timeout: int = 60) -> bool:
-    """Downloads a file from a URL to a destination path."""
-    utils_logger.info(f"Downloading {url} to {dest}")
+    """Download a file, loading the optional requests dependency only when used."""
     try:
-        with requests.get(url, stream=True, timeout=timeout) as r:
-            r.raise_for_status()
-            with open(dest, 'wb') as f:
-                for chunk in r.iter_content(chunk_size=8192):
-                    f.write(chunk)
+        import requests
+    except ImportError:
+        utils_logger.error(
+            "Downloading files requires the optional 'requests' dependency; "
+            "install kaiagotchi[net]."
+        )
+        return False
+
+    utils_logger.info("Downloading %s to %s", url, dest)
+    try:
+        with requests.get(url, stream=True, timeout=timeout) as response:
+            response.raise_for_status()
+            with open(dest, "wb") as output:
+                for chunk in response.iter_content(chunk_size=8192):
+                    output.write(chunk)
         return True
     except requests.exceptions.RequestException as e:
-        utils_logger.error(f"Failed to download file from {url}: {e}")
+        utils_logger.error("Failed to download file from %s: %s", url, e)
         return False
 
 def unzip(src: str, dest: str, strip_dirs: int = 0) -> bool:
