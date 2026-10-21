@@ -308,42 +308,81 @@ async def run_agent() -> int:
                             await asyncio.get_running_loop().run_in_executor(None, start_fn)
                     logger.info("Manager booted successfully.")
 
-                # Run splash and manager startup concurrently
-                # We want splash to run for at least 15s, but manager can start in background
+                # Run splash and manager startup concurrently, but observe both:
+                # startup failures must not hide behind the splash, and run_forever
+                # must not race an unfinished bootstrap/start operation.
                 manager_task = asyncio.create_task(start_manager())
                 shutdown_wait = asyncio.create_task(_shutdown_event.wait())
+                startup_barrier = (
+                    asyncio.create_task(splash.show(duration=15.0))
+                    if splash
+                    else asyncio.create_task(asyncio.sleep(1.0))
+                )
+                manager_startup_observed = False
+                barrier_result_observed = False
 
-                if splash:
-                    splash_task = asyncio.create_task(splash.show(duration=15.0))
-                    # Wait for splash OR shutdown
-                    done, pending = await asyncio.wait(
-                        [splash_task, shutdown_wait],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
+                try:
+                    while not startup_barrier.done() or not manager_startup_observed:
+                        if startup_barrier.done() and not barrier_result_observed:
+                            barrier_result_observed = True
+                            try:
+                                startup_barrier.result()
+                            except asyncio.CancelledError:
+                                raise
+                            except Exception:
+                                # A visual splash failure must not strand startup.
+                                logger.warning("Splash/startup delay failed", exc_info=True)
 
-                    if shutdown_wait in done:
-                        logger.info("Shutdown requested during splash/startup")
-                        splash_task.cancel()
-                        manager_task.cancel()
-                        return 0
-                else:
-                    # If splash failed to load, wait briefly for manager startup
-                    done, pending = await asyncio.wait(
-                        [asyncio.create_task(asyncio.sleep(1.0)), shutdown_wait],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    if shutdown_wait in done:
-                        logger.info("Shutdown requested during startup")
-                        manager_task.cancel()
-                        return 0
+                        if manager_task.done() and not manager_startup_observed:
+                            # Await immediately so an exception is observed as
+                            # soon as bootstrap/start fails, not after the splash.
+                            await manager_task
+                            manager_startup_observed = True
+                            continue
 
-                # If splash finished, check manager status
-                if manager_task.done():
+                        waiting = [shutdown_wait]
+                        if not startup_barrier.done():
+                            waiting.append(startup_barrier)
+                        if not manager_startup_observed and not manager_task.done():
+                            waiting.append(manager_task)
+
+                        done, _pending = await asyncio.wait(
+                            waiting,
+                            return_when=asyncio.FIRST_COMPLETED,
+                        )
+                        if shutdown_wait in done:
+                            logger.info("Shutdown requested during manager startup")
+                            for task in (startup_barrier, manager_task):
+                                if not task.done():
+                                    task.cancel()
+                            await asyncio.gather(
+                                startup_barrier, manager_task, return_exceptions=True
+                            )
+                            return 0
+
+                        if manager_task in done and not manager_startup_observed:
+                            await manager_task
+                            manager_startup_observed = True
+
+                    # Don't leave a signal waiter behind once startup is complete.
+                    if not shutdown_wait.done():
+                        shutdown_wait.cancel()
                     try:
-                        await manager_task
-                    except Exception as e:
-                        logger.error(f"Manager startup failed: {e}")
-                        raise e
+                        await shutdown_wait
+                    except asyncio.CancelledError:
+                        pass
+
+                except BaseException:
+                    # Preserve the startup exception while preventing orphaned
+                    # splash, manager, or signal-wait tasks.
+                    for task in (startup_barrier, manager_task, shutdown_wait):
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(
+                        startup_barrier, manager_task, shutdown_wait,
+                        return_exceptions=True,
+                    )
+                    raise
 
                 # Re-register signal handlers (Rich Progress might have restored defaults)
                 for sig in (signal.SIGINT, signal.SIGTERM):
