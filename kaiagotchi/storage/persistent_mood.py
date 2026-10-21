@@ -110,28 +110,35 @@ class PersistentMood:
     # ------------------------------------------------------------------
     # Mutators
     def set(self, mood: str, reward: float = 0.0, energy: float | None = None, curiosity: float | None = None) -> None:
-        """Directly set values in memory."""
-        # FIXED: Add mood change validation
+        """Update persisted values while rate-limiting only mood transitions."""
         current_time = time.time()
-        if current_time - self._last_mood_change < self._min_mood_duration:
-            LOGGER.debug(f"Mood change too rapid: {self._current_mood} -> {mood}, ignoring")
-            return
-
         old_mood = self._current_mood
-        self._current_mood = mood
-        self._last_mood_change = current_time
+        change_allowed = current_time - self._last_mood_change >= self._min_mood_duration
 
-        self._data["mood"] = mood
+        if mood != old_mood and change_allowed:
+            self._current_mood = mood
+            self._last_mood_change = current_time
+        elif mood != old_mood:
+            LOGGER.debug(
+                "Mood change too rapid: %s -> %s; keeping current mood",
+                old_mood,
+                mood,
+            )
+
+        # The anti-flicker guard must not discard reward/energy/curiosity
+        # updates. Callers such as set_and_save() rely on these values being
+        # persisted even when a requested mood transition is throttled.
+        self._data["mood"] = self._current_mood
         self._data["reward_points"] = float(reward)
-        self._data["last_reward"] = float(reward)  # ARCHITECTURE FIX: Track last reward
+        self._data["last_reward"] = float(reward)
         if energy is not None:
             self._data["energy"] = float(max(0.0, min(1.0, energy)))
         if curiosity is not None:
             self._data["curiosity"] = float(max(0.0, min(1.0, curiosity)))
         self._data["_last_updated"] = self._now_iso()
 
-        if old_mood != mood:
-            LOGGER.debug(f"[mood] Mood changed {old_mood} → {mood}")
+        if old_mood != self._current_mood:
+            LOGGER.debug("[mood] Mood changed %s → %s", old_mood, self._current_mood)
 
     def set_and_save(self, mood: str, reward: float = 0.0, energy: float | None = None, curiosity: float | None = None) -> bool:
         """Convenience wrapper for set() + save()."""
