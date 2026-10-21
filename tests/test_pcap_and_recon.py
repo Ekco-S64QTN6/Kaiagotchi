@@ -86,7 +86,7 @@ class TestPcapAndRecon(unittest.TestCase):
 
         # Verify hashcat values are constructed correctly
         handshake = data["handshakes"][0]
-        self.assertEqual(handshake["hashcat_22000"], "WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150")
+        self.assertEqual(handshake["hashcat_22000"], "WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150***")
         self.assertEqual(handshake["hashcat_16800"], "0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150")
 
         # Check content of MD report
@@ -95,7 +95,7 @@ class TestPcapAndRecon(unittest.TestCase):
 
         self.assertIn("Test-AP", md_content)
         self.assertIn("00:11:22:33:44:55", md_content)
-        self.assertIn("WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150", md_content)
+        self.assertIn("WPA*01*0102030405060708090a0b0c0d0e0f10*001122334455*aabbccddeeff*546573742d4150***", md_content)
 
 if __name__ == '__main__':
     unittest.main()
