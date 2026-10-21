@@ -64,6 +64,11 @@ class MonitoringAgent:
 
         self._seen_bssids: set[str] = set()
         self._seen_stations: set[str] = set()
+        # airodump CSV counters are cumulative for the current capture process;
+        # retain the last observed values so each scan contributes only its delta.
+        self._last_ap_counters: dict[str, dict[str, int]] = {}
+        self._last_station_counters: dict[str, dict[str, int]] = {}
+        self._last_persistence_save = 0.0
         self._session_pcap: Path | None = None
         self._capture_tmp_dir: Path | None = None
 
@@ -605,6 +610,78 @@ class MonitoringAgent:
         except Exception as e:
             _LOG.exception(f"[monitoring] Failed to archive PCAP: {e}")
 
+    @staticmethod
+    def _counter_value(value: Any) -> int | None:
+        """Parse airodump's cumulative numeric counter; '-' and blanks are missing."""
+        try:
+            parsed = int(str(value).strip())
+            return parsed if parsed >= 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    def _counter_delta(
+        self,
+        store: dict[str, dict[str, int]],
+        identity: str,
+        counter_name: str,
+        raw_value: Any,
+    ) -> int:
+        """Return the newly observed count, handling missing values and counter resets."""
+        current = self._counter_value(raw_value)
+        if current is None:
+            return 0
+
+        counters = store.setdefault(identity.upper(), {})
+        previous = counters.get(counter_name)
+        counters[counter_name] = current
+        # Airodump restarts/reset counters when its capture process or output
+        # rolls over; in that case count from the new counter origin.
+        if previous is None or current < previous:
+            return current
+        return current - previous
+
+    def _persist_scan_counters(
+        self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]
+    ) -> None:
+        """Update persistent network state using per-scan counter deltas."""
+        if self.persistent_network is None:
+            return
+
+        for ap in aps:
+            bssid = str(ap.get("bssid") or "").strip()
+            if not bssid:
+                continue
+            # airodump's "# IV" is its captured data/IV counter; "# beacons"
+            # is separate. Do not treat cumulative beacons as packet totals.
+            packet_delta = self._counter_delta(
+                self._last_ap_counters, bssid, "iv", ap.get("iv")
+            )
+            beacon_delta = self._counter_delta(
+                self._last_ap_counters, bssid, "beacons", ap.get("beacons")
+            )
+            self.persistent_network.update_bssid(
+                bssid=bssid,
+                essid=ap.get("essid", ""),
+                packets=packet_delta,
+                beacons=beacon_delta,
+                channel=ap.get("channel", ""),
+                encryption=ap.get("privacy", ""),
+            )
+
+        for station in stations:
+            station_mac = str(station.get("station_mac") or "").strip()
+            if not station_mac:
+                continue
+            packet_delta = self._counter_delta(
+                self._last_station_counters, station_mac, "packets", station.get("packets")
+            )
+            self.persistent_network.update_station(
+                sta_mac=station_mac,
+                associated_bssid=station.get("bssid", ""),
+                packets=packet_delta,
+                essids=station.get("probed_essids", ""),
+            )
+
     # ------------------------------------------------------------------
     async def _scan_loop(self):
         try:
@@ -626,27 +703,30 @@ class MonitoringAgent:
                 new_aps = [a for a in aps if a["bssid"] not in self._seen_bssids]
                 new_stations = [s for s in stations if s["station_mac"] not in self._seen_stations]
 
-                # Update persistent network with discovered BSSIDs and stations
+                # Persist per-scan deltas, not airodump's cumulative totals.
                 if self.persistent_network:
                     try:
-                        for ap in aps:
-                            self.persistent_network.update_bssid(
-                                bssid=ap["bssid"],
-                                essid=ap.get("essid", ""),
-                                packets=int(ap.get("beacons", 0) or 0),
-                                beacons=int(ap.get("beacons", 0) or 0),
-                                channel=ap.get("channel", ""),
-                                encryption=ap.get("privacy", ""),
-                            )
-                        for station in stations:
-                            self.persistent_network.update_station(
-                                sta_mac=station["station_mac"],
-                                associated_bssid=station.get("bssid", ""),
-                                packets=int(station.get("packets", 0) or 0),
-                                essids=station.get("probed_essids", ""),
-                            )
+                        self._persist_scan_counters(aps, stations)
                     except Exception as e:
-                        _LOG.debug("Failed to update persistent network: %s", e)
+                        _LOG.debug("Failed to update persistent network: %s", e, exc_info=True)
+
+                    now = time.monotonic()
+                    if aps or stations:
+                        # Save newly discovered identities immediately and make
+                        # periodic progress durable during long-running scans.
+                        # Reports are throttled by PersistentNetwork.save().
+                        if (
+                            new_aps
+                            or new_stations
+                            or now - self._last_persistence_save >= 30.0
+                        ):
+                            try:
+                                await asyncio.to_thread(
+                                    self.persistent_network.save, force_reports=False
+                                )
+                                self._last_persistence_save = time.monotonic()
+                            except Exception:
+                                _LOG.warning("Failed to persist scan history", exc_info=True)
 
                 for ap in new_aps:
                     self._seen_bssids.add(ap["bssid"])
