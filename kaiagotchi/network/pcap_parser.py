@@ -598,6 +598,16 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
     pmkid_entries_22000 = []
     for capture in captures:
         if capture.pmkid:
+            pmkid_clean = str(capture.pmkid).strip().lower()
+            if len(pmkid_clean) != 32 or any(
+                char not in "0123456789abcdef" for char in pmkid_clean
+            ):
+                parser_logger.warning(
+                    "Skipping PMKID export for %s: PMKID must be 16 bytes of hexadecimal data",
+                    capture.bssid,
+                )
+                continue
+
             ssid = (capture.ssid or "").strip()
             if not ssid or ssid.casefold() in {"hidden or unknown", "unknown", "<hidden>", "--"}:
                 parser_logger.warning(
@@ -627,12 +637,12 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
 
             ssid_hex = ssid.encode('utf-8', errors='ignore').hex()
             pmkid_entries_16800.append(
-                f"{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}"
+                f"{pmkid_clean}*{bssid_clean}*{client_clean}*{ssid_hex}"
             )
             # Hashcat 22000 PMKID format has empty ANONCE and EAPOL fields,
             # represented by the required three trailing separators.
             pmkid_entries_22000.append(
-                f"WPA*01*{capture.pmkid.lower()}*{bssid_clean}*{client_clean}*{ssid_hex}***"
+                f"WPA*01*{pmkid_clean}*{bssid_clean}*{client_clean}*{ssid_hex}***"
             )
 
     if pmkid_entries_16800:
