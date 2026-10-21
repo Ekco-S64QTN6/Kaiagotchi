@@ -17,6 +17,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from typing import Any
 
 from kaiagotchi.config.config import load_config
 from kaiagotchi.data.system_types import (
@@ -86,6 +87,16 @@ def parse_arguments():
     parser.add_argument("--smoke-ui", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--diag-ui", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
+
+
+def _web_enabled(args: Any, config: dict[str, Any]) -> bool:
+    """Resolve web-mode flags; --tui explicitly means terminal-only mode."""
+    if getattr(args, "tui", False) or getattr(args, "no_web", False):
+        return False
+    if getattr(args, "web", None):
+        return True
+    web_config = config.get("web", {})
+    return bool(web_config.get("enabled", True)) if isinstance(web_config, dict) else True
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -242,13 +253,7 @@ async def run_agent() -> int:
         view.suppress_output = True  # Suppress output during splash
 
         # Initialize Web Server (Cyber-Deck UI)
-        web_enabled = True
-        if args.no_web:
-            web_enabled = False
-        elif args.web:
-            web_enabled = True
-        else:
-            web_enabled = config.get("web", {}).get("enabled", True)
+        web_enabled = _web_enabled(args, config)
 
         if args.port:
             config.setdefault("web", {})["port"] = args.port
