@@ -242,7 +242,7 @@ class Agent(kaiagotchiBase):
             "network": {
                 "access_points": getattr(self.system_state.network, "access_points", {}),
                 "interfaces": getattr(self.system_state.network, "interfaces", {}),
-                "current_channel": getattr(self.system_state.network, "current_channel", 1),
+                "current_channel": getattr(self.system_state.network, "current_channel", None),
             },
             "metrics": getattr(self.system_state, "metrics", {}),
             "session_metrics": getattr(self.system_state, "session_metrics", {}),
