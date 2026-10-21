@@ -83,11 +83,16 @@ class PersistentNetwork:
             os.makedirs(self.storage_dir, exist_ok=True)
             os.makedirs(self.pcaps_dir, exist_ok=True)
 
-            # Set proper permissions (read/write for user, read for group/others)
-            os.chmod(self.storage_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-            os.chmod(self.pcaps_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+            # storage_dir can be the installed Python package directory,
+            # so preserve its search/read permissions. The PCAP directory is
+            # separate and owner-only because captures contain sensitive data.
+            os.chmod(
+                self.storage_dir,
+                stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH,
+            )
+            os.chmod(self.pcaps_dir, stat.S_IRWXU)
 
-            LOGGER.debug(f"Ensured directory permissions for {self.storage_dir}")
+            LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
         except Exception as e:
             LOGGER.error(f"Failed to set directory permissions: {e}")
 
@@ -95,8 +100,10 @@ class PersistentNetwork:
         """Ensure file has proper read/write permissions."""
         try:
             if os.path.exists(filepath):
-                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
-                LOGGER.debug(f"Set permissions for {filepath}")
+                # Network history and reports can contain PMKIDs, MAC addresses,
+                # SSIDs, and detailed capture metadata.
+                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
+                LOGGER.debug("Set owner-only permissions for %s", filepath)
         except Exception as e:
             LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
 
@@ -170,8 +177,9 @@ class PersistentNetwork:
                     LOGGER.info("Removing pcap record for deleted file: %s", filename)
                     del self._data["pcaps"][filename]
 
-            # Add records for files that exist but aren't in our records
+            # Restrict permissions on old captures too, not just newly copied files.
             for pcap_file in pcap_files:
+                self._ensure_file_permissions(str(pcap_file))
                 if pcap_file.name not in self._data.get("pcaps", {}):
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
                     stat = pcap_file.stat()
@@ -580,6 +588,7 @@ class PersistentNetwork:
                 return str(dst)
 
             shutil.copy2(src, dst)
+            self._ensure_file_permissions(str(dst))
 
             stat = dst.stat()
             record: dict[str, Any] = {
@@ -607,6 +616,13 @@ class PersistentNetwork:
             # Use absolute path to ensure consistency
             abs_path = path.absolute()
             filename = os.path.basename(str(abs_path))
+            try:
+                abs_path.relative_to(Path(self.pcaps_dir).resolve())
+            except ValueError:
+                # Do not change permissions on files outside Kaiagotchi's archive.
+                pass
+            else:
+                self._ensure_file_permissions(str(abs_path))
 
             # Check if record already exists to avoid duplicates
             if filename in self._data.get("pcaps", {}):
