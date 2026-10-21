@@ -1,13 +1,13 @@
 # kaiagotchi/network/pcap_parser.py
 import logging
 import os
-import struct
 import sys
 from dataclasses import dataclass
 from typing import Any
 
 from scapy.all import (
     EAPOL,
+    EAPOL_KEY,
     Dot11,
     Dot11Beacon,
     Dot11Elt,
@@ -154,64 +154,49 @@ def extract_encryption(packet) -> str:
 
 def detect_pmkid(packet) -> str | None:
     """
-    Detect and extract PMKID from EAPOL frames.
+    Extract a PMKID from an RSN PMKID KDE in an EAPOL-Key frame.
 
-    Args:
-        packet: Scapy packet object
-
-    Returns:
-        Optional[str]: PMKID as hex string if found, None otherwise
+    The KDE is encoded as 0xdd, length 0x14, OUI 00:0f:ac, type 0x04,
+    followed by the 16-byte PMKID. Scanning for the complete marker avoids
+    treating unrelated key-data bytes as a PMKID.
     """
-    if packet.haslayer(EAPOL):
-        eapol = packet[EAPOL]
+    if not packet.haslayer(EAPOL_KEY):
+        return None
 
-        # Check if this is a first EAPOL message (Message 1 of 4-way handshake)
-        if hasattr(eapol, 'key_info') and eapol.key_info & 0x0080:  # Check for Key MIC bit
-            if hasattr(eapol, 'key_data') and eapol.key_data:
-                try:
-                    # PMKID is typically the first 16 bytes of key_data in message 1
-                    key_data = bytes(eapol.key_data)
-                    if len(key_data) >= 16:
-                        # Look for PMKID KDE (Key Data Encapsulation)
-                        if key_data[:2] == b'\x00\x00':  # Often starts with 0x00 0x00
-                            if len(key_data) >= 20:  # Minimum length for PMKID KDE
-                                pmkid_data = key_data[4:20]  # Extract PMKID
-                                if len(pmkid_data) == 16:
-                                    return pmkid_data.hex()
-                except (AttributeError, IndexError, struct.error):
-                    pass
-    return None
+    try:
+        key_data = bytes(packet[EAPOL_KEY].key_data or b"")
+    except (AttributeError, TypeError, ValueError):
+        return None
+
+    marker = b"\\xdd\\x14\\x00\\x0f\\xac\\x04"
+    offset = key_data.find(marker)
+    if offset < 0:
+        return None
+
+    start = offset + len(marker)
+    pmkid = key_data[start:start + 16]
+    return pmkid.hex() if len(pmkid) == 16 else None
 
 
 def is_complete_handshake(eapol_packets) -> bool:
     """
-    Basic check for complete 4-way handshake presence.
+    Return True only when all four distinct EAPOL-Key handshake messages exist.
 
-    Args:
-        eapol_packets: List of EAPOL packets
-
-    Returns:
-        bool: True if handshake appears complete
+    Scapy exposes the individual Key Information flags on EAPOL_KEY, not on the
+    EAPOL header. Use its key-number helper rather than testing unrelated bits
+    of the header or counting arbitrary combinations of flag bits.
     """
-    if len(eapol_packets) < 4:
-        return False
-
-    # Count unique message types (simplified approach)
-    msg_indicators = set()
+    message_numbers: set[int] = set()
     for packet in eapol_packets:
-        if packet.haslayer(EAPOL):
-            eapol = packet[EAPOL]
-            if hasattr(eapol, 'key_info'):
-                key_info = eapol.key_info
-                # Check for various handshake message indicators
-                if key_info & 0x0008:  # Install flag (msg3)
-                    msg_indicators.add('msg3')
-                elif key_info & 0x0100:  # Secure flag (msg2)
-                    msg_indicators.add('msg2')
-                elif key_info & 0x0080:  # MIC flag (msg2, msg3, msg4)
-                    msg_indicators.add('mic')
-
-    return len(msg_indicators) >= 3  # Should have multiple message types
+        if not packet.haslayer(EAPOL_KEY):
+            continue
+        try:
+            message_number = int(packet[EAPOL_KEY].guess_key_number())
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if message_number in {1, 2, 3, 4}:
+            message_numbers.add(message_number)
+    return message_numbers == {1, 2, 3, 4}
 
 
 def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> NetworkData:
