@@ -43,8 +43,9 @@ class MonitoringAgent:
     ):
         self.view = view
         self.config = config or {}
-        self.system_state = system_state or {}
-        self.state_lock = state_lock or asyncio.Lock()
+        self.system_state = system_state if system_state is not None else {}
+        self.state_lock = state_lock if state_lock is not None else asyncio.Lock()
+        self._fallback_captures: list[dict[str, Any]] = []
 
         self.interface = (
             interface
@@ -130,8 +131,16 @@ class MonitoringAgent:
 
         try:
             await self._set_monitor_mode()
-        except Exception:
+        except Exception as exc:
             _LOG.exception("[monitoring] monitor mode setup failed")
+            self._running = False
+            try:
+                await self._restore_managed_mode()
+            except Exception:
+                _LOG.debug("[monitoring] Could not restore interface after setup failure", exc_info=True)
+            raise RuntimeError(
+                f"Could not configure capture interface {self.interface} for monitor mode"
+            ) from exc
 
         if self.view:
             try:
@@ -222,40 +231,90 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def _set_monitor_mode(self):
-        cmds = [
-            ["nmcli", "device", "set", self.interface, "managed", "no"],
-            ["ip", "link", "set", self.interface, "down"],
-            ["iwconfig", self.interface, "mode", "monitor"],
-            ["ip", "link", "set", self.interface, "up"],
-        ]
+        # NetworkManager is optional. If it is installed, require it to release
+        # only the configured capture interface before changing its mode.
+        cmds = []
+        if shutil.which("nmcli"):
+            cmds.append(["nmcli", "device", "set", self.interface, "managed", "no"])
+        else:
+            _LOG.debug("[monitoring] nmcli not found; skipping unmanaged setting")
+
+        # Use iw directly (also used by scripts/setup_wireless.sh) and check every
+        # exit status. Silently ignoring a failed mode change can leave capture
+        # running against a managed interface while the UI claims monitoring.
+        cmds.extend([
+            ["ip", "link", "set", "dev", self.interface, "down"],
+            ["iw", "dev", self.interface, "set", "type", "monitor"],
+            ["ip", "link", "set", "dev", self.interface, "up"],
+        ])
         for cmd in cmds:
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                await proc.wait()
-            except FileNotFoundError:
-                _LOG.debug("[monitoring] Command not found: %s", cmd[0])
-            except Exception as e:
-                _LOG.debug("[monitoring] %s failed: %s", cmd[0], e)
+                _stdout, stderr = await proc.communicate()
+            except FileNotFoundError as exc:
+                raise RuntimeError(f"Required command not found: {cmd[0]}") from exc
+
+            if proc.returncode != 0:
+                detail = stderr.decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"Command {' '.join(cmd)!r} failed with exit code {proc.returncode}"
+                    + (f": {detail}" if detail else "")
+                )
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "iw", "dev", self.interface, "info",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+        except FileNotFoundError as exc:
+            raise RuntimeError("Required command not found: iw") from exc
+
+        if proc.returncode != 0:
+            detail = stderr.decode(errors="replace").strip()
+            raise RuntimeError(
+                f"Could not verify monitor mode for {self.interface}"
+                + (f": {detail}" if detail else "")
+            )
+        interface_info = stdout.decode(errors="replace").splitlines()
+        if not any(line.strip() == "type monitor" for line in interface_info):
+            raise RuntimeError(
+                f"Interface {self.interface} did not enter monitor mode"
+            )
 
     async def _restore_managed_mode(self):
+        # Best-effort cleanup, still pinned to the capture adapter.
         cmds = [
-            ["ip", "link", "set", self.interface, "down"],
-            ["iwconfig", self.interface, "mode", "managed"],
-            ["ip", "link", "set", self.interface, "up"],
-            ["nmcli", "device", "set", self.interface, "managed", "yes"],
+            ["ip", "link", "set", "dev", self.interface, "down"],
+            ["iw", "dev", self.interface, "set", "type", "managed"],
+            ["ip", "link", "set", "dev", self.interface, "up"],
         ]
+        if shutil.which("nmcli"):
+            cmds.append(["nmcli", "device", "set", self.interface, "managed", "yes"])
+
         for cmd in cmds:
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                await proc.wait()
+                _stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    _LOG.debug(
+                        "[monitoring] Cleanup command %s failed: %s",
+                        cmd[0],
+                        stderr.decode(errors="replace").strip(),
+                    )
             except FileNotFoundError:
-                _LOG.debug("[monitoring] Command not found: %s", cmd[0])
+                _LOG.debug("[monitoring] Command not found during cleanup: %s", cmd[0])
             except Exception as e:
-                _LOG.debug("[monitoring] %s failed: %s", cmd[0], e)
+                _LOG.debug("[monitoring] %s failed during cleanup: %s", cmd[0], e)
 
     # ------------------------------------------------------------------
     async def _launch_airodump(self):
@@ -550,6 +609,19 @@ class MonitoringAgent:
         self._max_aps_seen = max(self._max_aps_seen, ap_count)
         uptime = time.strftime("%H:%M:%S", time.gmtime(time.time() - self._start_time))
 
+        # InterfaceActionManager publishes its successful channel hop to the
+        # shared View. Copy that known value into the typed network state rather
+        # than reporting a fabricated channel when no channel is known.
+        current_channel: int | None = None
+        view_state = getattr(self.view, "state", None)
+        if isinstance(view_state, dict):
+            try:
+                candidate = int(view_state.get("channel"))
+                if 1 <= candidate <= 165:
+                    current_channel = candidate
+            except (TypeError, ValueError):
+                pass
+
         # Get recent captures for epoch tracking
         recent_captures = self._get_recent_captures_list()
 
@@ -575,9 +647,16 @@ class MonitoringAgent:
         async with self.state_lock:
             if isinstance(self.system_state, dict):
                 self.system_state.update(new_state)
+                if current_channel is not None:
+                    network = self.system_state.setdefault("network", {})
+                    if isinstance(network, dict):
+                        network["current_channel"] = current_channel
             else:
                 for k, v in new_state.items():
                     setattr(self.system_state, k, v)
+                network = getattr(self.system_state, "network", None)
+                if current_channel is not None and network is not None:
+                    network.current_channel = current_channel
 
         if self.view:
             try:

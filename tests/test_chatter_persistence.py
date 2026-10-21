@@ -3,12 +3,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kaiagotchi.agent.agent import Agent
+from kaiagotchi.agent.monitoring_agent import MonitoringAgent
 from kaiagotchi.data.system_types import SystemState
 
 
 @pytest.mark.asyncio
-async def test_thought_persistence():
+async def test_thought_persistence(monkeypatch):
     """Verify thoughts are persisted in system state and not overwritten."""
+    # Avoid touching the repository's persistent files from a unit test.
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
+
+    class EmptyMood:
+        def get_last_mood(self):
+            return "neutral"
+
+        def get_last_reward(self):
+            return 0.0
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", EmptyMood)
     # Setup
     config = {
         "personality": {"default_mood": "neutral"},
@@ -17,9 +29,8 @@ async def test_thought_persistence():
     mock_view = MagicMock()
     mock_view.async_update = AsyncMock()
 
-    # Create Agent
-    agent = Agent(config, view=mock_view)
-    agent.system_state = SystemState() # Reset state
+    # Inject the same state object used by MonitoringAgent.
+    agent = Agent(config, view=mock_view, system_state=SystemState())
 
     # 1. Generate a thought via Automata
     # We need to mock the voice to return a predictable string
@@ -64,3 +75,90 @@ async def test_automata_callback_integration():
     mock_callback.assert_called_once()
     args = mock_callback.call_args[0]
     assert "💭 Callback test" in args[0]
+
+
+def test_system_state_declares_runtime_fields_and_dumps_them():
+    """Runtime telemetry is typed model state, not hidden Pydantic extras."""
+    state = SystemState()
+    expected = {
+        "mood", "aps", "aps_max_seen", "mode", "status", "substatus", "uptime",
+        "aps_list", "stations_list", "recent_captures", "chatter_log",
+    }
+    dumped = state.model_dump()
+    assert expected <= dumped.keys()
+    assert state.recent_captures == []
+    assert state.chatter_log == []
+    assert state.mood == "neutral"
+
+
+def test_agent_restores_persisted_mood_to_system_state(monkeypatch):
+    """Restored mood is visible to downstream state snapshots after startup."""
+    class StoredMood:
+        def get_last_mood(self):
+            return "happy"
+
+        def get_last_reward(self):
+            return 0.5
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", StoredMood)
+    # Avoid launching the unrelated on-disk PCAP reconciliation thread here.
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
+    mock_view = MagicMock()
+    mock_view.async_update = AsyncMock()
+    agent = Agent(
+        {"personality": {"default_mood": "neutral"}, "ui": {"fps": 2}},
+        view=mock_view,
+        system_state=SystemState(),
+    )
+    assert agent.system_state.mood == "happy"
+    assert agent.automata.current_mood.value == "happy"
+
+
+
+def test_channel_hopping_uses_monitoring_adapter(monkeypatch):
+    """A configured wlan0 must not override the capture dongle's wlan1."""
+    monkeypatch.delenv("KAIAGOTCHI_INTERFACE", raising=False)
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentNetwork", lambda: MagicMock())
+
+    class EmptyMood:
+        def get_last_mood(self):
+            return "neutral"
+
+        def get_last_reward(self):
+            return 0.0
+
+    monkeypatch.setattr("kaiagotchi.agent.agent.PersistentMood", EmptyMood)
+    config = {
+        "main": {"iface": "wlan0"},
+        "personality": {"channels": [1, 6, 11]},
+        "ui": {"fps": 2},
+    }
+    agent = Agent(config, view=MagicMock(), system_state=SystemState())
+
+    assert agent.monitoring_agent.interface == "wlan1"
+    assert agent.interface_name == "wlan1"
+    assert agent.action_manager._interface == "wlan1"
+    assert agent.action_manager._monitor_interface == "wlan1"
+
+
+
+@pytest.mark.asyncio
+async def test_monitoring_propagates_known_current_channel():
+    """Known channel hops flow into typed network state; no fake channel default."""
+    mock_view = MagicMock()
+    mock_view.state = {"channel": "6"}
+    mock_view.async_update = AsyncMock()
+    state = SystemState()
+    monitor = MonitoringAgent(
+        config={},
+        system_state=state,
+        view=mock_view,
+    )
+
+    await monitor._update_state([], [])
+
+    assert state.network.current_channel == 6
+
+
+def test_network_current_channel_is_unknown_until_observed():
+    assert SystemState().network.current_channel is None

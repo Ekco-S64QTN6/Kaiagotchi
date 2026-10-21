@@ -120,6 +120,11 @@ class Agent(kaiagotchiBase):
             state_lock=self.state_lock,
             view=self._view,
         )
+        self.interface_name = self.monitoring_agent.interface
+        # Keep every channel operation on the capture dongle. [main].iface can
+        # name the internet-facing adapter (for example wlan0), while the
+        # MonitoringAgent intentionally defaults to wlan1.
+        self.action_manager.set_monitor_interface(self.monitoring_agent.interface)
 
         # Connect all persistence and AI systems to monitoring agent
         self.monitoring_agent.set_persistence(self.persistent_network)
@@ -154,8 +159,7 @@ class Agent(kaiagotchiBase):
         last_reward = self.persistent_mood.get_last_reward()
         if last_mood or last_reward is not None:
             self.logger.info(f"Restoring last mood={last_mood}, reward={last_reward}")
-            if hasattr(self.system_state, "mood"):
-                self.system_state.mood = last_mood or AgentMood.NEUTRAL.value
+            self.system_state.mood = last_mood or AgentMood.NEUTRAL.value
             self.automata.restore_state(mood=last_mood, reward=last_reward)
             self.logger.info("Automata state restored from persistence.")
 
@@ -174,10 +178,10 @@ class Agent(kaiagotchiBase):
             self.decision_engine.view = self._view
             self.logger.info("DecisionEngine connected to View.")
 
-        try:
-            iface_name = getattr(self, "interface_name", None) or getattr(self, "interface", "unknown")
-        except Exception:
-            iface_name = "unknown"
+        # MonitoringAgent owns the actual capture interface (default wlan1).
+        # Use it for UI/model metadata as well so the dashboard does not claim
+        # to be monitoring the separate internet-facing interface.
+        iface_name = self.monitoring_agent.interface
 
         self.interface_model = get_interface_model(iface_name)
         self.logger.info(f"Agent initialized with interface: {iface_name} ({self.interface_model})")
@@ -234,12 +238,12 @@ class Agent(kaiagotchiBase):
             "agent_obj": self,
             "system_state": self.system_state.current_system_state,
             "current_system_state": self.system_state.current_system_state.name if self.system_state.current_system_state else None,
-            "interface": getattr(self, "interface_name", "unknown"),
+            "interface": self.monitoring_agent.interface,
             "interface_model": getattr(self, "interface_model", "Unknown"),
             "network": {
                 "access_points": getattr(self.system_state.network, "access_points", {}),
                 "interfaces": getattr(self.system_state.network, "interfaces", {}),
-                "current_channel": getattr(self.system_state.network, "current_channel", 1),
+                "current_channel": getattr(self.system_state.network, "current_channel", None),
             },
             "metrics": getattr(self.system_state, "metrics", {}),
             "session_metrics": getattr(self.system_state, "session_metrics", {}),
