@@ -41,8 +41,9 @@ class OperativeController {
     };
     window.KaiaOperative = hook;
 
-    // ?face=k59 etc. selects another portrait (see KaiaCodec.PORTRAITS).
-    const face = new URLSearchParams(location.search).get('face') || undefined;
+    // ?face=k59 etc. selects a portrait (see KaiaCodec.PORTRAITS); otherwise a
+    // random one each load, never the one shown last.
+    const face = new URLSearchParams(location.search).get('face') || 'random';
     window.KaiaCodec.mount(this.stageEl, { portrait: face })
       .then((codec) => {
         this.codec = codec;
