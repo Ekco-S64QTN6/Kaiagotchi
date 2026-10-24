@@ -6,7 +6,7 @@ Kaiagotchi runs a live **curses dashboard** in your terminal while it autonomous
 scans the airwaves, captures WPA handshakes, and reacts with moods driven by a
 reinforcement-style reward loop. It's a research and learning tool inspired by
 [Pwnagotchi](https://github.com/evilsocket/pwnagotchi), rebuilt around a modern
-async Python core and a headless terminal UI.
+async Python core, a headless terminal UI, and an optional browser HUD.
 
 ---
 
@@ -15,6 +15,7 @@ async Python core and a headless terminal UI.
 | Area | What it does |
 |------|--------------|
 | **Curses dashboard** | A btop-style terminal UI (`TerminalDisplay`) showing APs, stations, spectrum, mood, and a live event log. Press **`q`** to quit. |
+| **Cyber-deck web UI** | An optional browser HUD (on by default): live telemetry over WebSocket and an animated Kaia codec avatar. Loopback-only unless you opt into LAN access. |
 | **Autonomous recon** | A decision engine drives an `INITIALIZING → RECON_SCAN → TARGETING → MAINTENANCE` state machine, with channel hopping paced by the current mood. |
 | **Handshake capture** | Launches `airodump-ng` and records PCAPs; `scapy`-based parsing extracts EAPOL handshakes and PMKIDs and exports hashcat-ready material. |
 | **Emotional loop** | `RewardEngine → Epoch → Automata` maps live activity into 12 moods (happy, curious, bored, sad, frustrated, …), each with its own face and voice lines. |
@@ -73,8 +74,13 @@ sudo kaiagotchi --debug
 sudo python -m kaiagotchi.cli --debug
 ```
 
+By default a cyber-deck web HUD also serves on `http://127.0.0.1:8080`
+(animated avatar and live telemetry). Add `--no-web` for terminal-only, or
+`--host 0.0.0.0` to reach it from the LAN (unauthenticated — see the warning
+it logs).
+
 Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
-`--debug`, `--manual`.
+`--debug`, `--manual`, `--no-web`, `--port`, `--host`.
 
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.
@@ -101,6 +107,7 @@ Key sections:
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces
 - `[bettercap] handshakes` — where captures are written
+- `[web]` — the browser HUD: `enabled`, `host` (loopback by default), `port`, `update_hz`
 
 Point Kaiagotchi at a different file with `--config` or the `KAIA_CONFIG`
 environment variable.
@@ -177,7 +184,7 @@ kaiagotchi/
 ├── config/     # defaults.toml + loader
 ├── network/    # airodump integration, PCAP parser, interface monitor
 ├── storage/    # persistent mood + network history
-├── ui/         # curses TerminalDisplay, View, Voice, splash
+├── ui/         # curses TerminalDisplay, View, Voice, splash, web HUD
 └── plugins/    # plugin base + manager
 ```
 
