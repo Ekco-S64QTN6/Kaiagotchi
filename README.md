@@ -187,6 +187,11 @@ integrity check; Scapy can still reject truncated or corrupt captures. Captures
 may contain sensitive identifiers and traffic, so only inspect files you are
 authorized to handle.
 
+Streaming parsing uses Scapy's `PcapReader` only for large captures. If iteration
+hits a malformed/truncated record, both parser entry points log the failure and
+return an empty result instead of leaking a reader exception; reader-close
+errors are logged without masking the parse result.
+
 ---
 
 ## Plugins
