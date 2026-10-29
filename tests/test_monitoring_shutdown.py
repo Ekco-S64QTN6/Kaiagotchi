@@ -1,5 +1,6 @@
 """Regression tests for monitor subprocess shutdown and reaping."""
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
