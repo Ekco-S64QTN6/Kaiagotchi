@@ -57,6 +57,39 @@ def signal_handler(signum, frame):
     logger.info(f"Received signal {signum}, initiating shutdown...")
     _shutdown_event.set()
 
+async def _await_cleanup_resilient(cleanup: Any) -> None:
+    """Finish cleanup before propagating caller cancellation.
+
+    Repeated cancellation can otherwise abort the await of a shielded cleanup
+    task. Continue waiting until it reaches a terminal state, then re-raise the
+    caller's cancellation so shutdown remains observable to the caller.
+    """
+    cleanup_task = asyncio.create_task(cleanup)
+    cancellation: asyncio.CancelledError | None = None
+
+    while not cleanup_task.done():
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError as exc:
+            if cleanup_task.cancelled():
+                break
+            if cancellation is None:
+                cancellation = exc
+        except Exception:
+            # Retrieve the child error below, after its task is terminal.
+            break
+
+    cleanup_error: BaseException | None = None
+    try:
+        await cleanup_task
+    except BaseException as exc:
+        cleanup_error = exc
+
+    if cancellation is not None:
+        raise cancellation
+    if cleanup_error is not None:
+        raise cleanup_error
+
 
 # ----------------------------------------------------------
 # CLI SETUP
@@ -585,95 +618,97 @@ async def run_agent() -> int:
         return 1
 
     finally:
-        # Clean shutdown for Manager/Agent/View with proper timeout
-        try:
-            # Cancel display monitor task
-            if display_monitor_task and not display_monitor_task.done():
-                display_monitor_task.cancel()
-                try:
-                    await display_monitor_task
-                except asyncio.CancelledError:
-                    pass
-
-            # Give shutdown process time to complete
-            shutdown_timeout = 5.0  # Reduced to 5s max hard timeout
-
-            # Stop WebServer
-            if web_server:
-                try:
-                    await asyncio.to_thread(web_server.stop)
-                    logger.info("WebServer stopped cleanly.")
-                except Exception as ws_err:
-                    logger.error(f"Error stopping WebServer: {ws_err}")
-
-            # If manager has a stop/shutdown coroutine, await it
-            if mgr is not None:
-                stop_fn = getattr(mgr, "stop", None) or getattr(mgr, "shutdown", None)
-                if stop_fn:
+        async def _cleanup_runtime() -> None:
+            # Clean shutdown for Manager/Agent/View with proper timeout
+            try:
+                # Cancel display monitor task
+                if display_monitor_task and not display_monitor_task.done():
+                    display_monitor_task.cancel()
                     try:
-                        if asyncio.iscoroutinefunction(stop_fn):
-                            await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
-                        else:
-                            await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, stop_fn),
-                                timeout=shutdown_timeout
-                            )
-                        logger.info("Manager stopped/cleanup complete.")
-                    except TimeoutError:
-                        logger.warning("Manager shutdown timed out, continuing...")
-                    except Exception as e:
-                        logger.error(f"Error stopping manager: {e}")
+                        await display_monitor_task
+                    except asyncio.CancelledError:
+                        pass
 
-            # If agent has stop, call/await it
-            if agent is not None:
-                stop_fn = getattr(agent, "stop", None) or getattr(agent, "shutdown", None)
-                if stop_fn:
+                # Give shutdown process time to complete
+                shutdown_timeout = 5.0  # Reduced to 5s max hard timeout
+
+                # Stop WebServer
+                if web_server:
                     try:
-                        if asyncio.iscoroutinefunction(stop_fn):
-                            await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
-                        else:
-                            await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, stop_fn),
-                                timeout=shutdown_timeout
-                            )
-                        logger.info("Agent stopped/cleanup complete.")
+                        await asyncio.to_thread(web_server.stop)
+                        logger.info("WebServer stopped cleanly.")
+                    except Exception as ws_err:
+                        logger.error(f"Error stopping WebServer: {ws_err}")
+
+                # If manager has a stop/shutdown coroutine, await it
+                if mgr is not None:
+                    stop_fn = getattr(mgr, "stop", None) or getattr(mgr, "shutdown", None)
+                    if stop_fn:
+                        try:
+                            if asyncio.iscoroutinefunction(stop_fn):
+                                await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
+                            else:
+                                await asyncio.wait_for(
+                                    asyncio.get_running_loop().run_in_executor(None, stop_fn),
+                                    timeout=shutdown_timeout
+                                )
+                            logger.info("Manager stopped/cleanup complete.")
+                        except TimeoutError:
+                            logger.warning("Manager shutdown timed out, continuing...")
+                        except Exception as e:
+                            logger.error(f"Error stopping manager: {e}")
+
+                # If agent has stop, call/await it
+                if agent is not None:
+                    stop_fn = getattr(agent, "stop", None) or getattr(agent, "shutdown", None)
+                    if stop_fn:
+                        try:
+                            if asyncio.iscoroutinefunction(stop_fn):
+                                await asyncio.wait_for(stop_fn(), timeout=shutdown_timeout)
+                            else:
+                                await asyncio.wait_for(
+                                    asyncio.get_running_loop().run_in_executor(None, stop_fn),
+                                    timeout=shutdown_timeout
+                                )
+                            logger.info("Agent stopped/cleanup complete.")
+                        except TimeoutError:
+                            logger.warning("Agent shutdown timed out, continuing...")
+                        except Exception as e:
+                            logger.error(f"Error stopping agent: {e}")
+
+                # View shutdown: prefer coroutine await if available
+                if view is not None:
+                    try:
+                        vs = getattr(view, "stop", None) or getattr(view, "on_shutdown", None)
+                        if vs:
+                            if asyncio.iscoroutinefunction(vs):
+                                await asyncio.wait_for(vs(), timeout=5.0)
+                            else:
+                                # run sync stop in executor to avoid blocking loop
+                                await asyncio.wait_for(
+                                    asyncio.get_running_loop().run_in_executor(None, vs),
+                                    timeout=5.0
+                                )
+                        logger.info("View shutdown executed cleanly.")
                     except TimeoutError:
-                        logger.warning("Agent shutdown timed out, continuing...")
-                    except Exception as e:
-                        logger.error(f"Error stopping agent: {e}")
+                        logger.warning("View shutdown timed out, continuing...")
+                    except Exception:
+                        logger.exception("Error during View shutdown", exc_info=True)
 
-            # View shutdown: prefer coroutine await if available
-            if view is not None:
-                try:
-                    vs = getattr(view, "stop", None) or getattr(view, "on_shutdown", None)
-                    if vs:
-                        if asyncio.iscoroutinefunction(vs):
-                            await asyncio.wait_for(vs(), timeout=5.0)
-                        else:
-                            # run sync stop in executor to avoid blocking loop
-                            await asyncio.wait_for(
-                                asyncio.get_running_loop().run_in_executor(None, vs),
-                                timeout=5.0
-                            )
-                    logger.info("View shutdown executed cleanly.")
-                except TimeoutError:
-                    logger.warning("View shutdown timed out, continuing...")
-                except Exception:
-                    logger.exception("Error during View shutdown", exc_info=True)
+                # Show goodbye message
+                if view is not None and view.display:
+                    try:
+                        view.display.show_goodbye()
+                    except Exception:
+                        pass
 
-            # Show goodbye message
-            if view is not None and view.display:
-                try:
-                    view.display.show_goodbye()
-                except Exception:
-                    pass
+                # Additional short delay to ensure all cleanup completes
+                await asyncio.sleep(0.5)
 
-            # Additional short delay to ensure all cleanup completes
-            await asyncio.sleep(0.5)
+            except Exception:
+                logger.exception("Error during final cleanup", exc_info=True)
 
-        except Exception:
-            logger.exception("Error during final cleanup", exc_info=True)
-
+        await _await_cleanup_resilient(_cleanup_runtime())
 
 def run() -> int:
     """Main CLI entrypoint wrapper that runs the async runner."""

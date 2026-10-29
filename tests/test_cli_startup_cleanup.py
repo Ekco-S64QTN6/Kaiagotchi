@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -39,3 +40,29 @@ async def test_run_agent_resets_shutdown_event_and_handles_early_config_failure(
     # Cleanup should not raise an UnboundLocalError for web_server when config
     # loading fails before WebServer initialization.
     assert "Error during final cleanup" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_cli_cleanup_finishes_before_repropagating_repeated_cancellation():
+    cleanup_started = asyncio.Event()
+    allow_cleanup_to_finish = asyncio.Event()
+    cleanup_finished = []
+
+    async def slow_cleanup():
+        cleanup_started.set()
+        await allow_cleanup_to_finish.wait()
+        cleanup_finished.append(True)
+
+    cleanup_task = asyncio.create_task(cli._await_cleanup_resilient(slow_cleanup()))
+    await cleanup_started.wait()
+
+    cleanup_task.cancel()
+    await asyncio.sleep(0)
+    cleanup_task.cancel()
+    await asyncio.sleep(0)
+    allow_cleanup_to_finish.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(cleanup_task, timeout=1.0)
+
+    assert cleanup_finished == [True]
