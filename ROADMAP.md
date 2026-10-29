@@ -16,10 +16,10 @@ features or capture-backend changes.
 
 ## Reliability priorities
 
-1. **PCAP parser** — continue synthetic coverage for PCAPNG option structure and
-   captured-length boundaries. The preflight checks block boundaries, declared and
-   trailing lengths, and EPB captured length versus available body/original length,
-   so malformed later blocks cannot yield partial inventory. Never use real captures.
+1. **PCAP parser** — continue synthetic coverage for PCAPNG option semantics,
+   block-specific constraints, and packet payloads. The preflight now rejects option
+   values that overrun a block and malformed end-of-options markers as well as
+   invalid block/captured lengths. Never use real captures or credentials.
 2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
    subprocesses and web-server thread termination, and verify background tasks
    are awaited without blocking the asyncio event loop.
@@ -37,6 +37,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Added streaming validation for PCAPNG option TLV boundaries and end-of-options
+  placement in section, interface, packet, and enhanced-packet blocks, with valid
+  option fixtures and malformed-length regressions.
 - Added a streaming PCAPNG block-framing preflight that validates section byte order,
   block boundaries, aligned lengths, file bounds, and trailing lengths before Scapy
   parses packet bodies. Synthetic coverage verifies valid beacons and rejects a

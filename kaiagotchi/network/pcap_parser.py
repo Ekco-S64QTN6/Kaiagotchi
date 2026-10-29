@@ -79,6 +79,36 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         )
         return False
 
+    def option_error(options_start: int, options_end: int) -> str | None:
+        """Return an option-list framing error, without materializing option values."""
+        option_offset = options_start
+        while option_offset < options_end:
+            if options_end - option_offset < 4:
+                return f"truncated option header at offset {option_offset}"
+
+            capture_file.seek(option_offset)
+            option_header = capture_file.read(4)
+            if len(option_header) != 4:
+                return f"truncated option header at offset {option_offset}"
+            option_code, option_length = struct.unpack(endian + "HH", option_header)
+
+            if option_code == 0:
+                if option_length != 0:
+                    return f"end-of-options at offset {option_offset} has nonzero length"
+                if option_offset + 4 != options_end:
+                    return f"data follows end-of-options at offset {option_offset}"
+                return None
+
+            padded_length = option_length + (-option_length % 4)
+            option_end = option_offset + 4 + padded_length
+            if option_end > options_end:
+                return f"option at offset {option_offset} exceeds its block boundary"
+            option_offset = option_end
+
+        # PCAPNG permits option lists to end at the end of their enclosing block
+        # without an explicit end-of-options marker.
+        return None
+
     endian: str | None = None
     offset = 0
     try:
@@ -124,43 +154,61 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         f"block at offset {offset} extends beyond end of file"
                     )
 
-                if not is_section_header:
-                    block_type_value = struct.unpack(endian + "I", block_type)[0]
-                    if block_type_value == 1 and block_length < 20:
+                block_type_value = (
+                    None
+                    if is_section_header
+                    else struct.unpack(endian + "I", block_type)[0]
+                )
+                options_start: int | None = None
+
+                if is_section_header:
+                    # Section Header Block options follow version/section-length.
+                    options_start = offset + 24
+                elif block_type_value == 1:
+                    if block_length < 20:
                         return reject(
                             f"interface description block at offset {offset} is too short"
                         )
-                    if block_type_value in {2, 6} and block_length < 32:
+                    options_start = offset + 16
+                elif block_type_value in {2, 6}:
+                    if block_length < 32:
                         return reject(
                             f"packet block at offset {offset} is too short"
                         )
-                    if block_type_value == 3 and block_length < 16:
+                    # Packet Block and Enhanced Packet Block share the captured
+                    # and original length offsets, then padded packet bytes.
+                    capture_file.seek(offset + 20)
+                    packet_lengths = capture_file.read(8)
+                    if len(packet_lengths) != 8:
                         return reject(
-                            f"simple packet block at offset {offset} is too short"
+                            f"packet block at offset {offset} has truncated packet lengths"
                         )
-                    if block_type_value == 6:
-                        # EPB fields at offsets 20 and 24 are captured and
-                        # original packet lengths. Packet bytes are padded to
-                        # a 32-bit boundary before any options and the trailer.
-                        capture_file.seek(offset + 20)
-                        packet_lengths = capture_file.read(8)
-                        if len(packet_lengths) != 8:
-                            return reject(
-                                f"enhanced packet block at offset {offset} has truncated packet lengths"
-                            )
-                        captured_length, original_length = struct.unpack(
-                            endian + "II", packet_lengths
+                    captured_length, original_length = struct.unpack(
+                        endian + "II", packet_lengths
+                    )
+                    if captured_length > original_length:
+                        return reject(
+                            f"packet block at offset {offset} has captured length greater than original length"
                         )
-                        if captured_length > original_length:
-                            return reject(
-                                f"enhanced packet block at offset {offset} has captured length greater than original length"
-                            )
-                        padded_capture_length = captured_length + (-captured_length % 4)
-                        available_packet_bytes = block_length - 32
-                        if padded_capture_length > available_packet_bytes:
-                            return reject(
-                                f"enhanced packet block at offset {offset} has captured length exceeding available block data"
-                            )
+                    padded_capture_length = captured_length + (-captured_length % 4)
+                    available_packet_bytes = block_length - 32
+                    if padded_capture_length > available_packet_bytes:
+                        return reject(
+                            f"packet block at offset {offset} has captured length exceeding available block data"
+                        )
+                    options_start = offset + 28 + padded_capture_length
+                elif block_type_value == 3 and block_length < 16:
+                    return reject(
+                        f"simple packet block at offset {offset} is too short"
+                    )
+
+                if options_start is not None:
+                    options_end = block_end - 4
+                    invalid_options = option_error(options_start, options_end)
+                    if invalid_options is not None:
+                        return reject(
+                            f"invalid options in block at offset {offset}: {invalid_options}"
+                        )
 
                 capture_file.seek(block_end - 4)
                 trailing_length = capture_file.read(4)
