@@ -211,6 +211,23 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def stop(self):
+        """Run shutdown to completion even if the caller is cancelled.
+
+        The inner task is shielded so outer timeouts/cancellation cannot interrupt
+        process reaping halfway through cleanup. The caller's cancellation is
+        re-raised after the bounded cleanup attempt finishes.
+        """
+        cleanup_task = asyncio.create_task(self._stop_impl())
+        try:
+            await asyncio.shield(cleanup_task)
+        except asyncio.CancelledError:
+            try:
+                await cleanup_task
+            except Exception:
+                _LOG.exception("[monitoring] Shutdown cleanup failed after cancellation")
+            raise
+
+    async def _stop_impl(self):
         # A partial startup or an earlier shutdown error can clear _running
         # while still leaving a child process/task/temp capture directory to reap.
         if (
@@ -225,16 +242,30 @@ class MonitoringAgent:
         self._running = False
 
         loop_task = self._loop_task
-        self._loop_task = None
+        scan_loop_stopped = loop_task is None
         if loop_task is not None:
             if not loop_task.done():
                 loop_task.cancel()
-            try:
-                await loop_task
-            except asyncio.CancelledError:
-                _LOG.debug("[monitoring] Scan loop cancelled")
-            except Exception as e:
-                _LOG.error("[monitoring] Error stopping scan loop: %s", e)
+            # Don't await an uncooperative scan task indefinitely. In particular,
+            # process termination must not be held hostage by a task that suppresses
+            # CancelledError. Keep the handle so a later stop() can retry cleanup.
+            await asyncio.wait({loop_task}, timeout=1.0)
+            if loop_task.done():
+                try:
+                    await loop_task
+                except asyncio.CancelledError:
+                    _LOG.debug("[monitoring] Scan loop cancelled")
+                except Exception as e:
+                    _LOG.error("[monitoring] Error stopping scan loop: %s", e)
+                finally:
+                    if self._loop_task is loop_task:
+                        self._loop_task = None
+                scan_loop_stopped = True
+            else:
+                _LOG.warning(
+                    "[monitoring] Scan loop did not stop within 1 second; "
+                    "continuing subprocess shutdown and deferring capture cleanup"
+                )
 
         process = self._process
         if process is not None:
@@ -279,14 +310,23 @@ class MonitoringAgent:
         except Exception as e:
             _LOG.error(f"[monitoring] Error restoring managed mode: {e}")
 
-        # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
-        # synchronous Scapy parsing and file I/O don't stall the event loop
-        await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
-        # Remove private temporary files only after archiving. If archiving failed
-        # and a PCAP remains, _cleanup_capture_temp_dir keeps it for recovery.
-        await asyncio.get_running_loop().run_in_executor(
-            None, self._cleanup_capture_temp_dir
-        )
+        if scan_loop_stopped:
+            # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
+            # synchronous Scapy parsing and file I/O don't stall the event loop.
+            await asyncio.get_running_loop().run_in_executor(
+                None, self._archive_pcap_sync
+            )
+            # Remove private temporary files only after archiving. If archiving
+            # failed and a PCAP remains, cleanup keeps it for recovery.
+            await asyncio.get_running_loop().run_in_executor(
+                None, self._cleanup_capture_temp_dir
+            )
+        else:
+            # The scan loop may still be touching capture files. Preserve those
+            # files and the task handle so a later stop() can finish cleanup safely.
+            _LOG.warning(
+                "[monitoring] Capture archive/temp cleanup deferred until scan loop exits"
+            )
 
         try:
             if self.persistent_network:

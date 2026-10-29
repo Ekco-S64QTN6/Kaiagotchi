@@ -20,9 +20,10 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions and resets interface references per section as well as
    checking block/options/captured lengths. Never use real captures or credentials.
-2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
-   subprocesses and web-server thread termination, and verify background tasks
-   are awaited without blocking the asyncio event loop.
+2. **Async shutdown** — continue CLI-wide repeated-cancellation and process-reap failure
+   coverage. Monitoring shutdown now bounds waits for an unresponsive scan task, keeps
+   its handle for retry, and defers capture-file cleanup until the task exits; web-server
+   thread termination remains bounded and off the event loop.
 3. **Reward and mood contract** — document required/optional state fields and
    fallback behavior; extend reward tests for partial/stale state and malformed
    discovery inputs.
