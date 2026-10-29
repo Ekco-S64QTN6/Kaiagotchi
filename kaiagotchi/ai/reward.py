@@ -114,35 +114,47 @@ class RewardEngine:
 
         return max(0, total)
 
-    def _extract_ap_count(self, state: dict[str, Any]) -> int:
-        """Extract AP count from multiple possible locations in state."""
+    @staticmethod
+    def _coerce_nonnegative_count(value: Any) -> int | None:
+        """Coerce a count without treating booleans, negatives, or junk as data."""
+        if value is None or isinstance(value, bool):
+            return None
         try:
-            # Try direct AP count first
-            direct_aps = state.get("aps")
-            if direct_aps is not None:
-                return int(direct_aps)
+            count = int(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return count if count >= 0 else None
 
-            # Try network section
-            net = state.get("network", {}) or {}
+    def _extract_ap_count(self, state: dict[str, Any]) -> int:
+        """Extract AP count from the first valid source in legacy-compatible order."""
+        direct_aps = state.get("aps")
+        if direct_aps is not None:
+            count = self._coerce_nonnegative_count(direct_aps)
+            if count is not None:
+                return count
+            logger.debug("Ignoring invalid direct AP count: %r", direct_aps)
 
-            # Try access_points dict
-            aps_dict = net.get("access_points", {})
-            if aps_dict and isinstance(aps_dict, dict):
-                return len(aps_dict)
+        network_value = state.get("network", {})
+        net = network_value if isinstance(network_value, dict) else {}
 
-            # Try aps_list
-            aps_list = state.get("aps_list") or net.get("aps_list") or []
-            if aps_list and isinstance(aps_list, list):
-                return len(aps_list)
+        # Prefer a populated network inventory when no direct count is valid.
+        aps_dict = net.get("access_points")
+        if isinstance(aps_dict, dict) and aps_dict:
+            return len(aps_dict)
 
-            # Try monitoring agent data
-            if "monitoring_agent" in state:
-                monitoring_data = state["monitoring_agent"]
-                if isinstance(monitoring_data, dict) and "aps" in monitoring_data:
-                    return int(monitoring_data["aps"])
+        # Then try the top-level or network AP list.
+        aps_list = state.get("aps_list")
+        if not isinstance(aps_list, list):
+            aps_list = net.get("aps_list")
+        if isinstance(aps_list, list) and aps_list:
+            return len(aps_list)
 
-        except Exception as e:
-            logger.debug("Failed to extract AP count: %s", e)
+        # Finally try the older MonitoringAgent count field.
+        monitoring_data = state.get("monitoring_agent")
+        if isinstance(monitoring_data, dict):
+            count = self._coerce_nonnegative_count(monitoring_data.get("aps"))
+            if count is not None:
+                return count
 
         return 0
 

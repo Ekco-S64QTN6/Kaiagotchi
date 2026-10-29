@@ -28,4 +28,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   private capture directory before propagating cancellation.
 - Ignore malformed AP/station identities in reward inventories and non-string
   legacy chatter payloads, with regression tests for fallback and deduplication.
+- Fall back from invalid/negative/boolean direct AP counts to the next supported
+  state source while preserving explicit zero counts.
 - Establish contributor guidance and a prioritized reliability roadmap.
