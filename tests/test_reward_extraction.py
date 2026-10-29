@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from kaiagotchi.ai.reward import RewardEngine
 
+
 def test_explicit_zero_handshakes_beats_stale_legacy_aliases():
     engine = RewardEngine({})
     agents = [

@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from kaiagotchi.core.utils import validate_config
 
 

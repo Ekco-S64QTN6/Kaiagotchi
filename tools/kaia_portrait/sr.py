@@ -1,5 +1,6 @@
 """4x real-world super-resolution of an image crop with Swin2SR (GPU), tiled to bound VRAM."""
 import sys
+
 import numpy as np
 import torch
 from PIL import Image
