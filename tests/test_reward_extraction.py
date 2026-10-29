@@ -62,7 +62,6 @@ def test_handshake_extraction_accepts_object_with_mapping_session_metrics():
     assert engine._extract_handshakes([agent]) == 5
 
 
-
 def test_broken_agent_does_not_hide_counts_from_other_agents():
     class BrokenAgent:
         @property
