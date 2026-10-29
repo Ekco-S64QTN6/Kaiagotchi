@@ -1,5 +1,5 @@
-import builtins
 from pathlib import Path
+import builtins
 
 import tomlkit
 
