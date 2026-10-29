@@ -265,45 +265,59 @@ class Agent(kaiagotchiBase):
             await self._view.async_update(updates)
 
     async def start_async(self):
-        """Main asynchronous agent runner with emotional loop start."""
+        """Run the agent and always clean up, including during startup awaits."""
         self._running = True
         self.logger.info("Agent main run loop starting...")
 
-        # Start the network monitor
-        self._monitor_task = asyncio.create_task(self.monitoring_agent.start())
-        self.logger.info("MonitoringAgent started.")
-
-        # Start emotional loop (fallback if not already started by MONITORING event)
-        if self.automata and not self.automata._running:
-            await self.automata.start(self.get_state)
-            self.logger.info("Automata emotional loop started (fallback).")
-
-        # Start decision and UI loops
-        decision_delay = float(self.config.get("decision_cycle_delay", 5.0) or 5.0)
-        self._decision_task = asyncio.create_task(self._decision_loop(decision_delay))
-        self._update_task = asyncio.create_task(self._update_loop())
-        self.logger.info(f"Decision loop (delay={decision_delay}s) and UI update loop started.")
-
         try:
-            tasks = [t for t in (self._monitor_task, self._decision_task, self._update_task) if t is not None]
-            done, _pending = await asyncio.wait(
-                tasks,
-                return_when=asyncio.FIRST_EXCEPTION,
-            )
-            # Inspect completed tasks and re-raise any exception so callers see it
-            for t in done:
-                exc = t.exception() if not t.cancelled() else None
-                if exc is not None:
-                    self.logger.error("Agent background task raised an exception: %s", exc)
-                    raise exc
-        except asyncio.CancelledError:
-            self.logger.info("Agent tasks cancelled.")
-        except Exception as e:
-            self.logger.error(f"Unhandled exception in Agent.run(): {e}")
-            raise
-        finally:
-            await self.stop()
+            # Start the network monitor. If later startup awaits are cancelled,
+            # the finally block below still cancels/reaps this task and calls stop().
+            self._monitor_task = asyncio.create_task(self.monitoring_agent.start())
+            self.logger.info("MonitoringAgent started.")
 
+            # Start emotional loop (fallback if not already started by MONITORING event).
+            if self.automata and not self.automata._running:
+                await self.automata.start(self.get_state)
+                self.logger.info("Automata emotional loop started (fallback).")
+
+            # Start decision and UI loops only after the emotional startup barrier.
+            decision_delay = float(self.config.get("decision_cycle_delay", 5.0) or 5.0)
+            self._decision_task = asyncio.create_task(self._decision_loop(decision_delay))
+            self._update_task = asyncio.create_task(self._update_loop())
+            self.logger.info(
+                "Decision loop (delay=%s s) and UI update loop started.", decision_delay
+            )
+
+            try:
+                tasks = [
+                    task
+                    for task in (
+                        self._monitor_task, self._decision_task, self._update_task
+                    )
+                    if task is not None
+                ]
+                done, _pending = await asyncio.wait(
+                    tasks, return_when=asyncio.FIRST_EXCEPTION
+                )
+                # Inspect completed tasks and re-raise any exception so callers see it.
+                for task in done:
+                    exc = task.exception() if not task.cancelled() else None
+                    if exc is not None:
+                        self.logger.error(
+                            "Agent background task raised an exception: %s", exc
+                        )
+                        raise exc
+            except asyncio.CancelledError:
+                # Preserve the established behavior for cancellation during the
+                # steady-state wait; stop() below still performs cleanup.
+                self.logger.info("Agent tasks cancelled.")
+            except Exception as exc:
+                self.logger.error("Unhandled exception in Agent.run(): %s", exc)
+                raise
+        finally:
+            # Keep all startup awaits inside this lifecycle guard. In particular,
+            # cancellation/error from automata.start() must not orphan the monitor.
+            await self.stop()
     async def start(self):
         """Compatibility wrapper."""
         await self.start_async()
