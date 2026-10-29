@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Handle cancellation during monitor-mode setup and capture launch. Setup cancellation
+  attempts managed-mode restoration; capture-spawn cancellation preserves the child
+  handle so normal shutdown can reap it and clean the private capture directory.
 - Run the synchronous web-server stop/join operation in a worker thread from CLI
   cleanup so the asyncio event loop can continue servicing cancellation and other
   shutdown work while the server thread exits.

@@ -138,6 +138,16 @@ class MonitoringAgent:
 
         try:
             await self._set_monitor_mode()
+        except asyncio.CancelledError:
+            self._running = False
+            try:
+                await asyncio.shield(self._restore_managed_mode())
+            except Exception:
+                _LOG.debug(
+                    "[monitoring] Could not restore interface after cancelled setup",
+                    exc_info=True,
+                )
+            raise
         except Exception as exc:
             _LOG.exception("[monitoring] monitor mode setup failed")
             self._running = False
@@ -159,6 +169,17 @@ class MonitoringAgent:
 
         try:
             await self._launch_airodump()
+        except asyncio.CancelledError:
+            # A cancelled launch may have spawned the child or created a
+            # private capture directory. Reuse normal shutdown so both are
+            # reaped/archived before cancellation propagates to the caller.
+            try:
+                await asyncio.shield(self.stop())
+            except Exception:
+                _LOG.exception(
+                    "[monitoring] Cleanup failed after cancelled capture startup"
+                )
+            raise
         except Exception:
             # Do not leave the adapter in monitor mode when capture startup
             # fails (for example, airodump-ng missing or process creation denied).
@@ -452,11 +473,26 @@ class MonitoringAgent:
             ]
 
             _LOG.info("[monitoring] Launching airodump: %s", " ".join(args))
-            self._process = await asyncio.create_subprocess_exec(
-                *args,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+            # Keep a handle to the spawn task so cancellation cannot lose
+            # the child between OS creation and assignment to self._process.
+            spawn_task = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    *args,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
             )
+            try:
+                self._process = await asyncio.shield(spawn_task)
+            except asyncio.CancelledError:
+                try:
+                    self._process = await asyncio.shield(spawn_task)
+                except Exception:
+                    _LOG.debug(
+                        "[monitoring] airodump spawn failed during cancellation",
+                        exc_info=True,
+                    )
+                raise
         except Exception:
             # Avoid leaving empty temp folders behind if process launch fails.
             self._cleanup_capture_temp_dir()
