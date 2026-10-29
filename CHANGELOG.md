@@ -58,6 +58,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   cannot be reaped; bound post-kill waiting and retry with the retained process handle.
 - Preserve reward delta baselines across partial snapshots, recognize the canonical top-level
   typed-state mood field, and ignore boolean handshake counts.
+- Add a CI quality-baseline job that gates compileall and publishes explicit Ruff/mypy
+  outcomes and full reports while existing static-analysis findings are triaged.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

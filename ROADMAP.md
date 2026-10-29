@@ -32,8 +32,10 @@ features or capture-backend changes.
    policy; continue testing unload hooks that mutate manager state and API
    compatibility across future hook changes. Registration and re-entrant
    shutdown during `unload_all()` are now guarded.
-5. **Quality gates** — establish clean baselines, then add compileall, Ruff, and
-   advisory mypy checks to automated CI without concealing pre-existing issues.
+5. **Quality gates** — compileall now gates CI; the Python 3.11 baseline job records
+   Ruff and advisory mypy exit codes/findings in the job summary and uploads full
+   reports. Triage existing findings before promoting Ruff to a blocking check; never
+   report a successful baseline job as proof that static analysis is clean.
 6. **Operator validation** — document a safe hardware smoke-test checklist for
    `airodump-ng`, `iw`, monitor-mode adapters, privileges, and clean stop behavior.
 
