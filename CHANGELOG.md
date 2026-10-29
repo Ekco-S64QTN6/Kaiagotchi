@@ -36,6 +36,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   values cannot subtract valid counts from other agents.
 - Make streaming PCAP parsing return empty results on reader iteration failures and
   log close errors without allowing cleanup exceptions to escape.
+- Add synthetic PCAPNG section-header coverage for invalid byte-order magic, invalid
+  declared lengths, mismatched trailers, and a minimal valid section header.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

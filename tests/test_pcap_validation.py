@@ -118,3 +118,89 @@ def test_parser_handles_truncated_capture_inputs(
         assert result.stations == {}
         assert result.handshakes == []
         assert result.total_beacons == 0
+
+
+
+def _pcapng_section_header(
+    *, declared_length: int = 28, trailer_length: int = 28,
+    byte_order_magic: bytes = bytes.fromhex("4d 3c 2b 1a"),
+) -> bytes:
+    """Build a minimal synthetic little-endian PCAPNG Section Header Block."""
+    return (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack("<I", declared_length)
+        + byte_order_magic
+        + struct.pack("<HHqI", 1, 0, -1, trailer_length)
+    )
+
+
+@pytest.mark.parametrize(
+    ("filename", "section_header"),
+    [
+        pytest.param(
+            "bad-section-length.pcapng",
+            _pcapng_section_header(declared_length=24, trailer_length=24),
+            id="section-header-shorter-than-minimum",
+        ),
+        pytest.param(
+            "declared-length-too-long.pcapng",
+            _pcapng_section_header(declared_length=32, trailer_length=32),
+            id="declared-length-exceeds-file",
+        ),
+        pytest.param(
+            "mismatched-trailer.pcapng",
+            _pcapng_section_header(declared_length=28, trailer_length=24),
+            id="trailing-length-mismatch",
+        ),
+        pytest.param(
+            "invalid-byte-order.pcapng",
+            _pcapng_section_header(byte_order_magic=bytes.fromhex("00 00 00 00")),
+            id="invalid-byte-order-magic",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "parse",
+    [parse_pcap, parse_pcap_comprehensive],
+    ids=["simple-parser", "comprehensive-parser"],
+)
+def test_parser_fails_closed_on_malformed_pcapng_section_headers(
+    tmp_path, caplog, filename, section_header, parse
+):
+    capture = tmp_path / filename
+    capture.write_bytes(section_header)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse(str(capture))
+
+    assert "failed to read pcap file" in caplog.text.lower()
+    if isinstance(result, list):
+        assert result == []
+    else:
+        assert result.bssids == {}
+        assert result.stations == {}
+        assert result.handshakes == []
+        assert result.total_packets == 0
+        assert result.total_beacons == 0
+
+
+@pytest.mark.parametrize(
+    "parse",
+    [parse_pcap, parse_pcap_comprehensive],
+    ids=["simple-parser", "comprehensive-parser"],
+)
+def test_parser_accepts_minimal_valid_pcapng_section_header(
+    tmp_path, caplog, parse
+):
+    capture = tmp_path / "empty-section.pcapng"
+    capture.write_bytes(_pcapng_section_header())
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse(str(capture))
+
+    assert "failed to read pcap file" not in caplog.text.lower()
+    if isinstance(result, list):
+        assert result == []
+    else:
+        assert result.total_packets == 0
+        assert result.total_beacons == 0
