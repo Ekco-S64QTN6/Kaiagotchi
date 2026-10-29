@@ -31,13 +31,9 @@ except Exception:
 
 try:
     import kaiagotchi.data.system_types as st
-    NetworkStateClass = getattr(st, "NetworkState", None)
-    SystemMetricsClass = getattr(st, "SystemMetrics", None)
-    SessionMetricsClass = getattr(st, "SessionMetrics", None)
     GlobalSystemStateClass = getattr(st, "GlobalSystemState", None)
     SystemStateClass = getattr(st, "SystemState", None)
 except Exception:
-    NetworkStateClass = SystemMetricsClass = SessionMetricsClass = None
     GlobalSystemStateClass = SystemStateClass = None
 
 logger = logging.getLogger("kaiagotchi.core.manager")
@@ -101,18 +97,9 @@ class Manager:
         # ---------- SHARED SYSTEM STATE ----------
         if self.system_state is None and SystemStateClass:
             try:
-                net = NetworkStateClass(access_points={}, interfaces={}, last_scan_time=0.0)
-                metrics = SystemMetricsClass(
-                    cpu_usage=0.0, memory_usage=0.0, disk_free_gb=0.0, uptime_seconds=0.0
-                )
-                session = SessionMetricsClass(duration_seconds=0.0, handshakes_secured=0)
-                self.system_state = SystemStateClass(
+                self.system_state = SystemStateClass.minimal(
                     current_system_state=GlobalSystemStateClass.BOOTING,
                     config_hash="manager_boot",
-                    network=net,
-                    metrics=metrics,
-                    agents={},
-                    session_metrics=session,
                 )
                 logger.info("Manager: default SystemState created")
             except Exception:

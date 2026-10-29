@@ -20,13 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from kaiagotchi.config.config import load_config
-from kaiagotchi.data.system_types import (
-    GlobalSystemState,
-    NetworkState,
-    SessionMetrics,
-    SystemMetrics,
-    SystemState,
-)
+from kaiagotchi.data.system_types import GlobalSystemState, SystemState
 from kaiagotchi.ui.view import View
 
 logger = logging.getLogger("kaiagotchi.cli")
@@ -238,13 +232,9 @@ async def run_agent() -> int:
             logger.info("Manual mode enabled via CLI")
 
         # Shared system state
-        system_state = SystemState(
+        system_state = SystemState.minimal(
             current_system_state=GlobalSystemState.BOOTING,
             config_hash="cli_config_hash",
-            network=NetworkState(access_points={}, interfaces={}, last_scan_time=0.0),
-            metrics=SystemMetrics(cpu_usage=0.0, memory_usage=0.0, disk_free_gb=0.0, uptime_seconds=0.0),
-            agents={},
-            session_metrics=SessionMetrics(duration_seconds=0.0, handshakes_secured=0),
         )
         state_lock = asyncio.Lock()
 
