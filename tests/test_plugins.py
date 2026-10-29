@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock
 
+import pytest
+
 from kaiagotchi.plugins.base import PLUGIN_API_VERSION, Plugin
 from kaiagotchi.plugins.manager import PluginManager
 
@@ -217,3 +219,22 @@ def test_incompatible_plugin_version_is_rejected_before_load_or_replacement():
     assert incompatible.unload_called is False
     assert original.unload_called is False
     assert manager.plugins["versioned"] is original
+
+
+@pytest.mark.parametrize(
+    "api_version",
+    [True, "1", None],
+    ids=["boolean", "string", "missing"],
+)
+def test_malformed_plugin_api_version_is_rejected_before_load(api_version):
+    class MalformedPlugin(LifecyclePlugin):
+        pass
+
+    MalformedPlugin.PLUGIN_API_VERSION = api_version
+    plugin = MalformedPlugin("malformed-version")
+    manager = PluginManager()
+
+    assert manager.register_plugin(plugin) is False
+    assert plugin.load_called is False
+    assert plugin.unload_called is False
+    assert "malformed-version" not in manager.plugins
