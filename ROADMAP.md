@@ -32,16 +32,16 @@ features or capture-backend changes.
    policy; continue testing unload hooks that mutate manager state and API
    compatibility across future hook changes. Registration and re-entrant
    shutdown during `unload_all()` are now guarded.
-5. **Quality gates** — compileall now gates CI. The first reported baseline (PR #78)
-   found 17 Ruff diagnostics (14 marked fixable) and 92 mypy errors across 18 source
-   files. Reports are attached to the workflow for triage; counts are snapshots, not
-   allowlists. Triage findings before promoting Ruff to a blocking check, and never
-   treat a successful baseline job as proof that static analysis is clean.
+5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
+   Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
+   uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
+   across 18 source files and full reports attached for systematic triage.
 6. **Operator validation** — document a safe hardware smoke-test checklist for
    `airodump-ng`, `iw`, monitor-mode adapters, privileges, and clean stop behavior.
 
 ## Recently completed
 
+- Promoted Ruff to a blocking CI check after clearing all 17 initial baseline diagnostics; mypy remains advisory with a full report and a measured baseline of 92 errors across 18 source files.
 - Documented the RewardEngine input contract and added regression coverage showing that
   partial/malformed snapshots preserve known counter/channel baselines, top-level typed
   state `mood` applies mood penalties, and boolean handshake counts are ignored.

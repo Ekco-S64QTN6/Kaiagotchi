@@ -60,6 +60,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   typed-state mood field, and ignore boolean handshake counts.
 - Add a CI quality-baseline job that gates compileall and publishes explicit Ruff/mypy
   outcomes and full reports while existing static-analysis findings are triaged.
+- Promote Ruff to a blocking CI gate after clearing all 17 baseline diagnostics; keep
+  mypy advisory and continue uploading its full report while its 92 existing errors are triaged.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.
