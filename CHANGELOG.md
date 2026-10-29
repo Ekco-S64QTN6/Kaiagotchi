@@ -50,6 +50,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   rather than treating Scapy's invalid-interface EOF as a successful partial capture.
 - Reject unsupported PCAPNG section-header major versions and reset interface state
   at every new section boundary.
+- Bound monitor shutdown's wait for cancellation-resistant scan tasks, retain the task
+  handle for retry, and defer capture archive/temp cleanup while the scan task is active.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.
