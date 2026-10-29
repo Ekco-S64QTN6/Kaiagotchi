@@ -137,84 +137,77 @@ class MonitoringAgent:
         _LOG.info("[monitoring] Starting monitoring setup...")
 
         try:
-            await self._set_monitor_mode()
-        except asyncio.CancelledError:
-            self._running = False
             try:
-                await asyncio.shield(self._restore_managed_mode())
-            except Exception:
-                _LOG.debug(
-                    "[monitoring] Could not restore interface after cancelled setup",
-                    exc_info=True,
-                )
-            raise
-        except Exception as exc:
-            _LOG.exception("[monitoring] monitor mode setup failed")
-            self._running = False
-            try:
-                await self._restore_managed_mode()
-            except Exception:
-                _LOG.debug("[monitoring] Could not restore interface after setup failure", exc_info=True)
-            raise RuntimeError(
-                f"Could not configure capture interface {self.interface} for monitor mode"
-            ) from exc
+                await self._set_monitor_mode()
+            except Exception as exc:
+                _LOG.exception("[monitoring] monitor mode setup failed")
+                self._running = False
+                try:
+                    await self._restore_managed_mode()
+                except Exception:
+                    _LOG.debug(
+                        "[monitoring] Could not restore interface after setup failure",
+                        exc_info=True,
+                    )
+                raise RuntimeError(
+                    f"Could not configure capture interface {self.interface} for monitor mode"
+                ) from exc
 
-        if self.view:
-            try:
-                await self.view.async_update(
-                    {"substatus": "Initializing packet capture...", "mode": "AUTO"}
-                )
-            except Exception:
-                pass
+            if self.view:
+                try:
+                    await self.view.async_update(
+                        {"substatus": "Initializing packet capture...", "mode": "AUTO"}
+                    )
+                except Exception:
+                    pass
 
-        try:
-            await self._launch_airodump()
+            try:
+                await self._launch_airodump()
+            except Exception:
+                # Do not leave the adapter in monitor mode when capture startup
+                # fails (for example, airodump-ng missing or process creation denied).
+                self._running = False
+                try:
+                    await self._restore_managed_mode()
+                except Exception:
+                    _LOG.debug(
+                        "[monitoring] Could not restore interface after capture launch failure",
+                        exc_info=True,
+                    )
+                # _launch_airodump cleans an empty private temp directory on its
+                # own; this is a second guarded cleanup for any setup residue.
+                try:
+                    await asyncio.get_running_loop().run_in_executor(
+                        None, self._cleanup_capture_temp_dir
+                    )
+                except Exception:
+                    _LOG.debug(
+                        "[monitoring] Could not clean capture temp directory after launch failure",
+                        exc_info=True,
+                    )
+                raise
+
+            self._loop_task = asyncio.create_task(self._scan_loop())
+
+            if self.persistent_mood:
+                try:
+                    if hasattr(self.persistent_mood, "update_mood"):
+                        self.persistent_mood.update_mood("curious")
+                except Exception:
+                    _LOG.debug("Failed to nudge persistent_mood to curious", exc_info=True)
+
+            await self._emit_capture_summary("Monitoring initialized.")
+            _LOG.info("[monitoring] Monitoring started.")
         except asyncio.CancelledError:
-            # A cancelled launch may have spawned the child or created a
-            # private capture directory. Reuse normal shutdown so both are
-            # reaped/archived before cancellation propagates to the caller.
+            # Cancellation can arrive at any await during startup, including the
+            # view update or summary emission after the child process is running.
+            # The spawn helper shields process creation until its handle is stored,
+            # allowing stop() to terminate/reap the child and clean capture files.
             try:
                 await asyncio.shield(self.stop())
             except Exception:
-                _LOG.exception(
-                    "[monitoring] Cleanup failed after cancelled capture startup"
-                )
+                _LOG.exception("[monitoring] Cleanup failed after cancelled startup")
             raise
-        except Exception:
-            # Do not leave the adapter in monitor mode when capture startup
-            # fails (for example, airodump-ng missing or process creation denied).
-            self._running = False
-            try:
-                await self._restore_managed_mode()
-            except Exception:
-                _LOG.debug(
-                    "[monitoring] Could not restore interface after capture launch failure",
-                    exc_info=True,
-                )
-            # _launch_airodump cleans an empty private temp directory on its
-            # own; this is a second guarded cleanup for any setup residue.
-            try:
-                await asyncio.get_running_loop().run_in_executor(
-                    None, self._cleanup_capture_temp_dir
-                )
-            except Exception:
-                _LOG.debug(
-                    "[monitoring] Could not clean capture temp directory after launch failure",
-                    exc_info=True,
-                )
-            raise
-
-        self._loop_task = asyncio.create_task(self._scan_loop())
-
-        if self.persistent_mood:
-            try:
-                if hasattr(self.persistent_mood, "update_mood"):
-                    self.persistent_mood.update_mood("curious")
-            except Exception:
-                _LOG.debug("Failed to nudge persistent_mood to curious", exc_info=True)
-
-        await self._emit_capture_summary("Monitoring initialized.")
-        _LOG.info("[monitoring] Monitoring started.")
 
     # ------------------------------------------------------------------
     async def stop(self):
