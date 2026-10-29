@@ -56,6 +56,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   cancellation only after the cleanup task has completed.
 - Defer monitor-mode restoration and capture archive/temp removal when the capture process
   cannot be reaped; bound post-kill waiting and retry with the retained process handle.
+- Preserve reward delta baselines across partial snapshots, recognize the canonical top-level
+  typed-state mood field, and ignore boolean handshake counts.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

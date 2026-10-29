@@ -153,6 +153,39 @@ typed model's default factories for network, system, and session metrics. The
 CLI, manager, and base agent share this constructor rather than maintaining
 separate copies of the nested defaults.
 
+### Reward state contract
+
+`RewardEngine.evaluate()` accepts a dictionary snapshot or a Pydantic model
+that implements `model_dump()`. No single dictionary key is required for every
+integration; fields are read opportunistically, with these rules:
+
+- **AP count:** a valid top-level `aps` count wins (including explicit zero).
+  Invalid, negative, or boolean values fall back to a non-empty
+  `network.access_points` mapping, a populated `aps_list`, or the legacy
+  `monitoring_agent.aps` value. If none provides a valid count, the previous AP
+  baseline is retained.
+- **Handshake count:** when `agents` is supplied, the first nonnegative,
+  integer-convertible value per agent wins in this order: `handshakes`,
+  `handshakes_secured`, `handshake_count`, then
+  `session_metrics.handshakes_secured`. Booleans, missing/invalid/negative values
+  are ignored. If `agents` is omitted or `None`, the previous handshake baseline
+  is retained; an explicitly supplied empty agent mapping represents zero.
+- **Uptime and channel:** valid nonnegative `metrics.uptime_seconds` updates the
+  baseline. Invalid, non-finite, or missing uptime keeps the last value.
+  `network.current_channel` falls back to `network.channel`; a missing, blank,
+  sentinel (`"--"`), or boolean channel does not count as a channel change.
+- **Mood:** penalties use the first non-empty string among `agent_mood`,
+  `mood`, and `agent.mood`, case-insensitively. Only values containing
+  `bored` or `sad` apply their configured penalties.
+- **Discoveries:** valid six-octet AP/station IDs are rewarded once per engine
+  session. Legacy string events in `recent_captures` are used only when the
+  corresponding inventory is unavailable, and repeated events are deduplicated.
+
+Missing or invalid optional counters do not reset known delta baselines, so a
+temporary partial snapshot cannot make unchanged totals look like new activity
+when the full snapshot returns. An explicit valid zero remains authoritative.
+Unexpected evaluation errors are logged and return the last computed reward.
+
 ### Reward handshake count precedence
 
 For each agent, the reward engine checks `handshakes`, `handshakes_secured`,
