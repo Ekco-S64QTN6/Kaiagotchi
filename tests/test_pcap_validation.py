@@ -223,6 +223,8 @@ def _pcapng_enhanced_packet_block(
     *,
     declared_length: int | None = None,
     trailer_length: int | None = None,
+    captured_length: int | None = None,
+    original_length: int | None = None,
 ) -> bytes:
     padded_packet = packet + (b"\x00" * (-len(packet) % 4))
     actual_length = 32 + len(padded_packet)
@@ -230,6 +232,10 @@ def _pcapng_enhanced_packet_block(
         declared_length = actual_length
     if trailer_length is None:
         trailer_length = actual_length
+    if captured_length is None:
+        captured_length = len(packet)
+    if original_length is None:
+        original_length = len(packet)
     return (
         struct.pack(
             "<IIIIIII",
@@ -238,8 +244,8 @@ def _pcapng_enhanced_packet_block(
             0,  # interface id
             0,  # timestamp high
             0,  # timestamp low
-            len(packet),
-            len(packet),
+            captured_length,
+            original_length,
         )
         + padded_packet
         + struct.pack("<I", trailer_length)
@@ -302,7 +308,10 @@ def test_pcapng_preflight_rejects_corrupt_later_packet_block_without_partial_res
         trailer_length=actual_length + trailer_delta,
     )
     capture.write_bytes(
-        _pcapng_section_header() + _pcapng_interface_block() + good_packet + bad_packet
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + good_packet
+        + bad_packet
     )
 
     with caplog.at_level(logging.ERROR, logger="pcap_parser"):
@@ -313,5 +322,56 @@ def test_pcapng_preflight_rejects_corrupt_later_packet_block_without_partial_res
     assert result.bssids == {}
     assert result.stations == {}
     assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
+
+
+def test_pcapng_preflight_rejects_epb_captured_length_beyond_packet_body(
+    tmp_path, caplog
+):
+    capture = tmp_path / "captured-length-beyond-body.pcapng"
+    good_packet = _pcapng_enhanced_packet_block(_synthetic_beacon())
+    packet_bytes = _synthetic_beacon()
+    # The enclosing block and trailer stay internally consistent; only caplen
+    # lies about how many packet bytes the block body contains.
+    bad_packet = _pcapng_enhanced_packet_block(
+        packet_bytes,
+        captured_length=len(packet_bytes) + 8,
+        original_length=len(packet_bytes) + 8,
+    )
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_interface_block() + good_packet + bad_packet
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "captured length exceeding available block data" in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
+
+
+def test_pcapng_preflight_rejects_captured_length_greater_than_original(
+    tmp_path, caplog
+):
+    capture = tmp_path / "captured-length-greater-than-wire-length.pcapng"
+    packet_bytes = _synthetic_beacon()
+    bad_packet = _pcapng_enhanced_packet_block(
+        packet_bytes,
+        captured_length=len(packet_bytes),
+        original_length=max(0, len(packet_bytes) - 4),
+    )
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_interface_block() + bad_packet
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "captured length greater than original length" in caplog.text.lower()
+    assert result.bssids == {}
     assert result.total_packets == 0
     assert result.total_beacons == 0
