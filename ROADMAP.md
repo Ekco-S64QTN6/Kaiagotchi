@@ -27,7 +27,8 @@ features or capture-backend changes.
    discovery inputs.
 4. **Plugin lifecycle** — define a backwards-compatible plugin API versioning
    policy; continue testing unload hooks that mutate manager state and API
-   compatibility across future hook changes.
+   compatibility across future hook changes. Registration and re-entrant
+   shutdown during `unload_all()` are now guarded.
 5. **Quality gates** — establish clean baselines, then add compileall, Ruff, and
    advisory mypy checks to automated CI without concealing pre-existing issues.
 6. **Operator validation** — document a safe hardware smoke-test checklist for
@@ -35,6 +36,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Guard plugin teardown against re-entrant `unload_all()` calls and reject late
+  registrations while unloading, so unload hooks cannot recurse indefinitely or
+  leave a newly loaded plugin outside the active registry.
 - Read handshake fields lazily in priority order so an exception raised by an
   optional nested `session_metrics` property cannot hide a valid higher-priority
   count. Added regression tests for broken primary/optional properties.

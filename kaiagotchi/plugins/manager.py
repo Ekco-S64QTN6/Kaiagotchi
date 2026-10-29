@@ -22,6 +22,7 @@ class PluginManager:
         # Resolve relative to this package so discovery works regardless of CWD.
         self.plugin_dir = Path(plugin_dir) if plugin_dir else Path(__file__).resolve().parent
         self.plugins: dict[str, Plugin] = {}
+        self._unloading = False
 
     def discover_and_load(self, config: dict[str, Any] | None = None):
         """Discover and load plugin subpackages from the plugin directory."""
@@ -53,6 +54,13 @@ class PluginManager:
 
     def register_plugin(self, plugin: Plugin) -> bool:
         """Load and register a plugin, rejecting instances whose startup fails."""
+        if self._unloading:
+            _LOG.warning(
+                "Rejecting registration for plugin %s while unloading all plugins.",
+                plugin.name,
+            )
+            return False
+
         existing = self.plugins.get(plugin.name)
         if existing is plugin:
             _LOG.debug("Plugin %s is already registered as this instance", plugin.name)
@@ -94,13 +102,21 @@ class PluginManager:
         return True
 
     def unload_all(self):
-        """Unload all plugins."""
-        for name, plugin in tuple(self.plugins.items()):
-            try:
-                plugin.on_unload()
-            except Exception as e:
-                _LOG.error(f"Error in on_unload for plugin {name}: {e}")
-        self.plugins.clear()
+        """Unload all plugins once, rejecting re-entrant calls and new registrations."""
+        if self._unloading:
+            _LOG.debug("Plugin unload already in progress; ignoring re-entrant call")
+            return
+
+        self._unloading = True
+        try:
+            for name, plugin in tuple(self.plugins.items()):
+                try:
+                    plugin.on_unload()
+                except Exception as e:
+                    _LOG.error("Error in on_unload for plugin %s: %s", name, e)
+        finally:
+            self.plugins.clear()
+            self._unloading = False
 
     def dispatch_event(self, event_name: str, data: Any = None):
         """Dispatch an event to all enabled plugins."""

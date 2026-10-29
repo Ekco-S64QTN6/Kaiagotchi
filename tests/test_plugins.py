@@ -3,7 +3,6 @@ from unittest.mock import MagicMock
 from kaiagotchi.plugins.base import Plugin
 from kaiagotchi.plugins.manager import PluginManager
 
-
 class LifecyclePlugin(Plugin):
     def __init__(self, name, config=None):
         super().__init__(name, config)
@@ -70,8 +69,6 @@ def test_plugin_discovery(tmp_path, monkeypatch):
 
     assert "dummy" in manager.plugins
 
-
-
 def test_duplicate_registration_unloads_replaced_instance():
     manager = PluginManager()
     original = LifecyclePlugin("duplicate")
@@ -86,7 +83,6 @@ def test_duplicate_registration_unloads_replaced_instance():
     manager.dispatch_event("test_event")
     assert original.event_called is False
     assert replacement.event_called is True
-
 
 def test_failed_plugin_load_is_cleaned_up_and_not_registered():
     class BrokenPlugin(Plugin):
@@ -114,7 +110,6 @@ def test_failed_plugin_load_is_cleaned_up_and_not_registered():
     manager.dispatch_event("test_event")
     assert plugin.event_called is False
 
-
 def test_unload_all_continues_after_one_plugin_fails():
     class BrokenUnloadPlugin(LifecyclePlugin):
         def on_unload(self):
@@ -130,8 +125,6 @@ def test_unload_all_continues_after_one_plugin_fails():
 
     assert manager.plugins == {}
     assert healthy.unload_called is True
-
-
 
 def test_failed_plugin_replacement_keeps_existing_plugin_active():
     class BrokenReplacement(Plugin):
@@ -159,4 +152,39 @@ def test_failed_plugin_replacement_keeps_existing_plugin_active():
     manager.dispatch_event("test_event")
     assert original.event_called is True
 
+def test_unload_all_rejects_plugin_registration_from_unload_hooks():
+    manager = PluginManager()
+    replacement = LifecyclePlugin("late-plugin")
+    load_calls = []
 
+    class RegisteringOnUnloadPlugin(LifecyclePlugin):
+        def on_unload(self):
+            self.unload_called = True
+            load_calls.append(manager.register_plugin(replacement))
+
+    current = RegisteringOnUnloadPlugin("current")
+    assert manager.register_plugin(current) is True
+
+    manager.unload_all()
+
+    assert current.unload_called is True
+    assert load_calls == [False]
+    assert replacement.name not in manager.plugins
+    assert replacement.event_called is False
+
+def test_unload_all_ignores_reentrant_unload_call():
+    manager = PluginManager()
+
+    class ReentrantPlugin(LifecyclePlugin):
+        def on_unload(self):
+            self.unload_called = True
+            manager.unload_all()
+
+    plugin = ReentrantPlugin("reentrant")
+    assert manager.register_plugin(plugin) is True
+
+    manager.unload_all()
+
+    assert plugin.unload_called is True
+    assert manager.plugins == {}
+    assert manager._unloading is False
