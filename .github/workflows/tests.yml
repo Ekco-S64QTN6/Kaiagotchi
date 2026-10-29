@@ -90,8 +90,8 @@ jobs:
       - name: Compile project and tests
         run: python -m compileall -q kaiagotchi tests
 
-      - name: Record Ruff baseline (non-gating)
-        id: ruff-baseline
+      - name: Ruff check (blocking)
+        id: ruff
         shell: bash
         run: |
           set +e
@@ -100,24 +100,29 @@ jobs:
           set -e
           findings=$(grep -Ec ':[0-9]+:[0-9]+: [A-Z]+' ruff-report.txt || true)
           {
-            echo "### Ruff baseline (non-gating)"
-            echo "- Command exit code: \`$status\`"
-            echo "- Findings: \`$findings\`"
+            echo "### Ruff check (blocking)"
+            echo "- Command exit code: `$status`"
+            echo "- Findings: `$findings`"
             if [ "$status" -eq 0 ]; then
-              echo "- Result: clean."
+              echo "- Result: clean; this gate passed."
             else
-              echo "- Result: existing findings are reported, not hidden; see the uploaded full report."
+              echo "- Result: blocking failure; see the uploaded full report."
               echo ""
               echo "First 30 report lines:"
-              echo '\`\`\`text'
+              echo '```text'
               head -n 30 ruff-report.txt
-              echo '\`\`\`'
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo "findings=$findings" >> "$GITHUB_OUTPUT"
+          cat ruff-report.txt
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       - name: Record mypy baseline (advisory)
+        if: always()
         id: mypy-baseline
         shell: bash
         run: |
