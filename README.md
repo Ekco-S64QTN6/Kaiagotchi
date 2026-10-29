@@ -85,6 +85,10 @@ Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.
 
+Shutdown also attempts to terminate and reap the `airodump-ng` capture process
+and restore the capture interface to managed mode. Interface restoration is
+best-effort when the driver or system tools report an error.
+
 ---
 
 ## Configuration

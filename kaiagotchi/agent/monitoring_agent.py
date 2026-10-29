@@ -197,33 +197,67 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def stop(self):
-        if not self._running:
+        # A partial startup or an earlier shutdown error can clear _running
+        # while still leaving a child process/task/temp capture directory to reap.
+        if (
+            not self._running
+            and self._loop_task is None
+            and self._process is None
+            and self._capture_tmp_dir is None
+        ):
             return
+
         _LOG.info("[monitoring] Stopping agent...")
         self._running = False
 
-        if self._loop_task:
-            self._loop_task.cancel()
+        loop_task = self._loop_task
+        self._loop_task = None
+        if loop_task is not None:
+            if not loop_task.done():
+                loop_task.cancel()
             try:
-                await self._loop_task
+                await loop_task
             except asyncio.CancelledError:
                 _LOG.debug("[monitoring] Scan loop cancelled")
             except Exception as e:
-                _LOG.error(f"[monitoring] Error stopping scan loop: {e}")
+                _LOG.error("[monitoring] Error stopping scan loop: %s", e)
 
-        if self._process:
+        process = self._process
+        if process is not None:
             try:
                 _LOG.info("[monitoring] Terminating airodump process...")
-                self._process.terminate()
+                if process.returncode is None:
+                    try:
+                        process.terminate()
+                    except ProcessLookupError:
+                        # It exited between the returncode check and terminate;
+                        # still await it below so the child is reaped.
+                        _LOG.debug("[monitoring] airodump exited during termination")
+                    except Exception:
+                        _LOG.warning(
+                            "[monitoring] terminate() failed; still waiting for airodump",
+                            exc_info=True,
+                        )
+
                 try:
-                    await asyncio.wait_for(self._process.wait(), timeout=1.0)
+                    await asyncio.wait_for(process.wait(), timeout=1.0)
                 except TimeoutError:
                     _LOG.info("[monitoring] Killing airodump process...")
-                    self._process.kill()
-                    await self._process.wait()
+                    if process.returncode is None:
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            _LOG.debug("[monitoring] airodump exited during kill")
+                    await process.wait()
+
                 _LOG.info("[monitoring] Airodump process stopped")
             except Exception as e:
-                _LOG.error(f"[monitoring] Error stopping airodump: {e}")
+                _LOG.error("[monitoring] Error stopping airodump: %s", e, exc_info=True)
+            finally:
+                # Retain the process handle if it could not be reaped; a later
+                # stop() call can retry cleanup instead of silently losing it.
+                if process.returncode is not None:
+                    self._process = None
 
         try:
             await self._restore_managed_mode()

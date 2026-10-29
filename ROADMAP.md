@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Improved monitor shutdown so a leftover child process is still waited/reaped
+  even if the running flag was cleared during partial startup, and the process
+  handle is retained when reaping fails so cleanup can be retried.
 - Centralized initial typed state creation in `SystemState.minimal()`; CLI,
   manager, and base agent now share Pydantic's nested default factories instead
   of duplicating network and metrics constructors.

@@ -19,4 +19,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   Failed replacements leave the existing working instance active.
 - Centralize initial typed system-state construction in a shared factory used by
   the CLI, manager, and base agent.
+- Harden monitor shutdown to attempt child-process reaping after partial startup
+  and retain the process handle if cleanup does not fully complete.
 - Establish contributor guidance and a prioritized reliability roadmap.
