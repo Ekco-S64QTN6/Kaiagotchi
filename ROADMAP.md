@@ -21,9 +21,9 @@ features or capture-backend changes.
    section major versions and resets interface references per section as well as
    checking block/options/captured lengths. Never use real captures or credentials.
 2. **Async shutdown** — continue coverage for cancellation during manager/agent startup
-   barriers and process-reap failures. The CLI shields its resource-cleanup phase from
-   repeated cancellation and re-raises cancellation after cleanup finishes; monitoring
-   preserves deferred task/process cleanup state for retries.
+   barriers. Monitoring now bounds both graceful and post-kill process waits; if the
+   child cannot be reaped, it preserves capture files/interface state and retries before
+   archive/temp cleanup. The CLI also re-raises cancellation after resource cleanup.
 3. **Reward and mood contract** — document required/optional state fields and
    fallback behavior; extend reward tests for partial/stale state and malformed
    discovery inputs.
@@ -38,6 +38,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Defer monitor-mode restoration and capture archive/temp cleanup when a capture child
+  cannot be confirmed reaped; bound the post-kill wait and retain the process handle for
+  retry. A synthetic wait-failure regression verifies cleanup happens only after retry.
 - Shield CLI resource cleanup through repeated task cancellation: manager/agent/view and
   web-server shutdown can finish bounded cleanup attempts before caller cancellation is
   re-raised. A synthetic repeated-cancel regression covers the cleanup waiter.
