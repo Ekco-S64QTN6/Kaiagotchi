@@ -1,5 +1,5 @@
-from pathlib import Path
 import threading
+from pathlib import Path
 
 import kaiagotchi.storage.persistent_network as persistent_network_module
 from kaiagotchi.storage.persistent_network import (
