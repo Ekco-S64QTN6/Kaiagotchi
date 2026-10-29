@@ -41,6 +41,9 @@ features or capture-backend changes.
 - Make AP count extraction ignore invalid, negative, or boolean direct counts and
   fall back to network inventories/lists or the legacy monitoring-agent count; an
   explicit zero remains authoritative. Added regression tests for each case.
+- Ignore negative handshake counts during reward extraction, treating them as invalid
+  and falling through to the next supported field instead of allowing one corrupt
+  count to reduce valid totals from other agents.
 - Filter malformed reward discovery identities instead of counting blank or invalid
   BSSID/station values. Legacy chatter fallback now ignores non-string message
   payloads while preserving deduplicated text-event compatibility.

@@ -32,4 +32,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   state source while preserving explicit zero counts.
 - Read handshake-count fields lazily, so broken lower-priority properties do not
   cause valid higher-priority agent counts to be dropped.
+- Ignore negative handshake counts and fall back to lower-priority fields so corrupt
+  values cannot subtract valid counts from other agents.
 - Establish contributor guidance and a prioritized reliability roadmap.

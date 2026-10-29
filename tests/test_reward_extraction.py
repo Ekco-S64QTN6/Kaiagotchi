@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 from kaiagotchi.ai.reward import RewardEngine
 
-
 def test_explicit_zero_handshakes_beats_stale_legacy_aliases():
     engine = RewardEngine({})
     agents = [
@@ -23,7 +22,6 @@ def test_explicit_zero_handshakes_beats_stale_legacy_aliases():
     ]
 
     assert engine._extract_handshakes(agents) == 0
-
 
 def test_handshake_extraction_falls_back_from_missing_or_invalid_values():
     engine = RewardEngine({})
@@ -49,7 +47,6 @@ def test_handshake_extraction_falls_back_from_missing_or_invalid_values():
 
     assert engine._extract_handshakes(agents) == 9
 
-
 def test_handshake_extraction_accepts_object_with_mapping_session_metrics():
     engine = RewardEngine({})
     agent = SimpleNamespace(
@@ -61,7 +58,6 @@ def test_handshake_extraction_accepts_object_with_mapping_session_metrics():
 
     assert engine._extract_handshakes([agent]) == 5
 
-
 def test_broken_agent_does_not_hide_counts_from_other_agents():
     class BrokenAgent:
         @property
@@ -70,8 +66,6 @@ def test_broken_agent_does_not_hide_counts_from_other_agents():
 
     engine = RewardEngine({})
     assert engine._extract_handshakes([BrokenAgent(), {"handshakes": 2}]) == 2
-
-
 
 def test_invalid_direct_ap_count_falls_back_to_network_inventory():
     engine = RewardEngine({})
@@ -88,7 +82,6 @@ def test_invalid_direct_ap_count_falls_back_to_network_inventory():
 
     assert engine._extract_ap_count(state) == 2
 
-
 def test_negative_direct_ap_count_falls_back_to_ap_list():
     engine = RewardEngine({})
     state = {
@@ -98,7 +91,6 @@ def test_negative_direct_ap_count_falls_back_to_ap_list():
     }
 
     assert engine._extract_ap_count(state) == 3
-
 
 def test_boolean_direct_ap_count_falls_back_to_monitoring_agent_count():
     engine = RewardEngine({})
@@ -111,7 +103,6 @@ def test_boolean_direct_ap_count_falls_back_to_monitoring_agent_count():
 
     assert engine._extract_ap_count(state) == 4
 
-
 def test_explicit_zero_ap_count_remains_authoritative():
     engine = RewardEngine({})
     state = {
@@ -121,8 +112,6 @@ def test_explicit_zero_ap_count_remains_authoritative():
     }
 
     assert engine._extract_ap_count(state) == 0
-
-
 
 def test_valid_handshake_count_survives_broken_lower_priority_property():
     class AgentWithBrokenSessionMetrics:
@@ -141,7 +130,6 @@ def test_valid_handshake_count_survives_broken_lower_priority_property():
     engine = RewardEngine({})
     assert engine._extract_handshakes([AgentWithBrokenSessionMetrics()]) == 3
 
-
 def test_valid_primary_handshake_count_does_not_read_nested_metrics():
     class AgentWithBrokenSessionMetrics:
         handshakes = 5
@@ -152,3 +140,23 @@ def test_valid_primary_handshake_count_does_not_read_nested_metrics():
 
     engine = RewardEngine({})
     assert engine._extract_handshakes([AgentWithBrokenSessionMetrics()]) == 5
+
+def test_negative_handshake_counts_are_ignored_without_subtracting_valid_counts():
+    engine = RewardEngine({})
+    agents = [
+        {"handshakes": -5, "handshakes_secured": 2},
+        {
+            "handshakes": -3,
+            "session_metrics": {"handshakes_secured": 4},
+        },
+        {"handshakes": 6},
+        {"handshakes": -100},
+    ]
+
+    assert engine._extract_handshakes(agents) == 12
+
+def test_negative_nested_handshake_count_contributes_nothing():
+    engine = RewardEngine({})
+    agent = {"session_metrics": {"handshakes_secured": -2}}
+
+    assert engine._extract_handshakes([agent]) == 0

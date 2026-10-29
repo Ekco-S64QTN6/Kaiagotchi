@@ -67,8 +67,8 @@ class RewardEngine:
 
         Field order preserves compatibility with older schemas. Candidates are
         read lazily so a broken lower-priority property cannot hide a valid
-        primary count. Explicit zero is authoritative; missing or invalid values
-        fall through to the next supported field.
+        primary count. Zero is authoritative; missing, invalid, or negative
+        counts fall through to the next supported field.
         """
         total = 0
         for agent in self._safe_iter_agents(agents):
@@ -88,6 +88,8 @@ class RewardEngine:
                 try:
                     count = int(candidate)
                 except (TypeError, ValueError, OverflowError):
+                    continue
+                if count < 0:
                     continue
                 total += count
                 found = True
@@ -113,9 +115,11 @@ class RewardEngine:
             if candidate is None:
                 continue
             try:
-                total += int(candidate)
+                count = int(candidate)
             except (TypeError, ValueError, OverflowError):
                 continue
+            if count >= 0:
+                total += count
 
         return max(0, total)
 

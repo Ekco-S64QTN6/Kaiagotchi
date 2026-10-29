@@ -157,11 +157,11 @@ separate copies of the nested defaults.
 
 For each agent, the reward engine checks `handshakes`, `handshakes_secured`,
 `handshake_count`, then `session_metrics.handshakes_secured`. The first
-integer-convertible value wins, including an explicit zero. Missing, `None`,
-or invalid values fall through to the next supported field, avoiding stale
-legacy aliases overriding a current zero count. Fields are fetched lazily, so an
-error in a lower-priority optional property does not discard an already valid
-higher-priority count.
+nonnegative integer-convertible value wins, including an explicit zero. Missing,
+`None`, invalid, or negative counts fall through to the next supported field,
+avoiding stale or corrupt aliases from overriding valid state. Fields are fetched
+lazily, so an error in a lower-priority optional property does not discard an
+already valid higher-priority count.
 
 For AP counts, an explicit nonnegative integer-convertible `aps` value remains
 authoritative (including zero). Invalid, negative, or boolean values are ignored
