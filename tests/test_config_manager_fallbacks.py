@@ -10,8 +10,10 @@ from kaiagotchi.core.utils import (
     merge_config,
     remove_whitelisted,
     sanitize_config_for_logging,
-    save_config as save_core_config,
     unzip,
+)
+from kaiagotchi.core.utils import (
+    save_config as save_core_config,
 )
 
 

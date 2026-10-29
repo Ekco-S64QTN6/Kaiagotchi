@@ -87,19 +87,6 @@ jobs:
       - name: Install project and development tools
         run: python -m pip install -e ".[dev]"
 
-      - name: Generate temporary Ruff fix candidates
-        run: python -m ruff check tests/test_config_manager_fallbacks.py tests/test_persistent_network_save_order.py --fix
-
-      - name: Upload temporary Ruff fix candidates
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-fix-preview
-          path: |
-            tests/test_config_manager_fallbacks.py
-            tests/test_persistent_network_save_order.py
-          if-no-files-found: error
-          retention-days: 1
-
       - name: Compile project and tests
         run: python -m compileall -q kaiagotchi tests
 
