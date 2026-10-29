@@ -58,15 +58,8 @@ class PluginManager:
             _LOG.debug("Plugin %s is already registered as this instance", plugin.name)
             return True
 
-        if existing is not None:
-            _LOG.warning("Plugin %s already registered; unloading the old instance.", plugin.name)
-            try:
-                existing.on_unload()
-            except Exception:
-                _LOG.error("Error in on_unload for replaced plugin %s", plugin.name, exc_info=True)
-            finally:
-                self.plugins.pop(plugin.name, None)
-
+        # Load the candidate before disturbing an existing working instance.
+        # A failed same-name update must not take down the last known-good plugin.
         try:
             plugin.on_load()
         except Exception:
@@ -82,6 +75,20 @@ class PluginManager:
                     exc_info=True,
                 )
             return False
+
+        if existing is not None:
+            _LOG.warning(
+                "Plugin %s already registered; replacing after successful load.",
+                plugin.name,
+            )
+            try:
+                existing.on_unload()
+            except Exception:
+                _LOG.error(
+                    "Error in on_unload for replaced plugin %s",
+                    plugin.name,
+                    exc_info=True,
+                )
 
         self.plugins[plugin.name] = plugin
         return True

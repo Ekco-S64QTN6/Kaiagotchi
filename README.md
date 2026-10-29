@@ -185,8 +185,9 @@ All hooks are optional. Disable a discovered plugin with
 
 A plugin is only registered for event/state dispatch after `on_load()` succeeds.
 If loading raises, the manager logs the failure and attempts `on_unload()` to
-clean up partial initialization. Registering another instance with the same name
-unloads the previous instance before replacing it.
+clean up partial initialization. A same-name replacement must finish loading
+before the current instance is unloaded, so a failed update leaves the working
+plugin active.
 
 ---
 

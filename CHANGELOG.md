@@ -15,7 +15,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
 - Treat an explicit zero handshake count as authoritative instead of falling
   through to stale legacy count fields.
 - Reject failed plugin loads from active dispatch, attempt cleanup after partial
-  initialization, and unload an existing same-name plugin before replacement.
+  initialization, and only replace a same-name plugin after the new instance loads.
+  Failed replacements leave the existing working instance active.
 - Centralize initial typed system-state construction in a shared factory used by
   the CLI, manager, and base agent.
 - Establish contributor guidance and a prioritized reliability roadmap.

@@ -130,3 +130,33 @@ def test_unload_all_continues_after_one_plugin_fails():
 
     assert manager.plugins == {}
     assert healthy.unload_called is True
+
+
+
+def test_failed_plugin_replacement_keeps_existing_plugin_active():
+    class BrokenReplacement(Plugin):
+        def __init__(self):
+            super().__init__("stable")
+            self.cleaned_up = False
+
+        def on_load(self):
+            raise RuntimeError("replacement startup failed")
+
+        def on_unload(self):
+            self.cleaned_up = True
+
+    manager = PluginManager()
+    original = LifecyclePlugin("stable")
+    replacement = BrokenReplacement()
+
+    assert manager.register_plugin(original) is True
+    assert manager.register_plugin(replacement) is False
+
+    assert manager.plugins["stable"] is original
+    assert original.unload_called is False
+    assert replacement.cleaned_up is True
+
+    manager.dispatch_event("test_event")
+    assert original.event_called is True
+
+
