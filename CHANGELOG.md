@@ -30,4 +30,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   legacy chatter payloads, with regression tests for fallback and deduplication.
 - Fall back from invalid/negative/boolean direct AP counts to the next supported
   state source while preserving explicit zero counts.
+- Read handshake-count fields lazily, so broken lower-priority properties do not
+  cause valid higher-priority agent counts to be dropped.
 - Establish contributor guidance and a prioritized reliability roadmap.
