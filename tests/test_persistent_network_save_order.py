@@ -2,7 +2,7 @@ import threading
 from pathlib import Path
 
 import kaiagotchi.storage.persistent_network as persistent_network_module
-from kaiagotchi.storage.persistent_network import MAX_PCAP_STORAGE_BYTES, PersistentNetwork
+from kaiagotchi.storage.persistent_network import PersistentNetwork, MAX_PCAP_STORAGE_BYTES
 
 
 def _network(tmp_path):
