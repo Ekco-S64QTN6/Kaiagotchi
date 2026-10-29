@@ -18,8 +18,9 @@ features or capture-backend changes.
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
    block-specific constraints, and packet payloads. The preflight validates supported
-   section major versions and resets interface references per section as well as
-   checking block/options/captured lengths. Never use real captures or credentials.
+   section major versions, resets interface references per section, and checks
+   block/options/captured lengths including Simple Packet Block payload size against
+   interface snaplen. Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard now covers startup awaits, so cancellation
    or errors during the Automata startup barrier do not orphan the monitor task. Continue
    testing cancellation during Manager/View startup and process-reap failures. Monitoring
@@ -42,6 +43,11 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Validate Simple Packet Block payload sizes against the first interface's snaplen, treating
+  zero snaplen as unlimited, and fail closed before parsing malformed/truncated payloads.
+  Synthetic coverage exercises full packets, snaplen truncation, no-limit captures, and
+  inconsistent payload lengths through both parser entry points.
 
 - Defined the backwards-compatible plugin API v1 contract: existing subclasses inherit
   version 1, only the host-supported integer version loads, and an incompatible same-name
