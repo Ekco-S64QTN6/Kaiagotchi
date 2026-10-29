@@ -85,6 +85,8 @@ class RewardEngine:
 
                 if candidate is None:
                     continue
+                if isinstance(candidate, bool):
+                    continue
                 try:
                     count = int(candidate)
                 except (TypeError, ValueError, OverflowError):
@@ -114,6 +116,8 @@ class RewardEngine:
 
             if candidate is None:
                 continue
+            if isinstance(candidate, bool):
+                continue
             try:
                 count = int(candidate)
             except (TypeError, ValueError, OverflowError):
@@ -135,8 +139,8 @@ class RewardEngine:
             return None
         return count if count >= 0 else None
 
-    def _extract_ap_count(self, state: dict[str, Any]) -> int:
-        """Extract AP count from the first valid source in legacy-compatible order."""
+    def _extract_ap_count(self, state: dict[str, Any]) -> int | None:
+        """Extract AP count, or None when this snapshot supplies no valid count."""
         direct_aps = state.get("aps")
         if direct_aps is not None:
             count = self._coerce_nonnegative_count(direct_aps)
@@ -166,7 +170,7 @@ class RewardEngine:
             if count is not None:
                 return count
 
-        return 0
+        return None
 
     @staticmethod
     def _normalize_discovery_identity(value: Any) -> str | None:
@@ -325,40 +329,72 @@ class RewardEngine:
             if hasattr(state, "model_dump"):
                 state = state.model_dump()
 
-            net = self._safe_get_value(state, "network", {})
-            metrics = self._safe_get_value(state, "metrics", {})
-            agents = self._safe_get_value(state, "agents", {})
-
-            # Extract current state data with safe access
-            num_aps = self._extract_ap_count(state)
-            handshakes = self._extract_handshakes(agents)
-
-            # FIX: Use safe access for uptime - handle both dict and Pydantic objects
-            uptime = float(self._safe_get_value(metrics, "uptime_seconds", 0.0) or 0.0)
-
-            # FIX: Use safe access for network data
-            current_channel = (self._safe_get_value(net, "current_channel") or
-                             self._safe_get_value(net, "channel") or "--")
-
-            # Track discoveries
-            new_aps, new_stations = self._extract_new_discoveries(state)
-
-            # Get previous state for deltas
+            # Keep a baseline for fields omitted by partial snapshots. An explicitly
+            # supplied zero remains authoritative, but missing/invalid optional data
+            # must not look like a counter reset or a channel transition.
             prev_aps = int(self._last_snapshot.get("aps", 0) or 0)
             prev_handshakes = int(self._last_snapshot.get("handshakes", 0) or 0)
             prev_uptime = float(self._last_snapshot.get("uptime", 0.0) or 0.0)
             prev_channel = self._last_snapshot.get("channel", "--") or "--"
 
+            net = self._safe_get_value(state, "network", {})
+            metrics = self._safe_get_value(state, "metrics", {})
+
+            extracted_aps = self._extract_ap_count(state)
+            num_aps = prev_aps if extracted_aps is None else extracted_aps
+
+            agents_available = "agents" in state and state.get("agents") is not None
+            handshakes = (
+                self._extract_handshakes(state.get("agents"))
+                if agents_available
+                else prev_handshakes
+            )
+
+            raw_uptime = self._safe_get_value(metrics, "uptime_seconds", None)
+            try:
+                candidate_uptime = float(raw_uptime)
+                uptime_available = (
+                    raw_uptime is not None
+                    and not isinstance(raw_uptime, bool)
+                    and math.isfinite(candidate_uptime)
+                    and candidate_uptime >= 0
+                )
+            except (TypeError, ValueError, OverflowError):
+                uptime_available = False
+                candidate_uptime = prev_uptime
+            uptime = candidate_uptime if uptime_available else prev_uptime
+
+            raw_channel = self._safe_get_value(net, "current_channel", None)
+            if raw_channel is None or raw_channel == "":
+                raw_channel = self._safe_get_value(net, "channel", None)
+            channel_available = (
+                raw_channel not in (None, "", "--")
+                and not isinstance(raw_channel, bool)
+            )
+            current_channel = raw_channel if channel_available else prev_channel
+
+            # Track discoveries
+            new_aps, new_stations = self._extract_new_discoveries(state)
+
             # Calculate deltas
             d_aps = max(0, int(num_aps) - prev_aps)
             d_handshakes = max(0, int(handshakes) - prev_handshakes)
-            max(0.0, uptime - prev_uptime)
-            channel_changed = 1.0 if current_channel != prev_channel else 0.0
+            channel_changed = (
+                1.0
+                if channel_available and current_channel != prev_channel
+                else 0.0
+            )
 
             # Mood-based penalties (reduced severity)
-            mood_val = (self._safe_get_value(state, "agent_mood") or
-                       self._safe_get_value(self._safe_get_value(state, "agent", {}), "mood", "") or
-                       "").lower()
+            raw_mood = (
+                self._safe_get_value(state, "agent_mood")
+                or self._safe_get_value(state, "mood")
+                or self._safe_get_value(
+                    self._safe_get_value(state, "agent", {}), "mood", ""
+                )
+                or ""
+            )
+            mood_val = raw_mood.lower() if isinstance(raw_mood, str) else ""
             boredom_penalty = self.WEIGHTS.get("boredom", 0.0) if "bored" in mood_val else 0.0
             sadness_penalty = self.WEIGHTS.get("sadness", 0.0) if "sad" in mood_val else 0.0
 

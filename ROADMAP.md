@@ -24,9 +24,10 @@ features or capture-backend changes.
    barriers. Monitoring now bounds both graceful and post-kill process waits; if the
    child cannot be reaped, it preserves capture files/interface state and retries before
    archive/temp cleanup. The CLI also re-raises cancellation after resource cleanup.
-3. **Reward and mood contract** — document required/optional state fields and
-   fallback behavior; extend reward tests for partial/stale state and malformed
-   discovery inputs.
+3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
+   snapshots, and malformed discovery inputs. README documents accepted snapshot
+   fields, precedence, authoritative zeros, discovery deduplication, and baseline
+   preservation when optional counters/channels are absent.
 4. **Plugin lifecycle** — define a backwards-compatible plugin API versioning
    policy; continue testing unload hooks that mutate manager state and API
    compatibility across future hook changes. Registration and re-entrant
@@ -37,6 +38,10 @@ features or capture-backend changes.
    `airodump-ng`, `iw`, monitor-mode adapters, privileges, and clean stop behavior.
 
 ## Recently completed
+
+- Documented the RewardEngine input contract and added regression coverage showing that
+  partial/malformed snapshots preserve known counter/channel baselines, top-level typed
+  state `mood` applies mood penalties, and boolean handshake counts are ignored.
 
 - Defer monitor-mode restoration and capture archive/temp cleanup when a capture child
   cannot be confirmed reaped; bound the post-kill wait and retain the process handle for
