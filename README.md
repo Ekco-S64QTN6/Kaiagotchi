@@ -185,10 +185,11 @@ is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
 integrity check; the preflight scan verifies PCAPNG section byte order, block
 boundaries, declared lengths, trailing lengths, packet captured lengths, option
-value boundaries, and known fixed-size option values without loading packet bodies
-into memory. Timestamp-resolution and packet-flags values are checked against their
-required lengths. Scapy then handles packet and payload decoding. Malformed framing
-is logged and the parser returns an empty result before partial data can be extracted.
+value boundaries, known fixed-size option values, and packet-to-interface references
+without loading packet bodies into memory. Timestamp-resolution and packet-flags
+values are checked against required lengths, and packet blocks may only reference
+interfaces declared in the current section. Scapy then handles packet and payload
+decoding; malformed framing is rejected before partial data can be extracted.
 Captures may contain sensitive identifiers and traffic, so only inspect files you
 are authorized to handle.
 

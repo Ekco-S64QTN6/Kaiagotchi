@@ -129,6 +129,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
     endian: str | None = None
     offset = 0
+    interface_count = 0
     try:
         with path.open("rb") as capture_file:
             while offset < file_size:
@@ -150,6 +151,8 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         endian = "<"
                     else:
                         return reject("invalid section-header byte-order magic")
+                    # Interface IDs are section-scoped and restart at each SHB.
+                    interface_count = 0
                     minimum_length = 28
                 else:
                     if endian is None:
@@ -193,6 +196,25 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"packet block at offset {offset} is too short"
                         )
+                    # Legacy Packet Blocks use a 16-bit interface ID; EPBs use
+                    # a 32-bit field. Both IDs must resolve inside this section.
+                    capture_file.seek(offset + 8)
+                    interface_id_size = 2 if block_type_value == 2 else 4
+                    interface_id_data = capture_file.read(interface_id_size)
+                    if len(interface_id_data) != interface_id_size:
+                        return reject(
+                            f"packet block at offset {offset} has a truncated interface ID"
+                        )
+                    interface_id_format = "H" if block_type_value == 2 else "I"
+                    interface_id = struct.unpack(
+                        endian + interface_id_format, interface_id_data
+                    )[0]
+                    if interface_id >= interface_count:
+                        return reject(
+                            f"packet block at offset {offset} references undeclared "
+                            f"interface {interface_id} (section has {interface_count})"
+                        )
+
                     # Packet Block and Enhanced Packet Block share the captured
                     # and original length offsets, then padded packet bytes.
                     capture_file.seek(offset + 20)
@@ -215,10 +237,17 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"packet block at offset {offset} has captured length exceeding available block data"
                         )
                     options_start = offset + 28 + padded_capture_length
-                elif block_type_value == 3 and block_length < 16:
-                    return reject(
-                        f"simple packet block at offset {offset} is too short"
-                    )
+                elif block_type_value == 3:
+                    if block_length < 16:
+                        return reject(
+                            f"simple packet block at offset {offset} is too short"
+                        )
+                    # SPBs have no interface field and implicitly use interface 0.
+                    if interface_count == 0:
+                        return reject(
+                            f"simple packet block at offset {offset} references "
+                            "undeclared interface 0 (section has no interfaces)"
+                        )
 
                 if options_start is not None:
                     options_end = block_end - 4
@@ -239,6 +268,8 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         f"block at offset {offset} has a mismatched trailing length"
                     )
 
+                if block_type_value == 1:
+                    interface_count += 1
                 offset = block_end
     except OSError as exc:
         parser_logger.error("Unable to validate PCAPNG structure in %s: %s", path, exc)
