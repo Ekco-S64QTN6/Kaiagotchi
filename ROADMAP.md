@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Filter malformed reward discovery identities instead of counting blank or invalid
+  BSSID/station values. Legacy chatter fallback now ignores non-string message
+  payloads while preserving deduplicated text-event compatibility.
 - Handle cancellation at any await point during monitor startup, route cleanup
   through the normal stop path, and preserve the capture-process handle across
   spawn cancellation so shutdown can reap it and clean the private temp directory.
