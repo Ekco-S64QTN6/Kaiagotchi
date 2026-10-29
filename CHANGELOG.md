@@ -34,6 +34,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   cause valid higher-priority agent counts to be dropped.
 - Ignore negative handshake counts and fall back to lower-priority fields so corrupt
   values cannot subtract valid counts from other agents.
+- Make streaming PCAP parsing return empty results on reader iteration failures and
+  log close errors without allowing cleanup exceptions to escape.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

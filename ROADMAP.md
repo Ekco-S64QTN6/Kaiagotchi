@@ -16,9 +16,10 @@ features or capture-backend changes.
 
 ## Reliability priorities
 
-1. **PCAP parser** — extend synthetic coverage for truncated headers, malformed
-   packet records, PCAPNG edge cases, and streaming-reader cleanup. Never add
-   real captures, credentials, or BSSID-specific data to fixtures.
+1. **PCAP parser** — continue synthetic coverage for PCAPNG block-length and
+   trailer edge cases. Streaming iteration now fails closed on reader errors and
+   logs close failures without masking the parse result. Never add real captures,
+   credentials, or BSSID-specific data to fixtures.
 2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
    subprocesses and web-server thread termination, and verify background tasks
    are awaited without blocking the asyncio event loop.
@@ -36,6 +37,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Made both streaming PCAP parser entry points fail closed when the reader raises
+  during iteration, and kept reader-close failures from masking results; added
+  synthetic regressions for iteration and close errors.
 - Guard plugin teardown against re-entrant `unload_all()` calls and reject late
   registrations while unloading, so unload hooks cannot recurse indefinitely or
   leave a newly loaded plugin outside the active registry.

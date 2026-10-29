@@ -223,6 +223,18 @@ def is_complete_handshake(eapol_packets) -> bool:
     return message_numbers == {1, 2, 3, 4}
 
 
+def _close_stream_reader(reader: PcapReader | None, filepath: str) -> None:
+    """Close a streaming reader without letting cleanup errors escape parsing."""
+    if reader is None:
+        return
+    try:
+        reader.close()
+    except Exception as exc:
+        parser_logger.warning(
+            "Failed to close streaming reader for %s: %s", filepath, exc
+        )
+
+
 def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> NetworkData:
     """
     Comprehensive PCAP parsing that extracts ALL BSSIDs, stations, and handshakes.
@@ -368,9 +380,17 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
             except Exception as e:
                 parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
                 continue
+    except Exception as e:
+        parser_logger.error(
+            "Failed while iterating PCAP file %s with scapy: %s",
+            filepath,
+            e,
+        )
+        return NetworkData(
+            bssids={}, stations={}, handshakes=[], total_packets=0, total_beacons=0
+        )
     finally:
-        if reader is not None:
-            reader.close()
+        _close_stream_reader(reader, filepath)
 
     # Process handshake data (your existing logic)
     parser_logger.info("Analyzing collected handshake data...")
@@ -522,9 +542,15 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
             except Exception as e:
                 parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
                 continue
+    except Exception as e:
+        parser_logger.error(
+            "Failed while iterating PCAP file %s with scapy: %s",
+            filepath,
+            e,
+        )
+        return []
     finally:
-        if reader is not None:
-            reader.close()
+        _close_stream_reader(reader, filepath)
 
     # Second pass: Analyze collected handshakes and check for PMKIDs
     parser_logger.info("Analyzing collected handshake data...")
