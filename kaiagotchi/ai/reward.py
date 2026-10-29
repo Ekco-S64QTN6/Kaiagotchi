@@ -63,24 +63,55 @@ class RewardEngine:
         return [agents]
 
     def _extract_handshakes(self, agents: Any) -> int:
-        """Extract handshake count from agents with fallbacks."""
+        """Extract the first valid handshake count from each agent.
+
+        Field order preserves compatibility with older schemas. A count of zero
+        is still authoritative; only missing, None, or non-integer values fall
+        through to the next supported field.
+        """
         total = 0
-        for a in self._safe_iter_agents(agents):
+        for agent in self._safe_iter_agents(agents):
             try:
-                val = 0
-                if isinstance(a, dict):
-                    val = (a.get("handshakes") or
-                          a.get("handshakes_secured") or
-                          a.get("handshake_count") or
-                          a.get("session_metrics", {}).get("handshakes_secured") or 0)
+                if isinstance(agent, dict):
+                    session_metrics = agent.get("session_metrics")
+                    session_count = (
+                        session_metrics.get("handshakes_secured")
+                        if isinstance(session_metrics, dict)
+                        else getattr(session_metrics, "handshakes_secured", None)
+                    )
+                    candidates = (
+                        agent.get("handshakes"),
+                        agent.get("handshakes_secured"),
+                        agent.get("handshake_count"),
+                        session_count,
+                    )
                 else:
-                    val = (getattr(a, "handshakes", None) or
-                          getattr(a, "handshakes_secured", None) or
-                          getattr(a, "handshake_count", None) or
-                          getattr(getattr(a, "session_metrics", None), "handshakes_secured", None) or 0)
-                total += int(val or 0)
+                    session_metrics = getattr(agent, "session_metrics", None)
+                    session_count = (
+                        session_metrics.get("handshakes_secured")
+                        if isinstance(session_metrics, dict)
+                        else getattr(session_metrics, "handshakes_secured", None)
+                    )
+                    candidates = (
+                        getattr(agent, "handshakes", None),
+                        getattr(agent, "handshakes_secured", None),
+                        getattr(agent, "handshake_count", None),
+                        session_count,
+                    )
             except Exception:
+                # One stale/custom agent object must not fail the whole reward tick.
                 continue
+
+            for candidate in candidates:
+                if candidate is None:
+                    continue
+                try:
+                    count = int(candidate)
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                total += count
+                break
+
         return max(0, total)
 
     def _extract_ap_count(self, state: dict[str, Any]) -> int:

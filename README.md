@@ -139,6 +139,14 @@ The `Agent` owns all of these subsystems; the optional `Manager` is a thin
 orchestrator that builds the shared view and system state and coordinates
 startup/shutdown.
 
+### Reward handshake count precedence
+
+For each agent, the reward engine checks `handshakes`, `handshakes_secured`,
+`handshake_count`, then `session_metrics.handshakes_secured`. The first
+integer-convertible value wins, including an explicit zero. Missing, `None`,
+or invalid values fall through to the next supported field, avoiding stale
+legacy aliases overriding a current zero count.
+
 ### PCAP input validation
 
 Before parsing, Kaiagotchi rejects missing or empty files and files whose first
