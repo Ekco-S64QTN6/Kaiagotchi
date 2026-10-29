@@ -178,6 +178,11 @@ class MyPlugin(Plugin):
 All hooks are optional. Disable a discovered plugin with
 `[plugins.my_plugin] enabled = false` in your config.
 
+A plugin is only registered for event/state dispatch after `on_load()` succeeds.
+If loading raises, the manager logs the failure and attempts `on_unload()` to
+clean up partial initialization. Registering another instance with the same name
+unloads the previous instance before replacing it.
+
 ---
 
 ## Development

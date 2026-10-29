@@ -10,12 +10,13 @@ class LifecyclePlugin(Plugin):
         self.load_called = False
         self.event_called = False
         self.state_called = False
+        self.unload_called = False
 
     def on_load(self):
         self.load_called = True
 
     def on_unload(self):
-        pass
+        self.unload_called = True
 
     def on_event(self, event_name, data=None):
         self.event_called = True
@@ -68,3 +69,64 @@ def test_plugin_discovery(tmp_path, monkeypatch):
     manager.discover_and_load()
 
     assert "dummy" in manager.plugins
+
+
+
+def test_duplicate_registration_unloads_replaced_instance():
+    manager = PluginManager()
+    original = LifecyclePlugin("duplicate")
+    replacement = LifecyclePlugin("duplicate")
+
+    assert manager.register_plugin(original) is True
+    assert manager.register_plugin(replacement) is True
+
+    assert original.unload_called is True
+    assert manager.plugins["duplicate"] is replacement
+
+    manager.dispatch_event("test_event")
+    assert original.event_called is False
+    assert replacement.event_called is True
+
+
+def test_failed_plugin_load_is_cleaned_up_and_not_registered():
+    class BrokenPlugin(Plugin):
+        def __init__(self):
+            super().__init__("broken")
+            self.cleaned_up = False
+            self.event_called = False
+
+        def on_load(self):
+            raise RuntimeError("simulated load failure")
+
+        def on_unload(self):
+            self.cleaned_up = True
+
+        def on_event(self, event_name, data=None):
+            self.event_called = True
+
+    manager = PluginManager()
+    plugin = BrokenPlugin()
+
+    assert manager.register_plugin(plugin) is False
+    assert "broken" not in manager.plugins
+    assert plugin.cleaned_up is True
+
+    manager.dispatch_event("test_event")
+    assert plugin.event_called is False
+
+
+def test_unload_all_continues_after_one_plugin_fails():
+    class BrokenUnloadPlugin(LifecyclePlugin):
+        def on_unload(self):
+            raise RuntimeError("simulated unload failure")
+
+    manager = PluginManager()
+    broken = BrokenUnloadPlugin("broken-unload")
+    healthy = LifecyclePlugin("healthy")
+    manager.register_plugin(broken)
+    manager.register_plugin(healthy)
+
+    manager.unload_all()
+
+    assert manager.plugins == {}
+    assert healthy.unload_called is True

@@ -14,4 +14,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   typed system state recognize the same enum members.
 - Treat an explicit zero handshake count as authoritative instead of falling
   through to stale legacy count fields.
+- Reject failed plugin loads from active dispatch, attempt cleanup after partial
+  initialization, and unload an existing same-name plugin before replacement.
 - Establish contributor guidance and a prioritized reliability roadmap.
