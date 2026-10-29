@@ -71,32 +71,36 @@ class RewardEngine:
         """
         total = 0
         for agent in self._safe_iter_agents(agents):
-            if isinstance(agent, dict):
-                session_metrics = agent.get("session_metrics")
-                session_count = (
-                    session_metrics.get("handshakes_secured")
-                    if isinstance(session_metrics, dict)
-                    else getattr(session_metrics, "handshakes_secured", None)
-                )
-                candidates = (
-                    agent.get("handshakes"),
-                    agent.get("handshakes_secured"),
-                    agent.get("handshake_count"),
-                    session_count,
-                )
-            else:
-                session_metrics = getattr(agent, "session_metrics", None)
-                session_count = (
-                    session_metrics.get("handshakes_secured")
-                    if isinstance(session_metrics, dict)
-                    else getattr(session_metrics, "handshakes_secured", None)
-                )
-                candidates = (
-                    getattr(agent, "handshakes", None),
-                    getattr(agent, "handshakes_secured", None),
-                    getattr(agent, "handshake_count", None),
-                    session_count,
-                )
+            try:
+                if isinstance(agent, dict):
+                    session_metrics = agent.get("session_metrics")
+                    session_count = (
+                        session_metrics.get("handshakes_secured")
+                        if isinstance(session_metrics, dict)
+                        else getattr(session_metrics, "handshakes_secured", None)
+                    )
+                    candidates = (
+                        agent.get("handshakes"),
+                        agent.get("handshakes_secured"),
+                        agent.get("handshake_count"),
+                        session_count,
+                    )
+                else:
+                    session_metrics = getattr(agent, "session_metrics", None)
+                    session_count = (
+                        session_metrics.get("handshakes_secured")
+                        if isinstance(session_metrics, dict)
+                        else getattr(session_metrics, "handshakes_secured", None)
+                    )
+                    candidates = (
+                        getattr(agent, "handshakes", None),
+                        getattr(agent, "handshakes_secured", None),
+                        getattr(agent, "handshake_count", None),
+                        session_count,
+                    )
+            except Exception:
+                # One stale/custom agent object must not fail the whole reward tick.
+                continue
 
             for candidate in candidates:
                 if candidate is None:
