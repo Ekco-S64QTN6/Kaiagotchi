@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock
 
-from kaiagotchi.plugins.base import Plugin
+from kaiagotchi.plugins.base import PLUGIN_API_VERSION, Plugin
 from kaiagotchi.plugins.manager import PluginManager
 
 
@@ -189,3 +189,31 @@ def test_unload_all_ignores_reentrant_unload_call():
     assert plugin.unload_called is True
     assert manager.plugins == {}
     assert manager._unloading is False
+
+
+def test_legacy_plugin_inherits_current_api_version_without_changes():
+    plugin = LifecyclePlugin("legacy-plugin")
+    manager = PluginManager()
+
+    assert LifecyclePlugin.PLUGIN_API_VERSION == PLUGIN_API_VERSION
+    assert manager.register_plugin(plugin) is True
+    assert plugin.load_called is True
+
+
+def test_incompatible_plugin_version_is_rejected_before_load_or_replacement():
+    class IncompatiblePlugin(LifecyclePlugin):
+        PLUGIN_API_VERSION = 2
+
+    manager = PluginManager()
+    original = LifecyclePlugin("versioned")
+    incompatible = IncompatiblePlugin("versioned")
+
+    assert manager.register_plugin(original) is True
+    assert manager.register_plugin(incompatible) is False
+
+    # Compatibility is checked before lifecycle hooks; the existing instance is
+    # not unloaded or replaced by a plugin the host cannot support.
+    assert incompatible.load_called is False
+    assert incompatible.unload_called is False
+    assert original.unload_called is False
+    assert manager.plugins["versioned"] is original

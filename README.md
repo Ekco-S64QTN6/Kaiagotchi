@@ -255,6 +255,23 @@ class MyPlugin(Plugin):
 All hooks are optional. Disable a discovered plugin with
 `[plugins.my_plugin] enabled = false` in your config.
 
+### Plugin API versioning
+
+The host currently supports API version `1`, exported as
+`PLUGIN_API_VERSION` from `kaiagotchi.plugins.base` and inherited as
+`Plugin.PLUGIN_API_VERSION`. Existing subclasses inherit version 1 automatically;
+no change is required for legacy plugins. Version 1 hooks are synchronous and
+optional (`on_load`, `on_unload`, `on_event`, and `on_state_update`).
+
+When making an incompatible change to hook signatures or lifecycle semantics,
+introduce a new version deliberately and document migration steps before enabling
+it. Prefer additive optional hooks and optional arguments for backwards-compatible
+changes. The current manager accepts only the host's exact integer API version and
+rejects unsupported, boolean, or non-integer declarations before calling
+`on_load`; an incompatible same-name replacement cannot displace the working
+plugin. A future multi-version transition must explicitly define the supported
+version set and test each version before the host starts accepting it.
+
 A plugin is only registered for event/state dispatch after `on_load()` succeeds.
 If loading raises, the manager logs the failure and attempts `on_unload()` to
 clean up partial initialization. A same-name replacement must finish loading

@@ -28,10 +28,10 @@ features or capture-backend changes.
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
    preservation when optional counters/channels are absent.
-4. **Plugin lifecycle** — define a backwards-compatible plugin API versioning
-   policy; continue testing unload hooks that mutate manager state and API
-   compatibility across future hook changes. Registration and re-entrant
-   shutdown during `unload_all()` are now guarded.
+4. **Plugin lifecycle** — host API version 1 is now explicit and inherited by legacy
+   subclasses; the manager rejects unsupported declarations before loading or replacing
+   a plugin. Continue testing unload hooks that mutate manager state and support for
+   future hook versions. Registration and re-entrant `unload_all()` are already guarded.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
@@ -42,6 +42,10 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Defined the backwards-compatible plugin API v1 contract: existing subclasses inherit
+  version 1, only the host-supported integer version loads, and an incompatible same-name
+  candidate is rejected before hooks run so the existing plugin remains active.
 
 - Extended Agent's lifecycle `try/finally` across the monitor/Automata startup barrier and
   added a regression that cancels while Automata is waiting, asserting the monitor task,
