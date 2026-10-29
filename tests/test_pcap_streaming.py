@@ -29,7 +29,7 @@ class FailingReader(FakeReader):
 @pytest.mark.parametrize("parse", [parse_pcap, parse_pcap_comprehensive])
 def test_large_pcap_streams_and_closes_reader(tmp_path, monkeypatch, parse):
     path = tmp_path / "large.pcap"
-    path.write_bytes(b"x")
+    path.write_bytes(bytes.fromhex("d4 c3 b2 a1"))
     reader = FakeReader()
     monkeypatch.setattr(parser_module, "PcapReader", lambda _path: reader)
     monkeypatch.setattr(parser_module.os.path, "getsize", lambda _path: 50 * 1024 * 1024 + 1)
@@ -46,7 +46,7 @@ def test_large_pcap_streams_and_closes_reader(tmp_path, monkeypatch, parse):
 @pytest.mark.parametrize("parse", [parse_pcap, parse_pcap_comprehensive])
 def test_large_pcap_closes_reader_when_iteration_fails(tmp_path, monkeypatch, parse):
     path = tmp_path / "failing.pcap"
-    path.write_bytes(b"x")
+    path.write_bytes(bytes.fromhex("d4 c3 b2 a1"))
     reader = FailingReader()
     monkeypatch.setattr(parser_module, "PcapReader", lambda _path: reader)
     monkeypatch.setattr(parser_module.os.path, "getsize", lambda _path: 50 * 1024 * 1024 + 1)
