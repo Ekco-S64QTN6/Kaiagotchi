@@ -79,8 +79,17 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         )
         return False
 
-    def option_error(options_start: int, options_end: int) -> str | None:
-        """Return an option-list framing error, without materializing option values."""
+    def option_error(
+        options_start: int, options_end: int, block_type_value: int | None
+    ) -> str | None:
+        """Validate option framing and known fixed-size values without loading values."""
+        fixed_lengths_by_block = {
+            # Interface Description Block options.
+            1: {4: 8, 5: 17, 6: 6, 7: 8, 8: 8, 9: 1, 10: 4, 13: 1, 14: 8},
+            # Packet and Enhanced Packet Block options.
+            2: {2: 4, 4: 8},
+            6: {2: 4, 4: 8, 0x8001: 4, 0x8003: 4},
+        }
         option_offset = options_start
         while option_offset < options_end:
             if options_end - option_offset < 4:
@@ -103,6 +112,15 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             option_end = option_offset + 4 + padded_length
             if option_end > options_end:
                 return f"option at offset {option_offset} exceeds its block boundary"
+
+            fixed_lengths = fixed_lengths_by_block.get(block_type_value, {})
+            expected_length = fixed_lengths.get(option_code)
+            if expected_length is not None and option_length != expected_length:
+                return (
+                    f"option code {option_code} must have value length "
+                    f"{expected_length}, got {option_length}"
+                )
+
             option_offset = option_end
 
         # PCAPNG permits option lists to end at the end of their enclosing block
@@ -204,7 +222,9 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
                 if options_start is not None:
                     options_end = block_end - 4
-                    invalid_options = option_error(options_start, options_end)
+                    invalid_options = option_error(
+                        options_start, options_end, block_type_value
+                    )
                     if invalid_options is not None:
                         return reject(
                             f"invalid options in block at offset {offset}: {invalid_options}"

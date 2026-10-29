@@ -319,9 +319,15 @@ def _synthetic_beacon() -> bytes:
 def test_pcapng_preflight_accepts_valid_interface_and_packet_blocks(tmp_path):
     capture = tmp_path / "valid-beacon.pcapng"
     section_options = _pcapng_option(1, b"synthetic") + _pcapng_option(0, b"")
-    interface_options = _pcapng_option(2, b"wlan1") + _pcapng_option(0, b"")
+    interface_options = (
+        _pcapng_option(2, b"wlan1")
+        + _pcapng_option(9, b"\x06")
+        + _pcapng_option(0, b"")
+    )
     packet_options = (
-        _pcapng_option(1, b"synthetic beacon") + _pcapng_option(0, b"")
+        _pcapng_option(1, b"synthetic beacon")
+        + _pcapng_option(2, struct.pack("<I", 1))
+        + _pcapng_option(0, b"")
     )
     capture.write_bytes(
         _pcapng_section_header(options=section_options)
@@ -522,3 +528,49 @@ def test_pcapng_preflight_accepts_valid_legacy_packet_block_options(tmp_path):
     assert result.total_packets == 1
     assert result.total_beacons == 1
     assert "02:00:00:00:00:01" in result.bssids
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "option_code", "value", "expected_reason"),
+    [
+        pytest.param(
+            "interface",
+            9,
+            b"\x06\x07",
+            "option code 9 must have value length 1, got 2",
+            id="timestamp-resolution-must-be-one-byte",
+        ),
+        pytest.param(
+            "enhanced-packet",
+            2,
+            b"\x01\x00",
+            "option code 2 must have value length 4, got 2",
+            id="packet-flags-must-be-four-bytes",
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_invalid_fixed_size_option_values(
+    tmp_path, caplog, block_kind, option_code, value, expected_reason
+):
+    capture = tmp_path / f"invalid-fixed-option-{block_kind}.pcapng"
+    options = _pcapng_option(option_code, value) + _pcapng_option(0, b"")
+    if block_kind == "interface":
+        blocks = _pcapng_section_header() + _pcapng_interface_block(options=options)
+    else:
+        blocks = (
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+        )
+    capture.write_bytes(blocks)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "invalid options in block" in caplog.text.lower()
+    assert expected_reason in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0

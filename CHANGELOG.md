@@ -44,6 +44,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   or the padded packet data available in the declared block body.
 - Validate PCAPNG option value lengths and end-of-options markers in section-header,
   interface-description, legacy packet, and enhanced packet blocks before parsing.
+- Validate fixed-size PCAPNG option values, including interface timestamp resolution
+  and packet flags, and reject malformed lengths before packet decoding.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.
