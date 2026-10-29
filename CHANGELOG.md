@@ -54,6 +54,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   handle for retry, and defer capture archive/temp cleanup while the scan task is active.
 - Shield CLI's final resource-cleanup task from repeated cancellation requests and re-raise
   cancellation only after the cleanup task has completed.
+- Defer monitor-mode restoration and capture archive/temp removal when the capture process
+  cannot be reaped; bound post-kill waiting and retry with the retained process handle.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

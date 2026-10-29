@@ -129,3 +129,70 @@ async def test_stop_bounds_unresponsive_scan_and_retries_deferred_capture_cleanu
     assert monitor._capture_tmp_dir is None
     assert archive_calls == [True]
     assert cleanup_calls == [True]
+
+
+class FailOnceWaitCaptureProcess(FakeCaptureProcess):
+    def __init__(self):
+        super().__init__()
+        self.wait_attempts = 0
+
+    async def wait(self):
+        self.wait_attempts += 1
+        if self.wait_attempts == 1:
+            self.wait_called = True
+            raise RuntimeError("simulated wait failure")
+        return await super().wait()
+
+
+@pytest.mark.asyncio
+async def test_stop_defers_capture_cleanup_and_mode_restore_until_process_is_reaped(
+    monkeypatch
+):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    process = FailOnceWaitCaptureProcess()
+    monitor._running = True
+    monitor._process = process
+    monitor._capture_tmp_dir = "/private/capture"
+
+    restore_managed_mode = AsyncMock()
+    archive_calls = []
+    cleanup_calls = []
+    summary_messages = []
+
+    async def emit_summary(message):
+        summary_messages.append(message)
+
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: archive_calls.append(True))
+    monkeypatch.setattr(
+        monitor,
+        "_cleanup_capture_temp_dir",
+        lambda: (cleanup_calls.append(True), setattr(monitor, "_capture_tmp_dir", None)),
+    )
+    monkeypatch.setattr(monitor, "_emit_capture_summary", emit_summary)
+
+    await monitor.stop()
+
+    assert process.wait_attempts == 1
+    assert process.returncode is None
+    assert monitor._process is process
+    assert monitor._capture_tmp_dir == "/private/capture"
+    restore_managed_mode.assert_not_awaited()
+    assert archive_calls == []
+    assert cleanup_calls == []
+    assert summary_messages == [
+        "Monitoring shutdown incomplete; capture process could not be reaped."
+    ]
+
+    # The next stop() retries wait/reap and only then restores the adapter and
+    # archives/removes the private temporary capture directory.
+    await monitor.stop()
+
+    assert process.wait_attempts == 2
+    assert process.returncode == 0
+    assert monitor._process is None
+    assert monitor._capture_tmp_dir is None
+    restore_managed_mode.assert_awaited_once()
+    assert archive_calls == [True]
+    assert cleanup_calls == [True]
+    assert summary_messages[-1] == "Monitoring stopped."

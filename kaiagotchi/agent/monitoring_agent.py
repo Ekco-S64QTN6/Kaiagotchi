@@ -293,7 +293,9 @@ class MonitoringAgent:
                             process.kill()
                         except ProcessLookupError:
                             _LOG.debug("[monitoring] airodump exited during kill")
-                    await process.wait()
+                    # Bound the post-kill wait too; an unresponsive child must
+                    # remain available for a later stop() retry, not hold shutdown.
+                    await asyncio.wait_for(process.wait(), timeout=1.0)
 
                 _LOG.info("[monitoring] Airodump process stopped")
             except Exception as e:
@@ -303,6 +305,19 @@ class MonitoringAgent:
                 # stop() call can retry cleanup instead of silently losing it.
                 if process.returncode is not None:
                     self._process = None
+
+        if self._process is not None:
+            # The capture child could not be confirmed reaped. It may still be
+            # writing the PCAP and depends on monitor mode, so preserve its files
+            # and interface state for a subsequent stop() retry.
+            _LOG.error(
+                "[monitoring] Capture process was not reaped; deferring managed-mode "
+                "restore and capture-file cleanup until the next shutdown attempt"
+            )
+            await self._emit_capture_summary(
+                "Monitoring shutdown incomplete; capture process could not be reaped."
+            )
+            return
 
         try:
             await self._restore_managed_mode()
