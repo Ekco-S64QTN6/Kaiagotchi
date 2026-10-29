@@ -16,10 +16,10 @@ features or capture-backend changes.
 
 ## Reliability priorities
 
-1. **PCAP parser** — continue synthetic coverage for PCAPNG packet-block lengths,
-   options, and trailers. Section-header length, byte-order, and trailing-length
-   failures now have synthetic tests; streaming iteration also fails closed on
-   reader errors. Never add real captures, credentials, or BSSID-specific data.
+1. **PCAP parser** — continue synthetic coverage for PCAPNG option structure and
+   packet payload lengths. A streaming preflight now checks every block boundary,
+   declared length, and trailing length so a corrupt later block cannot produce a
+   partial inventory. Never add real captures, credentials, or BSSID-specific data.
 2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
    subprocesses and web-server thread termination, and verify background tasks
    are awaited without blocking the asyncio event loop.
@@ -37,6 +37,10 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Added a streaming PCAPNG block-framing preflight that validates section byte order,
+  block boundaries, aligned lengths, file bounds, and trailing lengths before Scapy
+  parses packet bodies. Synthetic coverage verifies valid beacons and rejects a
+  corrupt later block without returning partial inventory.
 - Added synthetic PCAPNG section-header tests for undersized and truncated declared
   lengths, mismatched trailing lengths, and invalid byte-order magic, while also
   checking that a minimal valid section header remains accepted.

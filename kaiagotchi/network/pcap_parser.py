@@ -1,6 +1,7 @@
 # kaiagotchi/network/pcap_parser.py
 import logging
 import os
+import struct
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -25,12 +26,13 @@ parser_logger = logging.getLogger('pcap_parser')
 
 # Classic PCAP magic values cover microsecond/nanosecond timestamps in either
 # byte order. PCAPNG uses a single section-header block type signature.
+_PCAPNG_MAGIC = b"\x0a\x0d\x0d\x0a"
 _PCAP_MAGIC_NUMBERS = {
     b"\xd4\xc3\xb2\xa1",
     b"\xa1\xb2\xc3\xd4",
     b"\x4d\x3c\xb2\xa1",
     b"\xa1\xb2\x3c\x4d",
-    b"\x0a\x0d\x0d\x0a",
+    _PCAPNG_MAGIC,
 }
 
 
@@ -63,6 +65,82 @@ class NetworkData:
     total_beacons: int
 
 
+def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
+    """Validate PCAPNG block boundaries without loading packet payloads.
+
+    Scapy treats some block-trailer EOF errors as ordinary end-of-file. Verify
+    each declared block length and trailing length first so a corrupt later block
+    cannot silently turn a damaged capture into a successful partial parse.
+    This checks framing only; Scapy still parses block contents and packets.
+    """
+    def reject(reason: str) -> bool:
+        parser_logger.error(
+            "Invalid PCAPNG block structure in %s: %s", path, reason
+        )
+        return False
+
+    endian: str | None = None
+    offset = 0
+    try:
+        with path.open("rb") as capture_file:
+            while offset < file_size:
+                capture_file.seek(offset)
+                block_type = capture_file.read(4)
+                if len(block_type) != 4:
+                    return reject("truncated block type")
+
+                length_bytes = capture_file.read(4)
+                if len(length_bytes) != 4:
+                    return reject("truncated block length")
+
+                is_section_header = block_type == _PCAPNG_MAGIC
+                if is_section_header:
+                    byte_order_magic = capture_file.read(4)
+                    if byte_order_magic == b"\x1a\x2b\x3c\x4d":
+                        endian = ">"
+                    elif byte_order_magic == b"\x4d\x3c\x2b\x1a":
+                        endian = "<"
+                    else:
+                        return reject("invalid section-header byte-order magic")
+                    minimum_length = 28
+                else:
+                    if endian is None:
+                        return reject("first block is not a section header")
+                    minimum_length = 12
+
+                block_length = struct.unpack(endian + "I", length_bytes)[0]
+                if block_length < minimum_length:
+                    return reject(
+                        f"block at offset {offset} is shorter than {minimum_length} bytes"
+                    )
+                if block_length % 4:
+                    return reject(
+                        f"block at offset {offset} has a non-aligned length"
+                    )
+
+                block_end = offset + block_length
+                if block_end > file_size:
+                    return reject(
+                        f"block at offset {offset} extends beyond end of file"
+                    )
+
+                capture_file.seek(block_end - 4)
+                trailing_length = capture_file.read(4)
+                if len(trailing_length) != 4:
+                    return reject(f"block at offset {offset} has no trailing length")
+                if struct.unpack(endian + "I", trailing_length)[0] != block_length:
+                    return reject(
+                        f"block at offset {offset} has a mismatched trailing length"
+                    )
+
+                offset = block_end
+    except OSError as exc:
+        parser_logger.error("Unable to validate PCAPNG structure in %s: %s", path, exc)
+        return False
+
+    return offset == file_size
+
+
 def validate_file(filepath: str) -> bool:
     """
     Perform a lightweight PCAP/PCAPNG preflight check before processing.
@@ -73,7 +151,8 @@ def validate_file(filepath: str) -> bool:
     """
     path = Path(filepath)
     try:
-        if path.stat().st_size == 0:
+        file_size = path.stat().st_size
+        if file_size == 0:
             parser_logger.error("File is empty: %s", filepath)
             return False
         with path.open("rb") as capture_file:
@@ -87,6 +166,11 @@ def validate_file(filepath: str) -> bool:
             "File does not have a recognized PCAP/PCAPNG signature: %s",
             filepath,
         )
+        return False
+
+    if signature == _PCAPNG_MAGIC and not _validate_pcapng_block_framing(
+        path, file_size
+    ):
         return False
 
     if path.suffix.lower() not in {".pcap", ".pcapng"}:

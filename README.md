@@ -183,10 +183,12 @@ Before parsing, Kaiagotchi rejects missing or empty files and files whose first
 four bytes do not match a known classic PCAP or PCAPNG signature. The extension
 is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
-integrity check; Scapy handles structural parsing, including PCAPNG section
-header byte order and block lengths. Malformed input is logged and the parser
-returns an empty result. Captures may contain sensitive identifiers and traffic,
-so only inspect files you are authorized to handle.
+integrity check; the preflight scan verifies PCAPNG section byte order, block
+boundaries, declared lengths, and trailing lengths without loading packet bodies
+into memory. Scapy then handles packet and payload decoding. Malformed framing is
+logged and the parser returns an empty result before partial data can be extracted.
+Captures may contain sensitive identifiers and traffic, so only inspect files you
+are authorized to handle.
 
 Streaming parsing uses Scapy's `PcapReader` only for large captures. If iteration
 hits a malformed/truncated record, both parser entry points log the failure and

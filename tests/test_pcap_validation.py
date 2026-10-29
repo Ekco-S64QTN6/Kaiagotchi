@@ -19,7 +19,6 @@ from kaiagotchi.network.pcap_parser import (
         ("capture.pcap", bytes.fromhex("a1 b2 c3 d4")),
         ("capture.pcap", bytes.fromhex("4d 3c b2 a1")),
         ("capture.pcap", bytes.fromhex("a1 b2 3c 4d")),
-        ("capture.pcapng", bytes.fromhex("0a 0d 0d 0a")),
     ],
 )
 def test_validate_file_accepts_known_signatures(tmp_path, filename, signature):
@@ -27,6 +26,13 @@ def test_validate_file_accepts_known_signatures(tmp_path, filename, signature):
     capture.write_bytes(signature)
 
     assert validate_file(str(capture))
+
+
+def test_validate_file_rejects_pcapng_signature_without_a_complete_section_header(tmp_path):
+    capture = tmp_path / "signature-only.pcapng"
+    capture.write_bytes(bytes.fromhex("0a 0d 0d 0a"))
+
+    assert not validate_file(str(capture))
 
 
 def test_validate_file_rejects_unknown_signature(tmp_path):
@@ -173,7 +179,7 @@ def test_parser_fails_closed_on_malformed_pcapng_section_headers(
     with caplog.at_level(logging.ERROR, logger="pcap_parser"):
         result = parse(str(capture))
 
-    assert "failed to read pcap file" in caplog.text.lower()
+    assert "invalid pcapng block structure" in caplog.text.lower()
     if isinstance(result, list):
         assert result == []
     else:
@@ -204,3 +210,108 @@ def test_parser_accepts_minimal_valid_pcapng_section_header(
     else:
         assert result.total_packets == 0
         assert result.total_beacons == 0
+
+
+
+def _pcapng_interface_block() -> bytes:
+    """An IEEE 802.11 Interface Description Block."""
+    return struct.pack("<IIHHII", 1, 20, 105, 0, 65535, 20)
+
+
+def _pcapng_enhanced_packet_block(
+    packet: bytes,
+    *,
+    declared_length: int | None = None,
+    trailer_length: int | None = None,
+) -> bytes:
+    padded_packet = packet + (b"\x00" * (-len(packet) % 4))
+    actual_length = 32 + len(padded_packet)
+    if declared_length is None:
+        declared_length = actual_length
+    if trailer_length is None:
+        trailer_length = actual_length
+    return (
+        struct.pack(
+            "<IIIIIII",
+            6,  # Enhanced Packet Block
+            declared_length,
+            0,  # interface id
+            0,  # timestamp high
+            0,  # timestamp low
+            len(packet),
+            len(packet),
+        )
+        + padded_packet
+        + struct.pack("<I", trailer_length)
+    )
+
+
+def _synthetic_beacon() -> bytes:
+    """Build a synthetic beacon frame; no real network identifiers are used."""
+    from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
+
+    bssid = "02:00:00:00:00:01"
+    return bytes(
+        Dot11(
+            type=0,
+            subtype=8,
+            addr1="ff:ff:ff:ff:ff:ff",
+            addr2=bssid,
+            addr3=bssid,
+        )
+        / Dot11Beacon()
+        / Dot11Elt(ID=0, info=b"SyntheticLab")
+        / Dot11Elt(ID=3, info=b"\x06")
+    )
+
+
+def test_pcapng_preflight_accepts_valid_interface_and_packet_blocks(tmp_path):
+    capture = tmp_path / "valid-beacon.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon())
+    )
+
+    result = parse_pcap_comprehensive(str(capture))
+
+    assert result.total_packets == 1
+    assert result.total_beacons == 1
+    assert "02:00:00:00:00:01" in result.bssids
+
+
+@pytest.mark.parametrize(
+    ("declared_delta", "trailer_delta", "expected_reason"),
+    [
+        pytest.param(0, -4, "mismatched trailing length", id="bad-packet-trailer"),
+        pytest.param(4, 4, "extends beyond end of file", id="truncated-packet-block"),
+    ],
+)
+def test_pcapng_preflight_rejects_corrupt_later_packet_block_without_partial_results(
+    tmp_path, caplog, declared_delta, trailer_delta, expected_reason
+):
+    capture = tmp_path / "corrupt-late-packet-block.pcapng"
+    good_packet = _pcapng_enhanced_packet_block(_synthetic_beacon())
+    # A valid first beacon followed by a corrupt second block must not yield a
+    # partial network inventory just because Scapy treats trailer EOF as EOF.
+    bad_packet_bytes = _synthetic_beacon()
+    actual_length = len(_pcapng_enhanced_packet_block(bad_packet_bytes))
+    bad_packet = _pcapng_enhanced_packet_block(
+        bad_packet_bytes,
+        declared_length=actual_length + declared_delta,
+        trailer_length=actual_length + trailer_delta,
+    )
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_interface_block() + good_packet + bad_packet
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "invalid pcapng block structure" in caplog.text.lower()
+    assert expected_reason in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
