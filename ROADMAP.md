@@ -20,10 +20,10 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions and resets interface references per section as well as
    checking block/options/captured lengths. Never use real captures or credentials.
-2. **Async shutdown** — continue CLI-wide repeated-cancellation and process-reap failure
-   coverage. Monitoring shutdown now bounds waits for an unresponsive scan task, keeps
-   its handle for retry, and defers capture-file cleanup until the task exits; web-server
-   thread termination remains bounded and off the event loop.
+2. **Async shutdown** — continue coverage for cancellation during manager/agent startup
+   barriers and process-reap failures. The CLI shields its resource-cleanup phase from
+   repeated cancellation and re-raises cancellation after cleanup finishes; monitoring
+   preserves deferred task/process cleanup state for retries.
 3. **Reward and mood contract** — document required/optional state fields and
    fallback behavior; extend reward tests for partial/stale state and malformed
    discovery inputs.
@@ -37,6 +37,10 @@ features or capture-backend changes.
    `airodump-ng`, `iw`, monitor-mode adapters, privileges, and clean stop behavior.
 
 ## Recently completed
+
+- Shield CLI resource cleanup through repeated task cancellation: manager/agent/view and
+  web-server shutdown can finish bounded cleanup attempts before caller cancellation is
+  re-raised. A synthetic repeated-cancel regression covers the cleanup waiter.
 
 - Reject unsupported PCAPNG section-header major versions and add a regression that
   proves interface IDs reset at new section headers instead of carrying over from the
