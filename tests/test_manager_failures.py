@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -84,6 +85,20 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
         async def show(self, duration=0):
             return None
 
+    web_servers = []
+    event_loop_thread_id = threading.get_ident()
+
+    class FakeWebServer:
+        def __init__(self, *_args, **_kwargs):
+            self.stop_thread_id = None
+            web_servers.append(self)
+
+        def start(self):
+            return None
+
+        def stop(self):
+            self.stop_thread_id = threading.get_ident()
+
     class FailingManager:
         def __init__(self, **_kwargs):
             self.agent = None
@@ -101,7 +116,7 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
         debug=False,
         config="test-config.toml",
         manual=False,
-        no_web=True,
+        no_web=False,
         web=None,
         port=None,
         host=None,
@@ -111,7 +126,7 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
     monkeypatch.setattr(cli, "load_config", lambda _path: {"log": {"level": "INFO"}})
     monkeypatch.setattr(cli, "View", FakeView)
     monkeypatch.setattr(cli, "SplashScreen", FakeSplash)
-    monkeypatch.setattr(cli, "WebServer", None)
+    monkeypatch.setattr(cli, "WebServer", FakeWebServer)
     monkeypatch.setattr(cli, "Manager", FailingManager)
     monkeypatch.setattr(cli, "_shutdown_event", asyncio.Event())
     # Avoid replacing pytest's own process signal handlers during this test.
@@ -119,6 +134,9 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
     monkeypatch.setattr(loop, "add_signal_handler", lambda *_args, **_kwargs: None)
 
     assert await cli.run_agent() == 1
+    assert len(web_servers) == 1
+    assert web_servers[0].stop_thread_id is not None
+    assert web_servers[0].stop_thread_id != event_loop_thread_id
 
 
 

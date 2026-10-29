@@ -19,9 +19,9 @@ features or capture-backend changes.
 1. **PCAP parser** — extend synthetic coverage for truncated headers, malformed
    packet records, PCAPNG edge cases, and streaming-reader cleanup. Never add
    real captures, credentials, or BSSID-specific data to fixtures.
-2. **Async shutdown** — test that capture subprocesses are terminated and
-   reaped, the web server is stopped, and background tasks are awaited on normal
-   shutdown and startup failure.
+2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
+   subprocesses and web-server thread termination, and verify background tasks
+   are awaited without blocking the asyncio event loop.
 3. **Reward and mood contract** — document required/optional state fields and
    fallback behavior; extend reward tests for partial/stale state and malformed
    discovery inputs.
@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Run the synchronous web-server stop/join operation in a worker thread from CLI
+  cleanup so the asyncio event loop can continue servicing cancellation and other
+  shutdown work while the server thread exits.
 - Improved monitor shutdown so a leftover child process is still waited/reaped
   even if the running flag was cleared during partial startup, and the process
   handle is retained when reaping fails so cleanup can be retried.

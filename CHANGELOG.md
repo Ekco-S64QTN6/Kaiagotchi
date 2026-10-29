@@ -21,4 +21,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   the CLI, manager, and base agent.
 - Harden monitor shutdown to attempt child-process reaping after partial startup
   and retain the process handle if cleanup does not fully complete.
+- Offload the web server's blocking thread join from the CLI's asyncio event loop,
+  with a regression test asserting that stop executes on a worker thread.
 - Establish contributor guidance and a prioritized reliability roadmap.

@@ -601,7 +601,7 @@ async def run_agent() -> int:
             # Stop WebServer
             if web_server:
                 try:
-                    web_server.stop()
+                    await asyncio.to_thread(web_server.stop)
                     logger.info("WebServer stopped cleanly.")
                 except Exception as ws_err:
                     logger.error(f"Error stopping WebServer: {ws_err}")
