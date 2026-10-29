@@ -161,6 +161,15 @@ integer-convertible value wins, including an explicit zero. Missing, `None`,
 or invalid values fall through to the next supported field, avoiding stale
 legacy aliases overriding a current zero count.
 
+### Discovery reward input validation
+
+AP and station inventory entries earn discovery rewards only when their identity
+is a six-octet MAC address using colon or hyphen separators. Invalid or non-string
+inventory values are ignored; a valid AP dictionary key can still identify an
+entry when its embedded BSSID is missing or invalid. Legacy chatter fallback
+continues to recognize string messages only and deduplicates them across recent
+snapshots.
+
 ### PCAP input validation
 
 Before parsing, Kaiagotchi rejects missing or empty files and files whose first

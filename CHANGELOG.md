@@ -26,4 +26,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
 - Run shutdown cleanup on cancellation at any await point during monitor startup,
   including restoring the interface, reaping a spawned child, and cleaning its
   private capture directory before propagating cancellation.
+- Ignore malformed AP/station identities in reward inventories and non-string
+  legacy chatter payloads, with regression tests for fallback and deduplication.
 - Establish contributor guidance and a prioritized reliability roadmap.

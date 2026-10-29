@@ -146,25 +146,41 @@ class RewardEngine:
 
         return 0
 
+    @staticmethod
+    def _normalize_discovery_identity(value: Any) -> str | None:
+        """Return a canonical MAC address, ignoring malformed inventory values."""
+        if not isinstance(value, str):
+            return None
+        parts = value.strip().replace("-", ":").split(":")
+        if len(parts) != 6 or any(
+            len(part) != 2
+            or any(character not in "0123456789abcdefABCDEF" for character in part)
+            for part in parts
+        ):
+            return None
+        return ":".join(part.upper() for part in parts)
+
     def _extract_new_discoveries(self, state: dict[str, Any]) -> tuple[int, int]:
-        """Count each newly observed AP/station once, with deduplicated legacy-event fallback."""
+        """Count each valid AP/station identity once, with deduplicated legacy-event fallback."""
         new_aps = 0
         new_stations = 0
         network = state.get("network", {}) or {}
 
         try:
-            # Prefer identity inventories where available. They let us detect a
-            # first-seen BSSID/station once, without counting the same recent
-            # chatter entry again on every reward evaluation.
+            # Prefer identity inventories where available. Empty or malformed
+            # entries do not become discovery rewards, but a present inventory
+            # still suppresses chatter to prevent double-counting.
             aps_inventory_available = False
             aps_list = state.get("aps_list")
             if isinstance(aps_list, list):
                 aps_inventory_available = True
-                current_aps = {
-                    str(ap.get("bssid")).strip().upper()
-                    for ap in aps_list
-                    if isinstance(ap, dict) and ap.get("bssid")
-                }
+                current_aps = set()
+                for ap in aps_list:
+                    if not isinstance(ap, dict):
+                        continue
+                    identity = self._normalize_discovery_identity(ap.get("bssid"))
+                    if identity is not None:
+                        current_aps.add(identity)
             else:
                 access_points = (
                     network.get("access_points")
@@ -177,11 +193,15 @@ class RewardEngine:
                     and isinstance(access_points, dict)
                 ):
                     aps_inventory_available = True
-                    current_aps = {
-                        str(ap.get("bssid") or key).strip().upper()
-                        for key, ap in access_points.items()
-                        if isinstance(ap, dict) and (ap.get("bssid") or key)
-                    }
+                    current_aps = set()
+                    for key, ap in access_points.items():
+                        if not isinstance(ap, dict):
+                            continue
+                        identity = self._normalize_discovery_identity(ap.get("bssid"))
+                        if identity is None:
+                            identity = self._normalize_discovery_identity(key)
+                        if identity is not None:
+                            current_aps.add(identity)
                 else:
                     current_aps = set()
 
@@ -191,25 +211,36 @@ class RewardEngine:
 
             stations_inventory_available = isinstance(state.get("stations_list"), list)
             if stations_inventory_available:
-                stations_list = state["stations_list"]
-                current_stations = {
-                    str(station.get("station_mac") or station.get("mac")).strip().upper()
-                    for station in stations_list
-                    if isinstance(station, dict)
-                    and (station.get("station_mac") or station.get("mac"))
-                }
+                current_stations = set()
+                for station in state["stations_list"]:
+                    if not isinstance(station, dict):
+                        continue
+                    identity = self._normalize_discovery_identity(
+                        station.get("station_mac")
+                    )
+                    if identity is None:
+                        identity = self._normalize_discovery_identity(
+                            station.get("mac")
+                        )
+                    if identity is not None:
+                        current_stations.add(identity)
                 new_stations += len(current_stations - self._discovered_stations)
                 self._discovered_stations.update(current_stations)
 
             # Older integrations may publish discovery events without an AP or
-            # station inventory. Use those messages only for the missing
-            # inventory, and remember normalized event identities so a rolling
-            # recent_captures buffer cannot reward the same event repeatedly.
+            # station inventory. Use string messages only, and remember normalized
+            # event identities so a rolling recent_captures buffer cannot reward
+            # the same event repeatedly.
             recent_captures = state.get("recent_captures", [])
             if isinstance(recent_captures, list):
                 for capture in recent_captures[-5:]:
                     if isinstance(capture, dict):
-                        msg = str(capture.get("message") or capture.get("text") or "").strip()
+                        msg_value = capture.get("message")
+                        if not isinstance(msg_value, str):
+                            msg_value = capture.get("text")
+                        if not isinstance(msg_value, str):
+                            continue
+                        msg = msg_value.strip()
                     elif isinstance(capture, str):
                         msg = capture.strip()
                     else:
@@ -244,6 +275,7 @@ class RewardEngine:
             logger.debug("Discovery tracking failed: %s", e)
 
         return new_aps, new_stations
+
 
     def _safe_get_value(self, obj: Any, key: str, default: Any = None) -> Any:
         """Safely get value from object whether it's a dict, Pydantic model, or has attributes."""
