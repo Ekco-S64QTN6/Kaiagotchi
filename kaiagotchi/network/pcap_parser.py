@@ -175,6 +175,19 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         f"block at offset {offset} extends beyond end of file"
                     )
 
+                if is_section_header:
+                    capture_file.seek(offset + 12)
+                    version_bytes = capture_file.read(4)
+                    if len(version_bytes) != 4:
+                        return reject("section header has a truncated version")
+                    major_version, _minor_version = struct.unpack(
+                        endian + "HH", version_bytes
+                    )
+                    if major_version != 1:
+                        return reject(
+                            f"unsupported section header major version {major_version}"
+                        )
+
                 block_type_value = (
                     None
                     if is_section_header

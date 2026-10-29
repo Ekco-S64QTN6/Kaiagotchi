@@ -133,6 +133,7 @@ def _pcapng_section_header(
     trailer_length: int | None = None,
     byte_order_magic: bytes = bytes.fromhex("4d 3c 2b 1a"),
     options: bytes = b"",
+    major_version: int = 1,
 ) -> bytes:
     """Build a synthetic little-endian PCAPNG Section Header Block."""
     actual_length = 28 + len(options)
@@ -144,7 +145,7 @@ def _pcapng_section_header(
         bytes.fromhex("0a 0d 0d 0a")
         + struct.pack("<I", declared_length)
         + byte_order_magic
-        + struct.pack("<HHq", 1, 0, -1)
+        + struct.pack("<HHq", major_version, 0, -1)
         + options
         + struct.pack("<I", trailer_length)
     )
@@ -654,6 +655,54 @@ def test_pcapng_preflight_rejects_simple_packet_without_declared_interface(
 
     assert "simple packet block" in caplog.text.lower()
     assert "undeclared interface 0" in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
+
+
+@pytest.mark.parametrize(
+    "parse",
+    [parse_pcap, parse_pcap_comprehensive],
+    ids=["simple-parser", "comprehensive-parser"],
+)
+def test_pcapng_preflight_rejects_unsupported_section_major_version(
+    tmp_path, caplog, parse
+):
+    capture = tmp_path / "unsupported-major-version.pcapng"
+    capture.write_bytes(_pcapng_section_header(major_version=2))
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse(str(capture))
+
+    assert "unsupported section header major version 2" in caplog.text.lower()
+    if isinstance(result, list):
+        assert result == []
+    else:
+        assert result.bssids == {}
+        assert result.stations == {}
+        assert result.handshakes == []
+        assert result.total_packets == 0
+        assert result.total_beacons == 0
+
+
+def test_pcapng_preflight_resets_interface_count_at_new_section(
+    tmp_path, caplog
+):
+    capture = tmp_path / "section-interface-reset.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon())
+        + _pcapng_section_header()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon(), interface_id=0)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "references undeclared interface 0" in caplog.text.lower()
     assert result.bssids == {}
     assert result.stations == {}
     assert result.handshakes == []
