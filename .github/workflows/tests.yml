@@ -90,20 +90,6 @@ jobs:
       - name: Compile project and tests
         run: python -m compileall -q kaiagotchi tests
 
-      - name: Show Ruff auto-fix diff for residual baseline diagnostics
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          python -m ruff check \
-            kaiagotchi/ui/web/server.py \
-            tests/test_config_manager_fallbacks.py \
-            tests/test_persistent_network_save_order.py \
-            --fix --diff
-          status=$?
-          set -e
-          echo "Ruff auto-fix diff exit code: $status"
-
       - name: Record Ruff baseline (non-gating)
         id: ruff-baseline
         shell: bash

@@ -27,8 +27,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from aiohttp import WSMsgType, web
 import psutil
+from aiohttp import WSMsgType, web
 
 _LOG = logging.getLogger("kaiagotchi.ui.web.server")
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
