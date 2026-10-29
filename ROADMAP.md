@@ -23,8 +23,7 @@ features or capture-backend changes.
    reaped, the web server is stopped, and background tasks are awaited on normal
    shutdown and startup failure.
 3. **Reward and mood contract** — document required/optional state fields and
-   fallback behavior; ensure the mood enum has one authoritative definition and
-   cover reward extraction against partial or stale state.
+   fallback behavior; cover reward extraction against partial or stale state.
 4. **Plugin lifecycle** — define a backwards-compatible plugin API versioning
    policy and add tests for load failures, duplicate registration, and unload.
 5. **Quality gates** — establish clean baselines, then add compileall, Ruff, and
@@ -34,6 +33,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Consolidated `AgentMood` in `data/system_types.py` as the shared enum for
+  Automata and voice handling, preventing mood-specific voice lookups from
+  silently falling back to neutral because of enum type mismatch.
 - Added PCAP/PCAPNG signature checks before parsing, with synthetic regression
   coverage. File extensions remain advisory so valid captures with a nonstandard
   extension can still be processed; Scapy remains responsible for deeper parsing.

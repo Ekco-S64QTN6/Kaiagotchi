@@ -10,4 +10,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   files, missing files, unknown signatures, and advisory file extensions.
 - Exercise both parser entry points against signature-only files and truncated
   packet records to guard graceful handling of malformed inputs.
+- Use the shared `AgentMood` enum in Automata so mood-specific voice lookup and
+  typed system state recognize the same enum members.
 - Establish contributor guidance and a prioritized reliability roadmap.

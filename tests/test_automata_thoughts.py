@@ -3,6 +3,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from kaiagotchi.core.automata import AgentMood, Automata
+from kaiagotchi.data.system_types import AgentMood as SystemAgentMood
+from kaiagotchi.ui.voice.voice import Voice
 
 
 @pytest.mark.asyncio
@@ -46,3 +48,23 @@ async def test_tick_calls_generate_thought(monkeypatch):
     await automata.tick({})
 
     assert automata.generate_thought.called
+
+
+
+def test_automata_uses_the_shared_system_mood_enum():
+    assert AgentMood is SystemAgentMood
+
+
+def test_voice_recognizes_automata_mood_for_thoughts(monkeypatch):
+    """Automata moods should select matching voice lines, not neutral fallbacks."""
+    voice = Voice()
+    monkeypatch.setattr(
+        "kaiagotchi.ui.voice.voice.random.choice",
+        lambda choices: choices[0],
+    )
+
+    assert voice.get_mood_line(AgentMood.HAPPY) == Voice.VOICE_LINES["happy"][0]
+    assert (
+        voice.get_mood_line(AgentMood.CONFIDENT)
+        == Voice.VOICE_LINES["confident"][0]
+    )
