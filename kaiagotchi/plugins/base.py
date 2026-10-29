@@ -10,11 +10,16 @@ callbacks it cares about. A minimal plugin is::
         def on_state_update(self, state):
             ...
 """
-from typing import Any
+from typing import Any, ClassVar
+
+# Current host-supported plugin contract. Legacy subclasses inherit version 1.
+PLUGIN_API_VERSION = 1
 
 
 class Plugin:
     """Base class every Kaiagotchi plugin inherits from."""
+
+    PLUGIN_API_VERSION: ClassVar[int] = PLUGIN_API_VERSION
 
     def __init__(self, name: str, config: dict[str, Any] | None = None) -> None:
         self.name = name

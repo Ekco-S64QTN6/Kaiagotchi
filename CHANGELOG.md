@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Define plugin API v1 compatibility: legacy subclasses inherit the host version, and unsupported/malformed version declarations are rejected before loading or replacing a working plugin.
 - Keep Agent cleanup active across startup awaits; cancelling while the emotional loop starts now cancels/reaps the monitor task and runs component cleanup before propagating cancellation.
 - Document a safe operator hardware smoke-test checklist for tool/privilege checks, dedicated monitor-mode adapter startup, clean capture-process shutdown, and recovery when child reaping fails. This remains a manual check because hosted CI has no wireless hardware.
 - Reject missing, empty, and files without a recognized PCAP/PCAPNG signature

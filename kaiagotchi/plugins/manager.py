@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .base import Plugin
+from .base import PLUGIN_API_VERSION, Plugin
 
 _LOG = logging.getLogger("kaiagotchi.plugins.manager")
 
@@ -58,6 +58,23 @@ class PluginManager:
             _LOG.warning(
                 "Rejecting registration for plugin %s while unloading all plugins.",
                 plugin.name,
+            )
+            return False
+
+        # V1 is inherited by existing Plugin subclasses, so legacy plugins do not
+        # need a source change. Reject incompatible versions before invoking hooks
+        # or unloading a working same-name plugin.
+        api_version = getattr(type(plugin), "PLUGIN_API_VERSION", PLUGIN_API_VERSION)
+        if (
+            isinstance(api_version, bool)
+            or not isinstance(api_version, int)
+            or api_version != PLUGIN_API_VERSION
+        ):
+            _LOG.error(
+                "Rejecting plugin %s: unsupported API version %r (host supports %d).",
+                plugin.name,
+                api_version,
+                PLUGIN_API_VERSION,
             )
             return False
 
