@@ -37,3 +37,6 @@ features or capture-backend changes.
 - Added PCAP/PCAPNG signature checks before parsing, with synthetic regression
   coverage. File extensions remain advisory so valid captures with a nonstandard
   extension can still be processed; Scapy remains responsible for deeper parsing.
+- Added synthetic regressions for signature-only/truncated classic PCAP and
+  PCAPNG inputs, including partial packet-record headers and packet data. Both
+  parser entry points are expected to fail closed with no extracted captures.

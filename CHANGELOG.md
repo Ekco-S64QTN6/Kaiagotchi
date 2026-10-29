@@ -8,4 +8,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   during the parser's lightweight preflight validation.
 - Add synthetic regression tests for classic PCAP byte orders, PCAPNG, empty
   files, missing files, unknown signatures, and advisory file extensions.
+- Exercise both parser entry points against signature-only files and truncated
+  packet records to guard graceful handling of malformed inputs.
 - Establish contributor guidance and a prioritized reliability roadmap.
