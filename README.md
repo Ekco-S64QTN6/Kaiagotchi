@@ -139,6 +139,16 @@ The `Agent` owns all of these subsystems; the optional `Manager` is a thin
 orchestrator that builds the shared view and system state and coordinates
 startup/shutdown.
 
+### PCAP input validation
+
+Before parsing, Kaiagotchi rejects missing or empty files and files whose first
+four bytes do not match a known classic PCAP or PCAPNG signature. The extension
+is advisory: nonstandard extensions produce a warning, but a recognized capture
+signature is accepted. This is a lightweight preflight check, not a full
+integrity check; Scapy can still reject truncated or corrupt captures. Captures
+may contain sensitive identifiers and traffic, so only inspect files you are
+authorized to handle.
+
 ---
 
 ## Plugins

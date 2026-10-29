@@ -23,6 +23,17 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 parser_logger = logging.getLogger('pcap_parser')
 
 
+# Classic PCAP magic values cover microsecond/nanosecond timestamps in either
+# byte order. PCAPNG uses a single section-header block type signature.
+_PCAP_MAGIC_NUMBERS = {
+    b"\xd4\xc3\xb2\xa1",
+    b"\xa1\xb2\xc3\xd4",
+    b"\x4d\x3c\xb2\xa1",
+    b"\xa1\xb2\x3c\x4d",
+    b"\x0a\x0d\x0d\x0a",
+}
+
+
 @dataclass
 class CaptureData:
     """
@@ -54,24 +65,35 @@ class NetworkData:
 
 def validate_file(filepath: str) -> bool:
     """
-    Validate PCAP file before processing.
+    Perform a lightweight PCAP/PCAPNG preflight check before processing.
 
-    Args:
-        filepath: Path to the PCAP file
-
-    Returns:
-        bool: True if file is valid, False otherwise
+    The capture signature is authoritative; the file extension is advisory.
+    This catches obviously wrong inputs without loading the capture into memory,
+    but does not replace Scapy's structural parsing and corruption checks.
     """
-    if not os.path.exists(filepath):
-        parser_logger.error(f"File not found: {filepath}")
+    path = Path(filepath)
+    try:
+        if path.stat().st_size == 0:
+            parser_logger.error("File is empty: %s", filepath)
+            return False
+        with path.open("rb") as capture_file:
+            signature = capture_file.read(4)
+    except OSError as exc:
+        parser_logger.error("Unable to access capture file %s: %s", filepath, exc)
         return False
 
-    if os.path.getsize(filepath) == 0:
-        parser_logger.error("File is empty")
+    if signature not in _PCAP_MAGIC_NUMBERS:
+        parser_logger.error(
+            "File does not have a recognized PCAP/PCAPNG signature: %s",
+            filepath,
+        )
         return False
 
-    if not filepath.lower().endswith(('.pcap', '.pcapng')):
-        parser_logger.warning("File extension may not be standard PCAP format")
+    if path.suffix.lower() not in {".pcap", ".pcapng"}:
+        parser_logger.warning(
+            "File extension may not be standard PCAP format: %s",
+            filepath,
+        )
 
     return True
 
