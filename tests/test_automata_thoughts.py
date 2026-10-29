@@ -50,7 +50,6 @@ async def test_tick_calls_generate_thought(monkeypatch):
     assert automata.generate_thought.called
 
 
-
 def test_automata_uses_the_shared_system_mood_enum():
     assert AgentMood is SystemAgentMood
 
