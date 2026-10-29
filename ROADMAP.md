@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Handle cancellation at any await point during monitor startup, route cleanup
+  through the normal stop path, and preserve the capture-process handle across
+  spawn cancellation so shutdown can reap it and clean the private temp directory.
 - Run the synchronous web-server stop/join operation in a worker thread from CLI
   cleanup so the asyncio event loop can continue servicing cancellation and other
   shutdown work while the server thread exits.

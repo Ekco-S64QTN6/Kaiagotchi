@@ -88,6 +88,9 @@ way out.
 Shutdown also attempts to terminate and reap the `airodump-ng` capture process
 and restore the capture interface to managed mode. Interface restoration is
 best-effort when the driver or system tools report an error.
+If startup is cancelled at any await point, the monitor attempts shutdown cleanup
+before propagating cancellation. Capture-process creation is shielded long
+enough to retain its handle for cleanup.
 The CLI waits for the web server's blocking thread join in a worker thread, so
 that wait does not block the asyncio event loop during shutdown.
 

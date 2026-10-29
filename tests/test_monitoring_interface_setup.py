@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import os
+
 import pytest
 
 import kaiagotchi.agent.monitoring_agent as monitoring_module
@@ -178,3 +181,188 @@ def test_persistent_scan_counter_handles_capture_counter_reset():
     assert store.bssids[0]["beacons"] == 200
     assert store.bssids[1]["packets"] == 4
     assert store.bssids[1]["beacons"] == 7
+
+
+
+@pytest.mark.asyncio
+async def test_cancelled_monitor_mode_setup_restores_managed_interface(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    setup_started = asyncio.Event()
+    restored = False
+    launched = False
+
+    async def blocked_setup():
+        setup_started.set()
+        await asyncio.Event().wait()
+
+    async def restore_managed_mode():
+        nonlocal restored
+        restored = True
+
+    async def launch_airodump():
+        nonlocal launched
+        launched = True
+
+    monkeypatch.setattr(monitor, "_set_monitor_mode", blocked_setup)
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_launch_airodump", launch_airodump)
+
+    start_task = asyncio.create_task(monitor.start())
+    await setup_started.wait()
+    start_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await start_task
+
+    assert monitor._running is False
+    assert restored is True
+    assert launched is False
+
+
+@pytest.mark.asyncio
+async def test_cancelled_airodump_spawn_reaps_child_and_cleans_private_directory(
+    tmp_path, monkeypatch
+):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    monkeypatch.setattr(
+        monitoring_module.tempfile, "gettempdir", lambda: str(tmp_path)
+    )
+    monkeypatch.setattr(
+        monitoring_module.shutil,
+        "which",
+        lambda command: "/usr/bin/airodump-ng" if command == "airodump-ng" else None,
+    )
+    monkeypatch.setattr(monitoring_module, "PCAP_STORAGE_DIR", tmp_path / "archive")
+
+    spawn_started = asyncio.Event()
+    allow_spawn = asyncio.Event()
+    restored = False
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = None
+            self.terminated = False
+            self.waited = False
+
+        def terminate(self):
+            self.terminated = True
+
+        async def wait(self):
+            self.waited = True
+            if self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    process = FakeProcess()
+
+    async def fake_create_subprocess_exec(*_args, **_kwargs):
+        spawn_started.set()
+        await allow_spawn.wait()
+        return process
+
+    async def set_monitor_mode():
+        return None
+
+    async def restore_managed_mode():
+        nonlocal restored
+        restored = True
+
+    monkeypatch.setattr(
+        monitoring_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+    monkeypatch.setattr(monitor, "_set_monitor_mode", set_monitor_mode)
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
+
+    start_task = asyncio.create_task(monitor.start())
+    await spawn_started.wait()
+    start_task.cancel()
+    allow_spawn.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await start_task
+
+    assert process.terminated is True
+    assert process.waited is True
+    assert monitor._process is None
+    assert monitor._capture_tmp_dir is None
+    assert not list(tmp_path.glob(f"kaiagotchi_{os.getpid()}_*"))
+    assert monitor._running is False
+    assert restored is True
+
+
+
+@pytest.mark.asyncio
+async def test_cancelled_during_startup_summary_stops_running_capture(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    summary_started = asyncio.Event()
+    restored = False
+    stop_summaries = []
+
+    class FakeProcess:
+        def __init__(self):
+            self.returncode = None
+            self.terminated = False
+            self.waited = False
+
+        def terminate(self):
+            self.terminated = True
+
+        async def wait(self):
+            self.waited = True
+            if self.returncode is None:
+                self.returncode = 0
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    process = FakeProcess()
+
+    async def set_monitor_mode():
+        return None
+
+    async def launch_airodump():
+        monitor._process = process
+
+    async def scan_loop():
+        await asyncio.Event().wait()
+
+    async def restore_managed_mode():
+        nonlocal restored
+        restored = True
+
+    async def emit_summary(message):
+        if message == "Monitoring initialized.":
+            summary_started.set()
+            await asyncio.Event().wait()
+        else:
+            stop_summaries.append(message)
+
+    monkeypatch.setattr(monitor, "_set_monitor_mode", set_monitor_mode)
+    monkeypatch.setattr(monitor, "_launch_airodump", launch_airodump)
+    monkeypatch.setattr(monitor, "_scan_loop", scan_loop)
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", lambda: None)
+    monkeypatch.setattr(monitor, "_emit_capture_summary", emit_summary)
+
+    start_task = asyncio.create_task(monitor.start())
+    await summary_started.wait()
+    start_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await start_task
+
+    assert process.terminated is True
+    assert process.waited is True
+    assert monitor._process is None
+    assert monitor._running is False
+    assert monitor._loop_task is None
+    assert restored is True
+    assert stop_summaries == ["Monitoring stopped."]
