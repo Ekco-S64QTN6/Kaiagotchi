@@ -18,7 +18,7 @@ async Python core, a headless terminal UI, and an optional browser HUD.
 | **Cyber-deck web UI** | An optional browser HUD (on by default): live telemetry over WebSocket and an animated Kaia codec avatar. Loopback-only unless you opt into LAN access. |
 | **Autonomous recon** | A decision engine drives an `INITIALIZING → RECON_SCAN → TARGETING → MAINTENANCE` state machine, with channel hopping paced by the current mood. |
 | **Handshake capture** | Launches `airodump-ng` and records PCAPs; `scapy`-based parsing extracts EAPOL handshakes and PMKIDs and exports hashcat-ready material. |
-| **Emotional loop** | `RewardEngine → Epoch → Automata` maps live activity into 12 moods (happy, curious, bored, sad, frustrated, …), each with its own face and voice lines. |
+| **Emotional loop** | `RewardEngine → Epoch → Automata` maps live activity into 12 moods (happy, curious, bored, sad, frustrated, …), each with its own face and voice lines. Reward and UI code share one typed `AgentMood` enum. |
 | **Persistence** | Network history and mood/reward state survive restarts (`network_history.json`, `mood_state.json`, plus JSON/Markdown handshake summaries). |
 | **Typed core** | `SystemState` and related models are validated with Pydantic v2. |
 | **Plugin API** | A small lifecycle-hook plugin system (`on_load` / `on_unload` / `on_event` / `on_state_update`). No plugins ship by default — bring your own. |

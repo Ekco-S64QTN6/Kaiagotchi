@@ -16,7 +16,6 @@ import inspect
 import logging
 import random
 import time
-from enum import Enum
 from typing import Any
 
 import kaiagotchi.plugins as plugins
@@ -31,26 +30,11 @@ try:
 except Exception:
     Epoch = None
 
+from kaiagotchi.data.system_types import AgentMood
 from kaiagotchi.ui import faces
 from kaiagotchi.ui.voice import Voice
 
 _LOG = logging.getLogger("kaiagotchi.core.automata")
-
-
-class AgentMood(Enum):
-    """Available moods that match the faces.py definitions."""
-    NEUTRAL = "neutral"
-    HAPPY = "happy"
-    CURIOUS = "curious"
-    BORED = "bored"
-    SAD = "sad"
-    FRUSTRATED = "frustrated"
-    SLEEPY = "sleepy"
-    CONFIDENT = "confident"
-    BROKEN = "broken"
-    ANGRY = "angry"
-    AWAKE = "awake"
-    DEBUG = "debug"
 
 
 class Automata:
