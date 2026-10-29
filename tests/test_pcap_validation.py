@@ -128,15 +128,25 @@ def test_parser_handles_truncated_capture_inputs(
 
 
 def _pcapng_section_header(
-    *, declared_length: int = 28, trailer_length: int = 28,
+    *,
+    declared_length: int | None = None,
+    trailer_length: int | None = None,
     byte_order_magic: bytes = bytes.fromhex("4d 3c 2b 1a"),
+    options: bytes = b"",
 ) -> bytes:
-    """Build a minimal synthetic little-endian PCAPNG Section Header Block."""
+    """Build a synthetic little-endian PCAPNG Section Header Block."""
+    actual_length = 28 + len(options)
+    if declared_length is None:
+        declared_length = actual_length
+    if trailer_length is None:
+        trailer_length = actual_length
     return (
         bytes.fromhex("0a 0d 0d 0a")
         + struct.pack("<I", declared_length)
         + byte_order_magic
-        + struct.pack("<HHqI", 1, 0, -1, trailer_length)
+        + struct.pack("<HHq", 1, 0, -1)
+        + options
+        + struct.pack("<I", trailer_length)
     )
 
 
@@ -213,9 +223,42 @@ def test_parser_accepts_minimal_valid_pcapng_section_header(
 
 
 
-def _pcapng_interface_block() -> bytes:
+def _pcapng_option(code: int, value: bytes) -> bytes:
+    """Build one little-endian PCAPNG option with four-byte value padding."""
+    padded_value = value + (b"\x00" * (-len(value) % 4))
+    return struct.pack("<HH", code, len(value)) + padded_value
+
+
+def _pcapng_interface_block(options: bytes = b"") -> bytes:
     """An IEEE 802.11 Interface Description Block."""
-    return struct.pack("<IIHHII", 1, 20, 105, 0, 65535, 20)
+    block_length = 20 + len(options)
+    return (
+        struct.pack("<IIHHI", 1, block_length, 105, 0, 65535)
+        + options
+        + struct.pack("<I", block_length)
+    )
+
+
+def _pcapng_packet_block(packet: bytes, *, options: bytes = b"") -> bytes:
+    """Build an obsolete-style Packet Block to exercise its option framing."""
+    padded_packet = packet + (b"\x00" * (-len(packet) % 4))
+    block_length = 32 + len(padded_packet) + len(options)
+    return (
+        struct.pack(
+            "<IIHHIIII",
+            2,  # Packet Block
+            block_length,
+            0,  # interface id
+            0,  # drops count
+            0,  # timestamp high
+            0,  # timestamp low
+            len(packet),
+            len(packet),
+        )
+        + padded_packet
+        + options
+        + struct.pack("<I", block_length)
+    )
 
 
 def _pcapng_enhanced_packet_block(
@@ -225,9 +268,10 @@ def _pcapng_enhanced_packet_block(
     trailer_length: int | None = None,
     captured_length: int | None = None,
     original_length: int | None = None,
+    options: bytes = b"",
 ) -> bytes:
     padded_packet = packet + (b"\x00" * (-len(packet) % 4))
-    actual_length = 32 + len(padded_packet)
+    actual_length = 32 + len(padded_packet) + len(options)
     if declared_length is None:
         declared_length = actual_length
     if trailer_length is None:
@@ -248,6 +292,7 @@ def _pcapng_enhanced_packet_block(
             original_length,
         )
         + padded_packet
+        + options
         + struct.pack("<I", trailer_length)
     )
 
@@ -273,10 +318,18 @@ def _synthetic_beacon() -> bytes:
 
 def test_pcapng_preflight_accepts_valid_interface_and_packet_blocks(tmp_path):
     capture = tmp_path / "valid-beacon.pcapng"
+    section_options = _pcapng_option(1, b"synthetic") + _pcapng_option(0, b"")
+    interface_options = _pcapng_option(2, b"wlan1") + _pcapng_option(0, b"")
+    packet_options = (
+        _pcapng_option(1, b"synthetic beacon") + _pcapng_option(0, b"")
+    )
     capture.write_bytes(
-        _pcapng_section_header()
-        + _pcapng_interface_block()
-        + _pcapng_enhanced_packet_block(_synthetic_beacon())
+        _pcapng_section_header(options=section_options)
+        + _pcapng_interface_block(options=interface_options)
+        + _pcapng_enhanced_packet_block(
+            _synthetic_beacon(),
+            options=packet_options,
+        )
     )
 
     result = parse_pcap_comprehensive(str(capture))
@@ -375,3 +428,97 @@ def test_pcapng_preflight_rejects_captured_length_greater_than_original(
     assert result.bssids == {}
     assert result.total_packets == 0
     assert result.total_beacons == 0
+
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "options", "expected_reason"),
+    [
+        pytest.param(
+            "section",
+            struct.pack("<HH", 2, 12) + b"lab\x00",
+            "option at offset",
+            id="section-option-value-overruns-block",
+        ),
+        pytest.param(
+            "interface",
+            struct.pack("<HH", 2, 12) + b"lab\x00",
+            "option at offset",
+            id="interface-option-value-overruns-block",
+        ),
+        pytest.param(
+            "enhanced-packet",
+            struct.pack("<HH", 1, 12) + b"x\x00\x00\x00",
+            "option at offset",
+            id="packet-option-value-overruns-block",
+        ),
+        pytest.param(
+            "packet",
+            struct.pack("<HH", 1, 12) + b"x\x00\x00\x00",
+            "option at offset",
+            id="legacy-packet-option-value-overruns-block",
+        ),
+        pytest.param(
+            "interface",
+            struct.pack("<HH", 0, 4) + b"\x00\x00\x00\x00",
+            "end-of-options",
+            id="end-of-options-has-nonzero-length",
+        ),
+        pytest.param(
+            "interface",
+            struct.pack("<HH", 0, 0) + struct.pack("<HH", 2, 0),
+            "data follows end-of-options",
+            id="end-of-options-not-last",
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_malformed_option_framing(
+    tmp_path, caplog, block_kind, options, expected_reason
+):
+    capture = tmp_path / f"malformed-options-{block_kind}.pcapng"
+    if block_kind == "section":
+        capture.write_bytes(_pcapng_section_header(options=options))
+    elif block_kind == "interface":
+        capture.write_bytes(
+            _pcapng_section_header() + _pcapng_interface_block(options=options)
+        )
+    elif block_kind == "packet":
+        capture.write_bytes(
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_packet_block(_synthetic_beacon(), options=options)
+        )
+    else:
+        capture.write_bytes(
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+        )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "invalid options in block" in caplog.text.lower()
+    assert expected_reason in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
+
+
+
+def test_pcapng_preflight_accepts_valid_legacy_packet_block_options(tmp_path):
+    capture = tmp_path / "valid-legacy-packet-block.pcapng"
+    options = _pcapng_option(1, b"legacy packet") + _pcapng_option(0, b"")
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_packet_block(_synthetic_beacon(), options=options)
+    )
+
+    result = parse_pcap_comprehensive(str(capture))
+
+    assert result.total_packets == 1
+    assert result.total_beacons == 1
+    assert "02:00:00:00:00:01" in result.bssids

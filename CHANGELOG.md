@@ -42,6 +42,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   later blocks fail closed instead of yielding a partial network inventory.
 - Reject PCAPNG Enhanced Packet Blocks whose captured length exceeds original length
   or the padded packet data available in the declared block body.
+- Validate PCAPNG option value lengths and end-of-options markers in section-header,
+  interface-description, legacy packet, and enhanced packet blocks before parsing.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.
