@@ -88,9 +88,11 @@ Quit with `q` or `Ctrl-C` once the startup check has passed. Allow the applicati
 to finish cleanup; do not repeatedly kill the process just because shutdown takes
 a moment.
 
-After the app exits, verify the capture process and interface state:
+After the app exits, verify the capture process and interface state. Re-establish the
+interface variable if you opened a new terminal:
 
 ```bash
+CAP_IF="${KAIAGOTCHI_INTERFACE:-wlan1}"
 pgrep -af airodump-ng || true
 sudo iw dev "$CAP_IF" info
 ip -brief link show dev "$CAP_IF"
