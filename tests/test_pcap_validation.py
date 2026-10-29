@@ -320,7 +320,9 @@ def test_pcapng_preflight_accepts_valid_interface_and_packet_blocks(tmp_path):
     capture = tmp_path / "valid-beacon.pcapng"
     section_options = _pcapng_option(1, b"synthetic") + _pcapng_option(0, b"")
     interface_options = _pcapng_option(2, b"wlan1") + _pcapng_option(0, b"")
-    packet_options = _pcapng_option(1, b"synthetic beacon") + _pcapng_option(0, b"")
+    packet_options = (
+        _pcapng_option(1, b"synthetic beacon") + _pcapng_option(0, b"")
+    )
     capture.write_bytes(
         _pcapng_section_header(options=section_options)
         + _pcapng_interface_block(options=interface_options)
