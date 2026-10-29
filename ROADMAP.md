@@ -23,7 +23,8 @@ features or capture-backend changes.
    reaped, the web server is stopped, and background tasks are awaited on normal
    shutdown and startup failure.
 3. **Reward and mood contract** — document required/optional state fields and
-   fallback behavior; cover reward extraction against partial or stale state.
+   fallback behavior; extend reward tests for partial/stale state and malformed
+   discovery inputs.
 4. **Plugin lifecycle** — define a backwards-compatible plugin API versioning
    policy and add tests for load failures, duplicate registration, and unload.
 5. **Quality gates** — establish clean baselines, then add compileall, Ruff, and
@@ -33,6 +34,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Made handshake reward extraction honor the first integer-convertible field,
+  including explicit zero counts, while retaining fallbacks for missing/invalid
+  values across dictionary and object-backed agent state.
 - Consolidated `AgentMood` in `data/system_types.py` as the shared enum for
   Automata and voice handling, preventing mood-specific voice lookups from
   silently falling back to neutral because of enum type mismatch.

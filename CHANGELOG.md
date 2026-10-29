@@ -12,4 +12,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   packet records to guard graceful handling of malformed inputs.
 - Use the shared `AgentMood` enum in Automata so mood-specific voice lookup and
   typed system state recognize the same enum members.
+- Treat an explicit zero handshake count as authoritative instead of falling
+  through to stale legacy count fields.
 - Establish contributor guidance and a prioritized reliability roadmap.
