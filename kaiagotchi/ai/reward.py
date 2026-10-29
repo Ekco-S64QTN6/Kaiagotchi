@@ -65,44 +65,24 @@ class RewardEngine:
     def _extract_handshakes(self, agents: Any) -> int:
         """Extract the first valid handshake count from each agent.
 
-        Field order preserves compatibility with older schemas. A count of zero
-        is still authoritative; only missing, None, or non-integer values fall
-        through to the next supported field.
+        Field order preserves compatibility with older schemas. Candidates are
+        read lazily so a broken lower-priority property cannot hide a valid
+        primary count. Explicit zero is authoritative; missing or invalid values
+        fall through to the next supported field.
         """
         total = 0
         for agent in self._safe_iter_agents(agents):
-            try:
-                if isinstance(agent, dict):
-                    session_metrics = agent.get("session_metrics")
-                    session_count = (
-                        session_metrics.get("handshakes_secured")
-                        if isinstance(session_metrics, dict)
-                        else getattr(session_metrics, "handshakes_secured", None)
+            found = False
+            for field in ("handshakes", "handshakes_secured", "handshake_count"):
+                try:
+                    candidate = (
+                        agent.get(field)
+                        if isinstance(agent, dict)
+                        else getattr(agent, field, None)
                     )
-                    candidates = (
-                        agent.get("handshakes"),
-                        agent.get("handshakes_secured"),
-                        agent.get("handshake_count"),
-                        session_count,
-                    )
-                else:
-                    session_metrics = getattr(agent, "session_metrics", None)
-                    session_count = (
-                        session_metrics.get("handshakes_secured")
-                        if isinstance(session_metrics, dict)
-                        else getattr(session_metrics, "handshakes_secured", None)
-                    )
-                    candidates = (
-                        getattr(agent, "handshakes", None),
-                        getattr(agent, "handshakes_secured", None),
-                        getattr(agent, "handshake_count", None),
-                        session_count,
-                    )
-            except Exception:
-                # One stale/custom agent object must not fail the whole reward tick.
-                continue
+                except Exception:
+                    continue
 
-            for candidate in candidates:
                 if candidate is None:
                     continue
                 try:
@@ -110,9 +90,35 @@ class RewardEngine:
                 except (TypeError, ValueError, OverflowError):
                     continue
                 total += count
+                found = True
                 break
 
+            if found:
+                continue
+
+            try:
+                session_metrics = (
+                    agent.get("session_metrics")
+                    if isinstance(agent, dict)
+                    else getattr(agent, "session_metrics", None)
+                )
+                candidate = (
+                    session_metrics.get("handshakes_secured")
+                    if isinstance(session_metrics, dict)
+                    else getattr(session_metrics, "handshakes_secured", None)
+                )
+            except Exception:
+                continue
+
+            if candidate is None:
+                continue
+            try:
+                total += int(candidate)
+            except (TypeError, ValueError, OverflowError):
+                continue
+
         return max(0, total)
+
 
     @staticmethod
     def _coerce_nonnegative_count(value: Any) -> int | None:

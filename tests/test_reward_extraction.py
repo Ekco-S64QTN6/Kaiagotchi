@@ -121,3 +121,34 @@ def test_explicit_zero_ap_count_remains_authoritative():
     }
 
     assert engine._extract_ap_count(state) == 0
+
+
+
+def test_valid_handshake_count_survives_broken_lower_priority_property():
+    class AgentWithBrokenSessionMetrics:
+        @property
+        def handshakes(self):
+            raise RuntimeError("stale primary field")
+
+        @property
+        def handshakes_secured(self):
+            return 3
+
+        @property
+        def session_metrics(self):
+            raise RuntimeError("unavailable optional nested metrics")
+
+    engine = RewardEngine({})
+    assert engine._extract_handshakes([AgentWithBrokenSessionMetrics()]) == 3
+
+
+def test_valid_primary_handshake_count_does_not_read_nested_metrics():
+    class AgentWithBrokenSessionMetrics:
+        handshakes = 5
+
+        @property
+        def session_metrics(self):
+            raise RuntimeError("lower-priority field should not be read")
+
+    engine = RewardEngine({})
+    assert engine._extract_handshakes([AgentWithBrokenSessionMetrics()]) == 5

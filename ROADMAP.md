@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Read handshake fields lazily in priority order so an exception raised by an
+  optional nested `session_metrics` property cannot hide a valid higher-priority
+  count. Added regression tests for broken primary/optional properties.
 - Make AP count extraction ignore invalid, negative, or boolean direct counts and
   fall back to network inventories/lists or the legacy monitoring-agent count; an
   explicit zero remains authoritative. Added regression tests for each case.
