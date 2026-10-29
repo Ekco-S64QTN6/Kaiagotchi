@@ -44,25 +44,51 @@ class PluginManager:
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, Plugin) and attr is not Plugin:
-                        self.register_plugin(attr(name=name, config=plugin_config))
-                        _LOG.info("Loaded plugin: %s", name)
+                        plugin = attr(name=name, config=plugin_config)
+                        if self.register_plugin(plugin):
+                            _LOG.info("Loaded plugin: %s", name)
                         break
             except Exception as e:
                 _LOG.error("Failed to load plugin %s: %s", name, e, exc_info=True)
 
-    def register_plugin(self, plugin: Plugin):
-        """Register a plugin instance."""
-        if plugin.name in self.plugins:
-            _LOG.warning(f"Plugin {plugin.name} already registered. Overwriting.")
-        self.plugins[plugin.name] = plugin
+    def register_plugin(self, plugin: Plugin) -> bool:
+        """Load and register a plugin, rejecting instances whose startup fails."""
+        existing = self.plugins.get(plugin.name)
+        if existing is plugin:
+            _LOG.debug("Plugin %s is already registered as this instance", plugin.name)
+            return True
+
+        if existing is not None:
+            _LOG.warning("Plugin %s already registered; unloading the old instance.", plugin.name)
+            try:
+                existing.on_unload()
+            except Exception:
+                _LOG.error("Error in on_unload for replaced plugin %s", plugin.name, exc_info=True)
+            finally:
+                self.plugins.pop(plugin.name, None)
+
         try:
             plugin.on_load()
-        except Exception as e:
-            _LOG.error(f"Error in on_load for plugin {plugin.name}: {e}")
+        except Exception:
+            _LOG.error("Error in on_load for plugin %s", plugin.name, exc_info=True)
+            # A hook may have acquired resources before raising, so give it a
+            # best-effort cleanup opportunity but never dispatch to it as loaded.
+            try:
+                plugin.on_unload()
+            except Exception:
+                _LOG.error(
+                    "Error cleaning up plugin %s after failed on_load",
+                    plugin.name,
+                    exc_info=True,
+                )
+            return False
+
+        self.plugins[plugin.name] = plugin
+        return True
 
     def unload_all(self):
         """Unload all plugins."""
-        for name, plugin in self.plugins.items():
+        for name, plugin in tuple(self.plugins.items()):
             try:
                 plugin.on_unload()
             except Exception as e:
