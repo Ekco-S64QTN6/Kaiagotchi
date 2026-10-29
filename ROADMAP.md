@@ -17,9 +17,9 @@ features or capture-backend changes.
 ## Reliability priorities
 
 1. **PCAP parser** — continue synthetic coverage for PCAPNG option structure and
-   packet payload lengths. A streaming preflight now checks every block boundary,
-   declared length, and trailing length so a corrupt later block cannot produce a
-   partial inventory. Never add real captures, credentials, or BSSID-specific data.
+   captured-length boundaries. The preflight checks block boundaries, declared and
+   trailing lengths, and EPB captured length versus available body/original length,
+   so malformed later blocks cannot yield partial inventory. Never use real captures.
 2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
    subprocesses and web-server thread termination, and verify background tasks
    are awaited without blocking the asyncio event loop.

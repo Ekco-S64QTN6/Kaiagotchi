@@ -40,6 +40,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   declared lengths, mismatched trailers, and a minimal valid section header.
 - Validate all PCAPNG block boundaries and trailers before packet parsing so malformed
   later blocks fail closed instead of yielding a partial network inventory.
+- Reject PCAPNG Enhanced Packet Blocks whose captured length exceeds original length
+  or the padded packet data available in the declared block body.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

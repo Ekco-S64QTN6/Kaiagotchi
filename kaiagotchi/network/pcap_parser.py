@@ -124,6 +124,44 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         f"block at offset {offset} extends beyond end of file"
                     )
 
+                if not is_section_header:
+                    block_type_value = struct.unpack(endian + "I", block_type)[0]
+                    if block_type_value == 1 and block_length < 20:
+                        return reject(
+                            f"interface description block at offset {offset} is too short"
+                        )
+                    if block_type_value in {2, 6} and block_length < 32:
+                        return reject(
+                            f"packet block at offset {offset} is too short"
+                        )
+                    if block_type_value == 3 and block_length < 16:
+                        return reject(
+                            f"simple packet block at offset {offset} is too short"
+                        )
+                    if block_type_value == 6:
+                        # EPB fields at offsets 20 and 24 are captured and
+                        # original packet lengths. Packet bytes are padded to
+                        # a 32-bit boundary before any options and the trailer.
+                        capture_file.seek(offset + 20)
+                        packet_lengths = capture_file.read(8)
+                        if len(packet_lengths) != 8:
+                            return reject(
+                                f"enhanced packet block at offset {offset} has truncated packet lengths"
+                            )
+                        captured_length, original_length = struct.unpack(
+                            endian + "II", packet_lengths
+                        )
+                        if captured_length > original_length:
+                            return reject(
+                                f"enhanced packet block at offset {offset} has captured length greater than original length"
+                            )
+                        padded_capture_length = captured_length + (-captured_length % 4)
+                        available_packet_bytes = block_length - 32
+                        if padded_capture_length > available_packet_bytes:
+                            return reject(
+                                f"enhanced packet block at offset {offset} has captured length exceeding available block data"
+                            )
+
                 capture_file.seek(block_end - 4)
                 trailing_length = capture_file.read(4)
                 if len(trailing_length) != 4:
