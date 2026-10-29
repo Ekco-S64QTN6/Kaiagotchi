@@ -221,8 +221,9 @@ signature is accepted. This is a lightweight preflight check, not a full
 integrity check; the preflight scan verifies PCAPNG section byte order, block
 boundaries, declared lengths, trailing lengths, packet captured lengths, option
 value boundaries, known fixed-size option values, supported section-header major
-versions, and packet-to-interface references without loading packet bodies into
-memory. Timestamp-resolution and packet-flags values are checked against required
+versions, packet-to-interface references, and Simple Packet Block payload lengths
+against the first interface's snaplen without loading packet bodies into memory.
+A snaplen of zero means no limit. Timestamp-resolution and packet-flags values are checked against required
 lengths; packet blocks may only reference interfaces declared in the current section.
 Scapy then handles packet and payload decoding; malformed framing is rejected before
 partial data can be extracted.

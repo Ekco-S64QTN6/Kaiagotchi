@@ -130,6 +130,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
     endian: str | None = None
     offset = 0
     interface_count = 0
+    interface_snaplens: list[int] = []
     try:
         with path.open("rb") as capture_file:
             while offset < file_size:
@@ -153,6 +154,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject("invalid section-header byte-order magic")
                     # Interface IDs are section-scoped and restart at each SHB.
                     interface_count = 0
+                    interface_snaplens = []
                     minimum_length = 28
                 else:
                     if endian is None:
@@ -194,6 +196,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     else struct.unpack(endian + "I", block_type)[0]
                 )
                 options_start: int | None = None
+                interface_snaplen: int | None = None
 
                 if is_section_header:
                     # Section Header Block options follow version/section-length.
@@ -203,6 +206,13 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"interface description block at offset {offset} is too short"
                         )
+                    capture_file.seek(offset + 12)
+                    snaplen_bytes = capture_file.read(4)
+                    if len(snaplen_bytes) != 4:
+                        return reject(
+                            f"interface description block at offset {offset} has a truncated snaplen"
+                        )
+                    interface_snaplen = struct.unpack(endian + "I", snaplen_bytes)[0]
                     options_start = offset + 16
                 elif block_type_value in {2, 6}:
                     if block_length < 32:
@@ -256,10 +266,36 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"simple packet block at offset {offset} is too short"
                         )
                     # SPBs have no interface field and implicitly use interface 0.
-                    if interface_count == 0:
+                    if interface_count == 0 or not interface_snaplens:
                         return reject(
                             f"simple packet block at offset {offset} references "
                             "undeclared interface 0 (section has no interfaces)"
+                        )
+
+                    capture_file.seek(offset + 8)
+                    original_length_bytes = capture_file.read(4)
+                    if len(original_length_bytes) != 4:
+                        return reject(
+                            f"simple packet block at offset {offset} has a truncated original length"
+                        )
+                    original_length = struct.unpack(
+                        endian + "I", original_length_bytes
+                    )[0]
+                    snaplen = interface_snaplens[0]
+                    # Per PCAPNG, a zero snaplen means no limit; otherwise the
+                    # captured packet length is min(original length, snaplen).
+                    captured_length = (
+                        original_length
+                        if snaplen == 0
+                        else min(original_length, snaplen)
+                    )
+                    padded_capture_length = captured_length + (-captured_length % 4)
+                    expected_block_length = 16 + padded_capture_length
+                    if block_length != expected_block_length:
+                        return reject(
+                            f"simple packet block at offset {offset} has a block length "
+                            f"inconsistent with original length and interface snaplen "
+                            f"(expected {expected_block_length}, got {block_length})"
                         )
 
                 if options_start is not None:
@@ -282,6 +318,11 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     )
 
                 if block_type_value == 1:
+                    if interface_snaplen is None:
+                        return reject(
+                            f"interface description block at offset {offset} has no snaplen"
+                        )
+                    interface_snaplens.append(interface_snaplen)
                     interface_count += 1
                 offset = block_end
     except OSError as exc:
