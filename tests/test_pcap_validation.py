@@ -230,22 +230,28 @@ def _pcapng_option(code: int, value: bytes) -> bytes:
     return struct.pack("<HH", code, len(value)) + padded_value
 
 
-def _pcapng_interface_block(options: bytes = b"") -> bytes:
+def _pcapng_interface_block(
+    options: bytes = b"", *, snaplen: int = 65535
+) -> bytes:
     """An IEEE 802.11 Interface Description Block."""
     block_length = 20 + len(options)
     return (
-        struct.pack("<IIHHI", 1, block_length, 105, 0, 65535)
+        struct.pack("<IIHHI", 1, block_length, 105, 0, snaplen)
         + options
         + struct.pack("<I", block_length)
     )
 
 
-def _pcapng_simple_packet_block(packet: bytes) -> bytes:
+def _pcapng_simple_packet_block(
+    packet: bytes, *, original_length: int | None = None
+) -> bytes:
     """Build a Simple Packet Block, whose interface ID is implicitly zero."""
     padded_packet = packet + (b"\x00" * (-len(packet) % 4))
     block_length = 16 + len(padded_packet)
+    if original_length is None:
+        original_length = len(packet)
     return (
-        struct.pack("<III", 3, block_length, len(packet))
+        struct.pack("<III", 3, block_length, original_length)
         + padded_packet
         + struct.pack("<I", block_length)
     )
@@ -660,6 +666,74 @@ def test_pcapng_preflight_rejects_simple_packet_without_declared_interface(
     assert result.handshakes == []
     assert result.total_packets == 0
     assert result.total_beacons == 0
+
+
+@pytest.mark.parametrize(
+    ("snaplen", "captured_length"),
+    [
+        pytest.param(65535, None, id="full-capture"),
+        pytest.param(12, 12, id="snaplen-truncation"),
+        pytest.param(0, None, id="zero-means-no-limit"),
+    ],
+)
+def test_pcapng_preflight_accepts_simple_packet_snaplen_semantics(
+    tmp_path, snaplen, captured_length
+):
+    capture = tmp_path / "valid-simple-packet.pcapng"
+    original_packet = _synthetic_beacon()
+    captured_packet = (
+        original_packet[:captured_length]
+        if captured_length is not None
+        else original_packet
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=snaplen)
+        + _pcapng_simple_packet_block(
+            captured_packet, original_length=len(original_packet)
+        )
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("snaplen", "original_length_delta"),
+    [
+        pytest.param(0, 8, id="original-length-exceeds-available-payload"),
+        pytest.param(12, 0, id="payload-exceeds-snaplen"),
+    ],
+)
+@pytest.mark.parametrize(
+    "parse",
+    [parse_pcap, parse_pcap_comprehensive],
+    ids=["simple-parser", "comprehensive-parser"],
+)
+def test_pcapng_preflight_rejects_inconsistent_simple_packet_payload_length(
+    tmp_path, caplog, snaplen, original_length_delta, parse
+):
+    capture = tmp_path / "invalid-simple-packet-length.pcapng"
+    packet = _synthetic_beacon()
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=snaplen)
+        + _pcapng_simple_packet_block(
+            packet, original_length=len(packet) + original_length_delta
+        )
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse(str(capture))
+
+    assert "simple packet block" in caplog.text.lower()
+    if isinstance(result, list):
+        assert result == []
+    else:
+        assert result.bssids == {}
+        assert result.stations == {}
+        assert result.handshakes == []
+        assert result.total_packets == 0
+        assert result.total_beacons == 0
 
 
 @pytest.mark.parametrize(
