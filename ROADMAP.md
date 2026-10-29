@@ -39,8 +39,8 @@ features or capture-backend changes.
   manager, and base agent now share Pydantic's nested default factories instead
   of duplicating network and metrics constructors.
 - Hardened plugin registration: failed `on_load()` hooks are not registered for
-  dispatch and receive best-effort cleanup; duplicate instances unload the old
-  plugin before replacement. Added lifecycle regression tests.
+  dispatch and receive best-effort cleanup; same-name replacements load first,
+  so a failed update leaves the current working plugin active.
 - Made handshake reward extraction honor the first integer-convertible field,
   including explicit zero counts, while retaining fallbacks for missing/invalid
   values across dictionary and object-backed agent state.
