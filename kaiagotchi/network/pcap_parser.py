@@ -237,10 +237,17 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"packet block at offset {offset} has captured length exceeding available block data"
                         )
                     options_start = offset + 28 + padded_capture_length
-                elif block_type_value == 3 and block_length < 16:
-                    return reject(
-                        f"simple packet block at offset {offset} is too short"
-                    )
+                elif block_type_value == 3:
+                    if block_length < 16:
+                        return reject(
+                            f"simple packet block at offset {offset} is too short"
+                        )
+                    # SPBs have no interface field and implicitly use interface 0.
+                    if interface_count == 0:
+                        return reject(
+                            f"simple packet block at offset {offset} references "
+                            "undeclared interface 0 (section has no interfaces)"
+                        )
 
                 if options_start is not None:
                     options_end = block_end - 4

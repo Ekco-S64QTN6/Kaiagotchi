@@ -239,6 +239,17 @@ def _pcapng_interface_block(options: bytes = b"") -> bytes:
     )
 
 
+def _pcapng_simple_packet_block(packet: bytes) -> bytes:
+    """Build a Simple Packet Block, whose interface ID is implicitly zero."""
+    padded_packet = packet + (b"\x00" * (-len(packet) % 4))
+    block_length = 16 + len(padded_packet)
+    return (
+        struct.pack("<III", 3, block_length, len(packet))
+        + padded_packet
+        + struct.pack("<I", block_length)
+    )
+
+
 def _pcapng_packet_block(
     packet: bytes, *, options: bytes = b"", interface_id: int = 0
 ) -> bytes:
@@ -628,3 +639,23 @@ def test_pcapng_preflight_accepts_packet_referencing_second_declared_interface(
     assert "invalid pcapng block structure" not in caplog.text.lower()
     assert result.total_packets == 1
     assert result.total_beacons == 1
+
+
+def test_pcapng_preflight_rejects_simple_packet_without_declared_interface(
+    tmp_path, caplog
+):
+    capture = tmp_path / "simple-packet-without-interface.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_simple_packet_block(_synthetic_beacon())
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse_pcap_comprehensive(str(capture))
+
+    assert "simple packet block" in caplog.text.lower()
+    assert "undeclared interface 0" in caplog.text.lower()
+    assert result.bssids == {}
+    assert result.stations == {}
+    assert result.handshakes == []
+    assert result.total_packets == 0
+    assert result.total_beacons == 0
