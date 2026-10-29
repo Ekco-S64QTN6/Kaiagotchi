@@ -161,6 +161,11 @@ integer-convertible value wins, including an explicit zero. Missing, `None`,
 or invalid values fall through to the next supported field, avoiding stale
 legacy aliases overriding a current zero count.
 
+For AP counts, an explicit nonnegative integer-convertible `aps` value remains
+authoritative (including zero). Invalid, negative, or boolean values are ignored
+so extraction can fall back to `network.access_points`, an AP list, or the
+legacy `monitoring_agent.aps` field.
+
 ### Discovery reward input validation
 
 AP and station inventory entries earn discovery rewards only when their identity

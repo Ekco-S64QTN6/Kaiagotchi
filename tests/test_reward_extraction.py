@@ -70,3 +70,54 @@ def test_broken_agent_does_not_hide_counts_from_other_agents():
 
     engine = RewardEngine({})
     assert engine._extract_handshakes([BrokenAgent(), {"handshakes": 2}]) == 2
+
+
+
+def test_invalid_direct_ap_count_falls_back_to_network_inventory():
+    engine = RewardEngine({})
+    state = {
+        "aps": "not-a-number",
+        "network": {
+            "access_points": {
+                "AA:BB:CC:DD:EE:01": {},
+                "AA:BB:CC:DD:EE:02": {},
+            }
+        },
+        "aps_list": [{"bssid": "AA:BB:CC:DD:EE:03"}],
+    }
+
+    assert engine._extract_ap_count(state) == 2
+
+
+def test_negative_direct_ap_count_falls_back_to_ap_list():
+    engine = RewardEngine({})
+    state = {
+        "aps": -5,
+        "network": {"access_points": None},
+        "aps_list": [{}, {}, {}],
+    }
+
+    assert engine._extract_ap_count(state) == 3
+
+
+def test_boolean_direct_ap_count_falls_back_to_monitoring_agent_count():
+    engine = RewardEngine({})
+    state = {
+        "aps": True,
+        "network": [],
+        "aps_list": [],
+        "monitoring_agent": {"aps": "4"},
+    }
+
+    assert engine._extract_ap_count(state) == 4
+
+
+def test_explicit_zero_ap_count_remains_authoritative():
+    engine = RewardEngine({})
+    state = {
+        "aps": 0,
+        "network": {"access_points": {"AA:BB:CC:DD:EE:01": {}}},
+        "aps_list": [{"bssid": "AA:BB:CC:DD:EE:02"}],
+    }
+
+    assert engine._extract_ap_count(state) == 0
