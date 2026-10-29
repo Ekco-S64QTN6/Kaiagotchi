@@ -1,12 +1,15 @@
 """Codec portrait asset pipeline:
 crop (x,y,w,h) -> Swin2SR 4x -> resize to target height -> BiRefNet matte -> MediaPipe landmarks
 -> kaia_codec.webp + kaia_rig.json (+ face-only debug overlay)."""
-import sys, json, subprocess
-import numpy as np
-from PIL import Image, ImageDraw
-from rembg import remove, new_session
+import json
+import subprocess
+import sys
+
 import mediapipe as mp
-from mediapipe.tasks.python import vision, BaseOptions
+import numpy as np
+from mediapipe.tasks.python import BaseOptions, vision
+from PIL import Image, ImageDraw
+from rembg import new_session, remove
 
 src, box, outdir, model, sr_script, label = sys.argv[1:7]
 x, y, w, h = [int(v) for v in box.split(",")]
@@ -20,7 +23,8 @@ img = img.resize((round(img.width * TARGET_H / img.height), TARGET_H), Image.LAN
 W, H = img.size
 
 mask = remove(img, session=new_session("birefnet-portrait"), only_mask=True)
-rgba = img.copy(); rgba.putalpha(mask)
+rgba = img.copy()
+rgba.putalpha(mask)
 rgba.save(f"{outdir}/kaia_codec.webp", quality=92, method=6)
 
 det = vision.FaceLandmarker.create_from_options(
@@ -40,8 +44,9 @@ rig["_size"] = [W, H]
 rig["_source"] = f"{label} crop x={x} y={y} w={w} h={h}; Swin2SR x4 -> {W}x{H}; landmarks via MediaPipe FaceLandmarker"
 json.dump(rig, open(f"{outdir}/kaia_rig.json", "w"), indent=1)
 
-dbg = img.copy(); d = ImageDraw.Draw(dbg)
-for k, (px, py) in ((k, v) for k, v in rig.items() if not k.startswith("_")):
+dbg = img.copy()
+d = ImageDraw.Draw(dbg)
+for _k, (px, py) in ((key, value) for key, value in rig.items() if not key.startswith("_")):
     d.ellipse((px * W - 4, py * H - 4, px * W + 4, py * H + 4), outline=(255, 0, 255), width=2)
 fx0, fx1 = int(rig["cheekR"][0] * W) - 30, int(rig["cheekL"][0] * W) + 30
 fy0, fy1 = int(rig["forehead"][1] * H) - 50, int(rig["chin"][1] * H) + 25

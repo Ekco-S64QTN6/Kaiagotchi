@@ -22,13 +22,12 @@ import re
 import socket
 import threading
 import time
-from urllib.parse import urlsplit
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psutil
-
 from aiohttp import WSMsgType, web
 
 _LOG = logging.getLogger("kaiagotchi.ui.web.server")

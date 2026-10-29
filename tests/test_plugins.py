@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 from kaiagotchi.plugins.base import Plugin
 from kaiagotchi.plugins.manager import PluginManager
 
+
 class LifecyclePlugin(Plugin):
     def __init__(self, name, config=None):
         super().__init__(name, config)

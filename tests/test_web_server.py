@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from kaiagotchi.ui.web.server import WebServer, _generate_mock_snapshot
 from kaiagotchi.config.manager import load_config as load_legacy_config
+from kaiagotchi.ui.web.server import WebServer, _generate_mock_snapshot
 
 
 def test_mock_snapshot_structure():

@@ -1,5 +1,5 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 
 def test_root_launcher_does_not_preserve_callers_path_or_environment():
