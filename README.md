@@ -213,6 +213,8 @@ If loading raises, the manager logs the failure and attempts `on_unload()` to
 clean up partial initialization. A same-name replacement must finish loading
 before the current instance is unloaded, so a failed update leaves the working
 plugin active.
+During `unload_all()`, new registrations and re-entrant unload calls are rejected;
+each active plugin receives at most one unload attempt per shutdown pass.
 
 ---
 
