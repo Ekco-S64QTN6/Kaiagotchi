@@ -20,10 +20,10 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions and resets interface references per section as well as
    checking block/options/captured lengths. Never use real captures or credentials.
-2. **Async shutdown** — continue coverage for cancellation during manager/agent startup
-   barriers. Monitoring now bounds both graceful and post-kill process waits; if the
-   child cannot be reaped, it preserves capture files/interface state and retries before
-   archive/temp cleanup. The CLI also re-raises cancellation after resource cleanup.
+2. **Async shutdown** — the Agent's cleanup guard now covers startup awaits, so cancellation
+   or errors during the Automata startup barrier do not orphan the monitor task. Continue
+   testing cancellation during Manager/View startup and process-reap failures. Monitoring
+   bounds graceful and post-kill waits and preserves capture files until the child is reaped.
 3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
@@ -42,6 +42,10 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Extended Agent's lifecycle `try/finally` across the monitor/Automata startup barrier and
+  added a regression that cancels while Automata is waiting, asserting the monitor task,
+  monitoring component, persistence, and action manager all receive cleanup.
 
 - Documented a passive, authorized operator smoke-test for required tools, monitor-mode
   capability, startup, process reaping, managed-mode restoration, and privacy-conscious
