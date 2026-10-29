@@ -245,6 +245,24 @@ class SystemState(BaseModel):
     recent_captures: list[dict[str, Any]] = Field(default_factory=list)
     chatter_log: list[dict[str, Any]] = Field(default_factory=list)
 
+    @classmethod
+    def minimal(
+        cls,
+        *,
+        current_system_state: GlobalSystemState = GlobalSystemState.BOOTING,
+        config_hash: str | None = None,
+    ) -> SystemState:
+        """Create a valid initial state using this model's default factories.
+
+        Keep startup construction here so CLI, Manager, and the base Agent do
+        not need to duplicate defaults for nested metrics and network models.
+        Each call creates independent nested state via Pydantic default factories.
+        """
+        return cls(
+            current_system_state=current_system_state,
+            config_hash=config_hash,
+        )
+
     @field_validator("current_system_state", mode="before")
     @classmethod
     def ensure_enum(cls, v):

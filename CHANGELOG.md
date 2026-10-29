@@ -16,4 +16,6 @@ All notable user-facing changes to Kaiagotchi are documented here.
   through to stale legacy count fields.
 - Reject failed plugin loads from active dispatch, attempt cleanup after partial
   initialization, and unload an existing same-name plugin before replacement.
+- Centralize initial typed system-state construction in a shared factory used by
+  the CLI, manager, and base agent.
 - Establish contributor guidance and a prioritized reliability roadmap.

@@ -35,6 +35,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Centralized initial typed state creation in `SystemState.minimal()`; CLI,
+  manager, and base agent now share Pydantic's nested default factories instead
+  of duplicating network and metrics constructors.
 - Hardened plugin registration: failed `on_load()` hooks are not registered for
   dispatch and receive best-effort cleanup; duplicate instances unload the old
   plugin before replacement. Added lifecycle regression tests.

@@ -21,13 +21,7 @@ from typing import Any
 
 from kaiagotchi.agent.decision_engine import AgentState, DecisionEngine
 from kaiagotchi.core.events import EventEmitter
-from kaiagotchi.data.system_types import (
-    GlobalSystemState,
-    NetworkState,
-    SessionMetrics,
-    SystemMetrics,
-    SystemState,
-)
+from kaiagotchi.data.system_types import GlobalSystemState, NetworkState, SystemState
 
 agent_logger = logging.getLogger("kaiagotchi.agent.base")
 
@@ -69,15 +63,9 @@ class kaiagotchiBase:
         # Initialize SystemState
         if system_state is None:
             config_hash = hashlib.md5(str(config).encode()).hexdigest()
-            self.system_state = SystemState(
-                config_hash=config_hash,
+            self.system_state = SystemState.minimal(
                 current_system_state=GlobalSystemState.BOOTING,
-                network=NetworkState(access_points={}, interfaces={}, last_scan_time=0.0),
-                metrics=SystemMetrics(
-                    cpu_usage=0.0, memory_usage=0.0, disk_free_gb=0.0, uptime_seconds=0.0
-                ),
-                agents={},
-                session_metrics=SessionMetrics(duration_seconds=0.0, handshakes_secured=0),
+                config_hash=config_hash,
             )
         else:
             self.system_state = system_state

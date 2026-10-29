@@ -139,6 +139,11 @@ The `Agent` owns all of these subsystems; the optional `Manager` is a thin
 orchestrator that builds the shared view and system state and coordinates
 startup/shutdown.
 
+Startup state is created through `SystemState.minimal()`, which relies on the
+typed model's default factories for network, system, and session metrics. The
+CLI, manager, and base agent share this constructor rather than maintaining
+separate copies of the nested defaults.
+
 ### Reward handshake count precedence
 
 For each agent, the reward engine checks `handshakes`, `handshakes_secured`,
