@@ -38,6 +38,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   log close errors without allowing cleanup exceptions to escape.
 - Add synthetic PCAPNG section-header coverage for invalid byte-order magic, invalid
   declared lengths, mismatched trailers, and a minimal valid section header.
+- Validate all PCAPNG block boundaries and trailers before packet parsing so malformed
+  later blocks fail closed instead of yielding a partial network inventory.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.
