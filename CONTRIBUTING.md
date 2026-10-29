@@ -33,8 +33,9 @@ are no mypy findings.
 
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
 or BSSID-specific data. Hardware smoke tests should be explicitly marked and must
-not be required for the normal unit-test suite. Only capture from networks you
-own or have explicit permission to test.
+not be required for the normal unit-test suite. The manual [operator hardware checklist](docs/operator-hardware-smoke-test.md)
+is intentionally not a CI test because hosted CI has no physical adapter. Only
+capture from networks you own or have explicit permission to test.
 
 ## Pull requests
 

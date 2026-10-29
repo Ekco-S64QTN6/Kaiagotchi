@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Document a safe operator hardware smoke-test checklist for tool/privilege checks, dedicated monitor-mode adapter startup, clean capture-process shutdown, and recovery when child reaping fails. This remains a manual check because hosted CI has no wireless hardware.
 - Reject missing, empty, and files without a recognized PCAP/PCAPNG signature
   during the parser's lightweight preflight validation.
 - Add synthetic regression tests for classic PCAP byte orders, PCAPNG, empty

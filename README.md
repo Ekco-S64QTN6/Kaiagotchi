@@ -37,6 +37,7 @@ async Python core, a headless terminal UI, and an optional browser HUD.
 
 Kaiagotchi manages the wireless interface, so it needs to run as **root** (or with
 `CAP_NET_ADMIN`).
+Before the first live session, follow the [operator hardware smoke-test checklist](docs/operator-hardware-smoke-test.md). It verifies adapter/tool prerequisites and clean startup/shutdown without requiring active packet injection.
 
 ---
 

@@ -36,10 +36,16 @@ features or capture-backend changes.
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
    across 18 source files and full reports attached for systematic triage.
-6. **Operator validation** — document a safe hardware smoke-test checklist for
-   `airodump-ng`, `iw`, monitor-mode adapters, privileges, and clean stop behavior.
+6. **Operator validation** — checklist documented at
+   `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
+   support, privileges, clean shutdown, and safe recovery. A maintainer must still
+   execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Documented a passive, authorized operator smoke-test for required tools, monitor-mode
+  capability, startup, process reaping, managed-mode restoration, and privacy-conscious
+  results. Physical-adapter execution remains unverified by CI.
 
 - Promoted Ruff to a blocking CI check after clearing all 17 initial baseline diagnostics; mypy remains advisory with a full report and a measured baseline of 92 errors across 18 source files.
 - Documented the RewardEngine input contract and added regression coverage showing that
