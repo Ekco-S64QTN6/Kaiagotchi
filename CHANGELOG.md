@@ -48,6 +48,8 @@ All notable user-facing changes to Kaiagotchi are documented here.
   and packet flags, and reject malformed lengths before packet decoding.
 - Reject PCAPNG packet blocks that reference undeclared interface IDs before parsing,
   rather than treating Scapy's invalid-interface EOF as a successful partial capture.
+- Reject unsupported PCAPNG section-header major versions and reset interface state
+  at every new section boundary.
 - Guard plugin teardown against recursive unload calls and registrations attempted
   by unload hooks.
 - Establish contributor guidance and a prioritized reliability roadmap.

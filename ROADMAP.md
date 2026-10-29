@@ -17,9 +17,9 @@ features or capture-backend changes.
 ## Reliability priorities
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
-   block-specific constraints, and packet payloads. The preflight also checks that
-   each packet references an interface declared in its section, preventing a corrupt
-   late packet from yielding partial data. Never use real captures or credentials.
+   block-specific constraints, and packet payloads. The preflight validates supported
+   section major versions and resets interface references per section as well as
+   checking block/options/captured lengths. Never use real captures or credentials.
 2. **Async shutdown** — complete startup-failure/normal-stop coverage for capture
    subprocesses and web-server thread termination, and verify background tasks
    are awaited without blocking the asyncio event loop.
@@ -37,6 +37,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Reject unsupported PCAPNG section-header major versions and add a regression that
+  proves interface IDs reset at new section headers instead of carrying over from the
+  preceding section.
 - Added streaming validation for PCAPNG option TLV boundaries and end-of-options
   placement in section, interface, packet, and enhanced-packet blocks, with valid
   option fixtures and malformed-length regressions.
