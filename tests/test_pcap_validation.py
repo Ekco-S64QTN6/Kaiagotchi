@@ -1353,7 +1353,10 @@ def test_pcapng_preflight_accepts_repeatable_and_multi_address_options(
 
     assert validate_file(str(capture))
 
-def test_pcapng_preflight_rejects_nonzero_option_alignment_padding(tmp_path, caplog):
+
+def test_pcapng_preflight_rejects_nonzero_option_alignment_padding(
+    tmp_path, caplog
+):
     capture = tmp_path / "nonzero-option-padding.pcapng"
     option = struct.pack("<HH", 2, 1) + b"x" + bytes([1, 0, 0])
     capture.write_bytes(_pcapng_section_header(options=option))
