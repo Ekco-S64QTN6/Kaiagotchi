@@ -1708,6 +1708,34 @@ def test_pcapng_preflight_rejects_packet_captured_length_exceeding_snaplen(
 
     assert "exceeding interface snaplen" in caplog.text.lower()
 
+@pytest.mark.parametrize("block_kind", ["packet", "enhanced-packet"])
+def test_pcapng_preflight_uses_referenced_interface_snaplen(
+    tmp_path, block_kind
+):
+    capture = tmp_path / f"interface-specific-{block_kind}-snaplen.pcapng"
+    original_packet = _synthetic_beacon()
+    captured_packet = original_packet[:12]
+    packet_args = {
+        "captured_length": len(captured_packet),
+        "original_length": len(original_packet),
+        "interface_id": 1,
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(captured_packet, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(
+            captured_packet, **packet_args
+        )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=65535)
+        + _pcapng_interface_block(snaplen=12)
+        + packet_block
+    )
+
+    assert validate_file(str(capture))
+
+
 @pytest.mark.parametrize(
     ("block_kind", "flags"),
     [
