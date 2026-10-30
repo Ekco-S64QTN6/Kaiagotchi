@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Make Manager startup cancellation-safe: cancellation during View, ticker, or Agent startup now runs bounded component cleanup before propagating, including when cancellation is repeated during teardown.
 - Dispatch plugin event and state callbacks over a stable registry snapshot, so registering or replacing a plugin during a callback takes effect on the next pass without invalidating the current iteration.
 - Validate Simple Packet Block payload lengths against the first interface's snaplen, including the zero-means-no-limit rule, and reject inconsistent block sizes before Scapy parses packet contents.
 - Define plugin API v1 compatibility: legacy subclasses inherit the host version, and unsupported/malformed version declarations are rejected before loading or replacing a working plugin.

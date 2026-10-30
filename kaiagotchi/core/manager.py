@@ -126,55 +126,106 @@ class Manager:
         self._bootstrap_done = True
         logger.info("Manager: bootstrap complete")
 
+    async def _cleanup_after_start_failure(self) -> None:
+        """Finish bounded component cleanup despite repeated caller cancellation."""
+        cleanup_task = asyncio.create_task(self.stop())
+        cancellation: asyncio.CancelledError | None = None
+
+        while not cleanup_task.done():
+            try:
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError as exc:
+                if cleanup_task.cancelled():
+                    break
+                if cancellation is None:
+                    cancellation = exc
+            except Exception:
+                # Retrieve and log the child error below after it is terminal.
+                break
+
+        cleanup_error: BaseException | None = None
+        try:
+            await cleanup_task
+        except BaseException as exc:
+            cleanup_error = exc
+
+        if cancellation is not None:
+            raise cancellation
+        if cleanup_error is not None:
+            raise cleanup_error
+
     async def start(self) -> None:
         """Start the View, metrics ticker, and Agent."""
-        if not self._bootstrap_done:
-            await self.bootstrap()
-        if self._started or self._stopping:
-            return
-
-        logger.info("Manager: starting subsystems")
-
-        # View first so the display is live before the agent pushes updates.
-        if self.view:
-            try:
-                await self.view.start()
-                await self.view.on_starting()
-                logger.info("Manager: View started")
-            except Exception:
-                logger.exception("Manager: view.start() failed")
-
-        # Lightweight metrics ticker (spawns its own background task).
-        if SystemTicker and self.system_state:
-            try:
-                self._ticker = SystemTicker(system_state=self.system_state, interval=2.0)
-                await self._ticker.start()
-                logger.info("Manager: SystemTicker started")
-            except Exception:
-                logger.exception("Manager: ticker start failed")
-
-        if self.agent is None:
-            raise RuntimeError("Manager has no Agent; bootstrap did not complete")
-
-        self._run_event = asyncio.Event()
-        self._started = True
-        self._stopping = False
-
-        # The Agent runs its own monitoring / decision / UI loops and blocks
-        # until shutdown, so start it last. Do not swallow failures here:
-        # callers must know if the core service stopped unexpectedly.
         try:
-            await self.agent.start()
-            logger.info("Manager: Agent finished")
+            if not self._bootstrap_done:
+                await self.bootstrap()
+            if self._started or self._stopping:
+                return
+
+            logger.info("Manager: starting subsystems")
+
+            # View first so the display is live before the agent pushes updates.
+            if self.view:
+                try:
+                    await self.view.start()
+                    await self.view.on_starting()
+                    logger.info("Manager: View started")
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Manager: view.start() failed")
+
+            # Lightweight metrics ticker (spawns its own background task).
+            if SystemTicker and self.system_state:
+                try:
+                    self._ticker = SystemTicker(system_state=self.system_state, interval=2.0)
+                    await self._ticker.start()
+                    logger.info("Manager: SystemTicker started")
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception("Manager: ticker start failed")
+
+            if self.agent is None:
+                raise RuntimeError("Manager has no Agent; bootstrap did not complete")
+
+            self._run_event = asyncio.Event()
+            self._started = True
+            self._stopping = False
+
+            # The Agent runs its own monitoring / decision / UI loops and blocks
+            # until shutdown, so start it last. Do not swallow failures here:
+            # callers must know if the core service stopped unexpectedly.
+            try:
+                await self.agent.start()
+                logger.info("Manager: Agent finished")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.exception("Manager: agent.start() failed")
+                raise RuntimeError("Manager Agent runtime failed") from exc
+            finally:
+                self._started = False
+                if self._run_event is not None:
+                    self._run_event.set()
         except asyncio.CancelledError:
+            try:
+                await self._cleanup_after_start_failure()
+            except asyncio.CancelledError:
+                # A second cancellation is deferred until cleanup completes;
+                # re-raise the cancellation that interrupted startup.
+                pass
+            except Exception:
+                logger.exception("Manager: cleanup after cancelled startup failed")
             raise
-        except Exception as exc:
-            logger.exception("Manager: agent.start() failed")
-            raise RuntimeError("Manager Agent runtime failed") from exc
-        finally:
-            self._started = False
-            if self._run_event is not None:
-                self._run_event.set()
+        except Exception:
+            try:
+                await self._cleanup_after_start_failure()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Manager: cleanup after failed startup failed")
+            raise
 
     async def stop(self) -> None:
         """Stop the Agent, ticker, and View safely."""

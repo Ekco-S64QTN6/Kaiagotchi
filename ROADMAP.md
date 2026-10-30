@@ -21,10 +21,12 @@ features or capture-backend changes.
    section major versions, resets interface references per section, and checks
    block/options/captured lengths including Simple Packet Block payload size against
    interface snaplen. Never use real captures or credentials.
-2. **Async shutdown** — the Agent's cleanup guard now covers startup awaits, so cancellation
-   or errors during the Automata startup barrier do not orphan the monitor task. Continue
-   testing cancellation during Manager/View startup and process-reap failures. Monitoring
-   bounds graceful and post-kill waits and preserves capture files until the child is reaped.
+2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
+   cleans up already-started View/ticker/Agent components when startup is cancelled, even
+   under repeated cancellation. Fatal bootstrap or Agent startup failures also trigger
+   cleanup. Continue testing process-reap failures and verifying shutdown ordering.
+   Monitoring bounds graceful and post-kill waits and preserves capture files until the
+   child is reaped.
 3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
@@ -45,6 +47,10 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Make Manager startup cleanup-owned: cancellation or an exception during View, ticker, or
+  Agent startup now stops already-created components before propagating. Shield the bounded
+  teardown from repeated cancellation and cover each await boundary with synthetic tests.
 
 - Dispatch event and state callbacks over a snapshot of active plugins. Plugins registered
   or replaced from within a callback become eligible on the next dispatch pass, avoiding
