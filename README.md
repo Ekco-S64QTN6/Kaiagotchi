@@ -232,9 +232,10 @@ framing and known fixed-size values across section, interface, packet, name
 resolution, interface statistics, and decryption secrets blocks, supported
 section-header major versions, packet and statistics interface references,
 mandatory Name Resolution Block record terminators and known-record lengths,
-Decryption Secrets Block data extents, and Simple Packet Block payload lengths
-against the first interface's snaplen without loading packet bodies or secret
-contents into memory.
+Decryption Secrets Block data extents, zero-filled alignment padding for option
+values, Name Resolution records, secrets, and packet payloads, and Simple Packet
+Block payload lengths against the first interface's snaplen without loading packet
+bodies or secret contents into memory.
 A snaplen of zero means no limit. Interface transmit/receive speeds, enhanced-packet
 IDs, queue numbers, and process/thread IDs are checked against their fixed lengths;
 interface-filter, packet-hash, verdict, and custom options enforce their minimum or

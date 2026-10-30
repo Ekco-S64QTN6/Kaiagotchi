@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Validate zero-filled PCAPNG alignment padding in option values, Name Resolution records, Decryption Secrets data, and Packet/Enhanced Packet/Simple Packet payloads using bounded synthetic fixtures.
 - Enforce PCAPNG standardized option multiplicity with synthetic fixtures: reject repeated singleton options while preserving repeatable comments/custom extensions, multiple interface addresses, and packet hashes/verdicts; require the four-byte PEN prefix in custom options and enforce interface-speed option exclusivity.
 - Validate additional PCAPNG option semantics with synthetic fixtures: Interface Description Block filter and transmit/receive speed options; Enhanced Packet Block packet ID, queue, and process/thread options; and type-dependent packet hash/verdict payload lengths for defined algorithms and verdict types.
 - Validate PCAPNG Name Resolution Block record boundaries, mandatory end records, known-record lengths/terminators, DNS and Interface Statistics option sizes, statistics interface references, and Decryption Secrets data/option boundaries with synthetic fixtures.
