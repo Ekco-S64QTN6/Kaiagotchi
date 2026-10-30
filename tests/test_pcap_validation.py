@@ -1674,3 +1674,129 @@ def test_pcapng_preflight_uses_referenced_interface_snaplen(
 
     assert validate_file(str(capture))
 
+@pytest.mark.parametrize(
+    ("block_kind", "flags"),
+    [
+        pytest.param("packet", 0, id="packet-unspecified"),
+        pytest.param("packet", 1, id="packet-inbound"),
+        pytest.param("packet", 2, id="packet-outbound"),
+        pytest.param("packet", 1 << 2, id="packet-unicast"),
+        pytest.param("packet", 2 << 2, id="packet-multicast"),
+        pytest.param("packet", 3 << 2, id="packet-broadcast"),
+        pytest.param("enhanced-packet", 0, id="epb-unspecified"),
+        pytest.param("enhanced-packet", 1, id="epb-inbound"),
+        pytest.param("enhanced-packet", 2, id="epb-outbound"),
+        pytest.param("enhanced-packet", 4 << 2, id="epb-promiscuous"),
+        pytest.param("enhanced-packet", 3 << 5, id="epb-fcs-length"),
+        pytest.param("enhanced-packet", 1 << 9, id="epb-checksum-not-ready"),
+        pytest.param("enhanced-packet", 1 << 10, id="epb-checksum-valid"),
+        pytest.param("enhanced-packet", 1 << 11, id="epb-segmentation-offload"),
+        pytest.param("enhanced-packet", 1 << 31, id="epb-link-layer-error"),
+    ],
+)
+def test_pcapng_preflight_accepts_defined_packet_flag_values(
+    tmp_path, block_kind, flags
+):
+    capture = tmp_path / f"valid-{block_kind}-flags-{flags:x}.pcapng"
+    packet = _synthetic_beacon()
+    options = _pcapng_option(2, struct.pack("<I", flags))
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(packet, options=options)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(packet, options=options)
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + packet_block
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "flags", "expected_reason"),
+    [
+        pytest.param("packet", 3, "reserved direction value 3", id="packet-direction"),
+        pytest.param(
+            "packet", 5 << 2, "reserved reception type 5", id="packet-reception"
+        ),
+        pytest.param("packet", 1 << 12, "reserved bits 12-15", id="packet-reserved-12"),
+        pytest.param("packet", 1 << 13, "reserved bits 12-15", id="packet-reserved-13"),
+        pytest.param("packet", 1 << 14, "reserved bits 12-15", id="packet-reserved-14"),
+        pytest.param("packet", 1 << 15, "reserved bits 12-15", id="packet-reserved-15"),
+        pytest.param("enhanced-packet", 3, "reserved direction value 3", id="epb-direction"),
+        pytest.param(
+            "enhanced-packet", 6 << 2, "reserved reception type 6", id="epb-reception"
+        ),
+        pytest.param(
+            "enhanced-packet", 1 << 12, "reserved bits 12-15", id="epb-reserved-12"
+        ),
+        pytest.param(
+            "enhanced-packet", 1 << 13, "reserved bits 12-15", id="epb-reserved-13"
+        ),
+        pytest.param(
+            "enhanced-packet", 1 << 14, "reserved bits 12-15", id="epb-reserved-14"
+        ),
+        pytest.param(
+            "enhanced-packet", 1 << 15, "reserved bits 12-15", id="epb-reserved-15"
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_invalid_packet_flag_values(
+    tmp_path, caplog, block_kind, flags, expected_reason
+):
+    capture = tmp_path / f"invalid-{block_kind}-flags-{flags:x}.pcapng"
+    packet = _synthetic_beacon()
+    options = _pcapng_option(2, struct.pack("<I", flags))
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(packet, options=options)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(packet, options=options)
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + packet_block
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert expected_reason in caplog.text.lower()
+
+
+def test_pcapng_preflight_decodes_big_endian_enhanced_packet_flags(tmp_path):
+    capture = tmp_path / "big-endian-enhanced-packet-flags.pcapng"
+    flags = (1 << 31) | (1 << 11) | (1 << 5) | (2 << 2) | 1
+    section_body = (
+        struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+        + struct.pack(">I", 20)
+    )
+    flags_option = struct.pack(">HHI", 2, 4, flags)
+    packet_block_length = 32 + 4 + len(flags_option)
+    packet_block = (
+        struct.pack(
+            ">IIIIIII",
+            6,
+            packet_block_length,
+            0,
+            0,
+            0,
+            3,
+            3,
+        )
+        + b"abc\x00"
+        + flags_option
+        + struct.pack(">I", packet_block_length)
+    )
+    section_length = len(section_body) + len(packet_block)
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, section_length)
+        + struct.pack(">I", 28)
+    )
+    capture.write_bytes(section_header + section_body + packet_block)
+
+    assert validate_file(str(capture))
+
