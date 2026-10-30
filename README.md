@@ -244,9 +244,10 @@ Decryption Secrets Block data extents, zero-filled alignment padding for option
 values, Name Resolution records, secrets, and packet payloads, and Simple Packet
 Block payload lengths against the first interface's snaplen without loading packet
 bodies or secret contents into memory.
-A snaplen of zero means no limit. Legacy Packet and Enhanced Packet captured
-lengths may be shorter than the original packet, but cannot exceed either the
-original length or a nonzero snaplen. Packet flags validate direction/reception
+A snaplen of zero means no limit. Captured lengths may be shorter than the
+original packet, but cannot exceed a nonzero snaplen or the available block data.
+For compatibility with preserved captures, this reader also tolerates an original
+length smaller than the captured length. Packet flags validate direction/reception
 enumerations and zero reserved bits while preserving link-layer-specific error
 flags. Interface transmit/receive speeds, enhanced-packet IDs, queue numbers, and
 process/thread IDs
