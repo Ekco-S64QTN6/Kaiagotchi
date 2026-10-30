@@ -26,8 +26,9 @@ features or capture-backend changes.
    against each referenced interface's snaplen, and Packet/Enhanced Packet flag
    enumerations and reserved bits;
    validates Name Resolution Block records and their mandatory terminator, checks
-   fixed/minimum lengths and singleton-option multiplicity (including custom-option
-   PEN prefixes and interface-speed consistency), validates the PEN field in standardized
+   fixed/minimum lengths and singleton-option multiplicity while preserving
+   repeatable EPB hash/verdict/process-thread options (including custom-option PEN
+   prefixes and interface-speed consistency), validates the PEN field in standardized
    Custom Blocks, checks zero-filled alignment padding for all padded metadata/packet
    data, and checks Simple Packet Block payload size against interface snaplen.
    Never use real captures or credentials.
@@ -62,6 +63,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Correct EPB option multiplicity so process/thread ID option 8 can repeat while flags, drop count, packet ID, and queue remain singleton options.
 
 - Verify concatenated PCAPNG sections can independently switch little-/big-endian interpretation at each SHB boundary, with finite-length synthetic fixtures in both orders.
 

@@ -1964,3 +1964,17 @@ def test_pcapng_preflight_allows_byte_order_to_change_between_sections(
 
     assert validate_file(str(capture))
 
+def test_pcapng_preflight_accepts_multiple_epb_process_thread_id_options(tmp_path):
+    capture = tmp_path / "multiple-epb-process-thread-ids.pcapng"
+    options = (
+        _pcapng_option(8, struct.pack("<II", 1234, 1))
+        + _pcapng_option(8, struct.pack("<II", 5678, 2))
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+    )
+
+    assert validate_file(str(capture))
+
