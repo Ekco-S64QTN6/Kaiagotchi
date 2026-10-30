@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 - Treat PCAPNG interface snaplen as a maximum rather than an exact capture-length target; accept valid shorter Packet and Enhanced Packet captures while rejecting lengths above snaplen.
 
+- Scope PCAPNG option length and multiplicity checks to each block's own registry; preserve unknown Packet Block options rather than applying Enhanced Packet Block drop-count rules.
+
 - Preserve typed network state when an access-point record cannot be reconstructed from its value or fallback BSSID key: skip only that record instead of discarding the full network snapshot. A synthetic regression verifies that valid interfaces and other access points survive.
 
 - Correct EPB option multiplicity so process/thread ID option 8 can repeat while flags, drop count, packet ID, and queue remain singleton options.
