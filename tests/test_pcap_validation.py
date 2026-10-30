@@ -1202,9 +1202,17 @@ def test_pcapng_preflight_resets_interface_count_at_new_section(
     assert result.total_packets == 0
     assert result.total_beacons == 0
 
+
 @pytest.mark.parametrize(
     "block_kind",
-    ["section", "interface", "packet", "name-resolution", "statistics", "enhanced-packet"],
+    [
+        "section",
+        "interface",
+        "packet",
+        "name-resolution",
+        "statistics",
+        "enhanced-packet",
+    ],
 )
 def test_pcapng_preflight_rejects_repeated_singleton_options(
     tmp_path, caplog, block_kind
@@ -1302,7 +1310,9 @@ def test_pcapng_preflight_rejects_generic_and_directional_speed_options_together
     assert "if_speed option code 8 cannot be combined" in caplog.text.lower()
 
 
-def test_pcapng_preflight_rejects_equal_directional_interface_speeds(tmp_path, caplog):
+def test_pcapng_preflight_rejects_equal_directional_interface_speeds(
+    tmp_path, caplog
+):
     capture = tmp_path / "equal-directional-interface-speeds.pcapng"
     speed = struct.pack("<Q", 1_000_000)
     options = _pcapng_option(16, speed) + _pcapng_option(17, speed)
@@ -1316,7 +1326,9 @@ def test_pcapng_preflight_rejects_equal_directional_interface_speeds(tmp_path, c
     assert "if_txspeed and if_rxspeed must not both be used" in caplog.text.lower()
 
 
-def test_pcapng_preflight_accepts_repeatable_and_multi_address_options(tmp_path):
+def test_pcapng_preflight_accepts_repeatable_and_multi_address_options(
+    tmp_path,
+):
     capture = tmp_path / "repeatable-options.pcapng"
     section_options = (
         _pcapng_option(1, b"first comment")
