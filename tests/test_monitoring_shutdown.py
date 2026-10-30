@@ -338,3 +338,83 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
     restore_managed_mode.assert_awaited_once()
     assert archive_calls == [True]
     assert cleanup_calls == [True]
+
+
+
+@pytest.mark.asyncio
+async def test_stop_orders_reaping_restore_archive_and_persistence(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    events = []
+
+    class OrderedCaptureProcess:
+        returncode = None
+
+        def terminate(self):
+            events.append("terminate")
+
+        async def wait(self):
+            events.append("reap")
+            self.returncode = 0
+            return self.returncode
+
+        def kill(self):
+            events.append("kill")
+            self.returncode = -9
+
+    class OrderedNetworkPersistence:
+        def save(self):
+            assert monitor._capture_tmp_dir is None
+            events.append("network-save")
+
+    class OrderedMoodPersistence:
+        def update_mood(self, mood):
+            events.append(f"mood:{mood}")
+
+        def apply_reward(self, reward, *, event):
+            events.append(f"reward:{event}")
+
+    process = OrderedCaptureProcess()
+    monitor._running = True
+    monitor._process = process
+    monitor._capture_tmp_dir = "/private/capture"
+    monitor.persistent_network = OrderedNetworkPersistence()
+    monitor.persistent_mood = OrderedMoodPersistence()
+
+    async def restore_managed_mode():
+        assert process.returncode is not None
+        assert monitor._process is None
+        events.append("restore-managed-mode")
+
+    def archive_capture():
+        assert monitor._process is None
+        assert monitor._capture_tmp_dir == "/private/capture"
+        events.append("archive")
+
+    def cleanup_capture():
+        assert "archive" in events
+        events.append("cleanup-temp")
+        monitor._capture_tmp_dir = None
+
+    async def emit_summary(message):
+        events.append(f"summary:{message}")
+
+    monkeypatch.setattr(monitor, "_restore_managed_mode", restore_managed_mode)
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", archive_capture)
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", cleanup_capture)
+    monkeypatch.setattr(monitor, "_emit_capture_summary", emit_summary)
+
+    await monitor.stop()
+
+    assert events == [
+        "terminate",
+        "reap",
+        "restore-managed-mode",
+        "archive",
+        "cleanup-temp",
+        "network-save",
+        "mood:neutral",
+        "reward:session_end",
+        "summary:Monitoring stopped.",
+    ]
+    assert monitor._process is None
+    assert monitor._capture_tmp_dir is None
