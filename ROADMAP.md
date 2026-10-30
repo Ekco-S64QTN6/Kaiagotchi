@@ -66,6 +66,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Preserve typed network state when an access-point record cannot be reconstructed from its value or fallback BSSID key: skip only that record instead of discarding the full network snapshot. A synthetic regression verifies that valid interfaces and other access points survive.
+
 - Correct EPB option multiplicity so process/thread ID option 8 can repeat while flags, drop count, packet ID, and queue remain singleton options.
 
 - Verify concatenated PCAPNG sections can independently switch little-/big-endian interpretation at each SHB boundary, with finite-length synthetic fixtures in both orders.

@@ -174,7 +174,14 @@ class NetworkState(BaseModel):
                     logging.getLogger("kaiagotchi.data.types").warning(
                         f"AccessPoint coercion failed for {k}: {e}"
                     )
-                    coerced[k] = AccessPoint(bssid=str(k))
+                    try:
+                        coerced[k] = AccessPoint(bssid=str(k))
+                    except Exception as fallback_error:
+                        logging.getLogger("kaiagotchi.data.types").warning(
+                            "Skipping unrecoverable AccessPoint %r: %s",
+                            k,
+                            fallback_error,
+                        )
             return coerced
         return {}
 
