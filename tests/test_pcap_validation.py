@@ -372,6 +372,23 @@ def _pcapng_decryption_secrets_block(
     )
 
 
+def _pcapng_custom_block(
+    block_type: int,
+    *,
+    private_enterprise_number: int = 32473,
+    custom_data: bytes = b"",
+) -> bytes:
+    """Build a standardized PCAPNG Custom Block with opaque vendor data."""
+    padded_data = custom_data + (bytes([0]) * (-len(custom_data) % 4))
+    block_length = 16 + len(padded_data)
+    return (
+        struct.pack("<II", block_type, block_length)
+        + struct.pack("<I", private_enterprise_number)
+        + padded_data
+        + struct.pack("<I", block_length)
+    )
+
+
 def _synthetic_beacon() -> bytes:
     """Build a synthetic beacon frame; no real network identifiers are used."""
     from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
@@ -1802,6 +1819,76 @@ def test_pcapng_preflight_decodes_big_endian_enhanced_packet_flags(tmp_path):
         + struct.pack(">I", 28)
     )
     capture.write_bytes(section_header + section_body + packet_block)
+
+    assert validate_file(str(capture))
+
+@pytest.mark.parametrize(
+    "block_type",
+    [0x00000BAD, 0x40000BAD],
+    ids=["copyable-custom-block", "noncopyable-custom-block"],
+)
+def test_pcapng_preflight_accepts_standard_custom_block_with_pen(
+    tmp_path, block_type
+):
+    capture = tmp_path / f"valid-custom-block-{block_type:x}.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_custom_block(
+            block_type,
+            private_enterprise_number=32473,
+            custom_data=b"opaque synthetic extension",
+        )
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [0x00000BAD, 0x40000BAD],
+    ids=["copyable-custom-block", "noncopyable-custom-block"],
+)
+def test_pcapng_preflight_rejects_standard_custom_block_missing_pen(
+    tmp_path, caplog, block_type
+):
+    capture = tmp_path / f"custom-block-missing-pen-{block_type:x}.pcapng"
+    missing_pen_block = struct.pack("<III", block_type, 12, 12)
+    capture.write_bytes(_pcapng_section_header() + missing_pen_block)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "custom block" in caplog.text.lower()
+    assert "private enterprise number" in caplog.text.lower()
+
+
+def test_pcapng_preflight_keeps_local_use_block_types_opaque(tmp_path):
+    capture = tmp_path / "local-use-block-without-pen.pcapng"
+    local_block = struct.pack("<III", 0x8000BEEF, 12, 12)
+    capture.write_bytes(_pcapng_section_header() + local_block)
+
+    assert validate_file(str(capture))
+
+
+def test_pcapng_preflight_accepts_big_endian_standard_custom_block(tmp_path):
+    capture = tmp_path / "big-endian-custom-block.pcapng"
+    custom_data = b"vendor"
+    padded_data = custom_data + bytes([0]) * (-len(custom_data) % 4)
+    block_length = 16 + len(padded_data)
+    custom_block = (
+        struct.pack(">II", 0x00000BAD, block_length)
+        + struct.pack(">I", 32473)
+        + padded_data
+        + struct.pack(">I", block_length)
+    )
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, len(custom_block))
+        + struct.pack(">I", 28)
+    )
+    capture.write_bytes(section_header + custom_block)
 
     assert validate_file(str(capture))
 
