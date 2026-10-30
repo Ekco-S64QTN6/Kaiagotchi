@@ -226,8 +226,9 @@ Before parsing, Kaiagotchi rejects missing or empty files and files whose first
 four bytes do not match a known classic PCAP or PCAPNG signature. The extension
 is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
-integrity check; the preflight scan verifies PCAPNG section byte order, block
-boundaries, declared lengths, trailing lengths, packet captured lengths, option
+integrity check; the preflight scan verifies PCAPNG section byte order and finite
+Section Header Block length boundaries, block boundaries, declared lengths, trailing
+lengths, packet captured lengths, option
 framing and known fixed-size values across section, interface, packet, name
 resolution, interface statistics, and decryption secrets blocks, supported
 section-header major versions, packet and statistics interface references,
