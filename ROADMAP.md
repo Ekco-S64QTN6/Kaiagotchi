@@ -18,11 +18,12 @@ features or capture-backend changes.
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
    block-specific constraints, and packet payloads. The preflight validates supported
-   section major versions and finite Section Header Block length boundaries, ignores
-   the Interface Description Block reserved field as required for readers, resets
-   interface references per section, checks packet and statistics interface references
-   and Packet/Enhanced Packet captured lengths against each referenced interface's
-   snaplen, validates Packet/Enhanced Packet flag enumerations and reserved bits,
+   section major versions, finite Section Header Block length boundaries, and
+   minor version 2 as equivalent to 0; ignores the Interface Description Block reserved
+   field as required for readers and resets interface references per section. It checks
+   packet and statistics interface references, Packet/Enhanced Packet captured lengths
+   against each referenced interface's snaplen, and Packet/Enhanced Packet flag
+   enumerations and reserved bits;
    validates Name Resolution Block records and their mandatory terminator, checks
    fixed/minimum lengths and singleton-option multiplicity (including custom-option
    PEN prefixes and interface-speed consistency), validates the PEN field in standardized
