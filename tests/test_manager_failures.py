@@ -486,9 +486,10 @@ async def test_manager_defers_repeated_cancellation_until_startup_cleanup_finish
     monkeypatch,
 ):
     startup_blocked = asyncio.Event()
-    cleanup_started = asyncio.Event()
+    view_stop_started = asyncio.Event()
+    agent_stop_started = asyncio.Event()
     allow_cleanup = asyncio.Event()
-    cleanup_finished = asyncio.Event()
+    cleanup_finished = []
 
     class BlockingView:
         async def start(self):
@@ -499,15 +500,18 @@ async def test_manager_defers_repeated_cancellation_until_startup_cleanup_finish
             return None
 
         async def stop(self):
-            cleanup_finished.set()
+            view_stop_started.set()
+            await allow_cleanup.wait()
+            cleanup_finished.append("view")
 
     class BlockingAgent:
         async def start(self):
             return None
 
         async def stop(self):
-            cleanup_started.set()
+            agent_stop_started.set()
             await allow_cleanup.wait()
+            cleanup_finished.append("agent")
 
     manager = Manager(
         config={"log": {"level": "INFO"}},
@@ -521,14 +525,15 @@ async def test_manager_defers_repeated_cancellation_until_startup_cleanup_finish
     start_task = asyncio.create_task(manager.start())
     await asyncio.wait_for(startup_blocked.wait(), timeout=1.0)
     start_task.cancel()
-    await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+    await asyncio.wait_for(agent_stop_started.wait(), timeout=1.0)
+    await asyncio.wait_for(view_stop_started.wait(), timeout=1.0)
 
     start_task.cancel()
     await asyncio.sleep(0)
-    assert not cleanup_finished.is_set()
+    assert cleanup_finished == []
 
     allow_cleanup.set()
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(start_task, timeout=2.0)
 
-    assert cleanup_finished.is_set()
+    assert set(cleanup_finished) == {"agent", "view"}
