@@ -1895,6 +1895,7 @@ def test_pcapng_preflight_accepts_big_endian_standard_custom_block(tmp_path):
 
     assert validate_file(str(capture))
 
+
 @pytest.mark.parametrize("reserved", [1, 0xA5A5, 0xFFFF])
 def test_pcapng_preflight_ignores_nonzero_interface_description_reserved_field(
     tmp_path, reserved
