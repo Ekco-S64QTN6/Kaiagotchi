@@ -1869,3 +1869,25 @@ def test_pcapng_preflight_keeps_local_use_block_types_opaque(tmp_path):
 
     assert validate_file(str(capture))
 
+def test_pcapng_preflight_accepts_big_endian_standard_custom_block(tmp_path):
+    capture = tmp_path / "big-endian-custom-block.pcapng"
+    custom_data = b"vendor"
+    padded_data = custom_data + bytes([0]) * (-len(custom_data) % 4)
+    block_length = 16 + len(padded_data)
+    custom_block = (
+        struct.pack(">II", 0x00000BAD, block_length)
+        + struct.pack(">I", 32473)
+        + padded_data
+        + struct.pack(">I", block_length)
+    )
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, len(custom_block))
+        + struct.pack(">I", 28)
+    )
+    capture.write_bytes(section_header + custom_block)
+
+    assert validate_file(str(capture))
+
