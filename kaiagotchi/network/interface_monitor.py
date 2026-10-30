@@ -111,7 +111,7 @@ class InterfaceMonitor:
                 check=True
             )
 
-            interfaces = {}
+            interfaces: dict[str, dict[str, list[dict[str, str]]]] = {}
             for line in proc.stdout.split('\n'):
                 if line.strip():
                     parts = line.split()
