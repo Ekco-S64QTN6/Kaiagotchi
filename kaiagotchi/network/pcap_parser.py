@@ -192,6 +192,31 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     f"{expected_length}, got {option_length}"
                 )
 
+            if block_type_value in {2, 6} and option_code == 2:
+                capture_file.seek(option_offset + 4)
+                flags_bytes = capture_file.read(4)
+                if len(flags_bytes) != 4:
+                    return f"truncated packet flags option at offset {option_offset}"
+                flags = struct.unpack(endian + "I", flags_bytes)[0]
+                direction = flags & 0b11
+                if direction == 0b11:
+                    return (
+                        f"packet flags option at offset {option_offset} has "
+                        "reserved direction value 3"
+                    )
+                reception_type = (flags >> 2) & 0b111
+                if reception_type > 4:
+                    return (
+                        f"packet flags option at offset {option_offset} has "
+                        f"reserved reception type {reception_type}"
+                    )
+                reserved_bits = flags & 0x0000F000
+                if reserved_bits:
+                    return (
+                        f"packet flags option at offset {option_offset} sets "
+                        f"reserved bits 12-15 (0x{reserved_bits:08x})"
+                    )
+
             minimum_length = minimum_lengths_by_block.get(
                 block_type_value, {}
             ).get(option_code)
