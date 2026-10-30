@@ -271,8 +271,10 @@ changes.
 
 Plugin event and state callbacks run against a snapshot of the active registry. A
 plugin registered or replaced during a callback becomes eligible on the next
-dispatch pass, so lifecycle changes cannot invalidate the in-progress iteration. The current manager accepts only the host's exact integer API version and
-rejects unsupported, boolean, or non-integer declarations before calling
+dispatch pass, so lifecycle changes cannot invalidate the in-progress iteration.
+
+The current manager accepts only the host's exact integer API version and rejects
+unsupported, boolean, or non-integer declarations before calling
 `on_load`; an incompatible same-name replacement cannot displace the working
 plugin. A future multi-version transition must explicitly define the supported
 version set and test each version before the host starts accepting it.
