@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Preserve PCAPNG reader compatibility with pass-through captures whose original packet-length metadata is smaller than captured length; keep snaplen and block-data bounds enforced, and cover both Packet and Enhanced Packet Blocks with synthetic parser regressions.
 - Keep legacy Packet Block option semantics separate from Enhanced Packet Blocks: option 4 remains an opaque unknown option there instead of being incorrectly required to be a singleton eight-byte drop counter; cover repeated unknown options with a synthetic fixture.
 - Skip an unrecoverable access-point record when fallback construction fails for an invalid BSSID key, preserving valid interfaces and other network state; add a synthetic regression.
 - Reduce the advisory mypy baseline to 94 errors across 17 source files with behavior-neutral container annotations in the Wi-Fi channel accumulator and interface-address mapping (down from 96 errors across 18 files).
