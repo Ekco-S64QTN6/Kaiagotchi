@@ -31,10 +31,12 @@ features or capture-backend changes.
    or post-kill waits retain the child handle and capture files for a later retry. Synthetic
    tests now assert the shutdown side-effect order: reap child, restore managed mode,
    archive capture, remove private temp data, persist network/mood state, then emit summary.
-3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
-   snapshots, and malformed discovery inputs. README documents accepted snapshot
-   fields, precedence, authoritative zeros, discovery deduplication, and baseline
-   preservation when optional counters/channels are absent.
+3. **Reward and mood contract** — synthetic tests now cover typed `AgentMood`
+   values through all three supported aliases, explicit alias precedence, partial and
+   malformed snapshots preserving delta baselines, and malformed discovery inputs.
+   README documents accepted snapshot fields, precedence, authoritative zeros,
+   discovery deduplication, and baseline preservation when optional counters/channels
+   are absent.
 4. **Plugin lifecycle** — host API version 1 is now explicit and inherited by legacy
    subclasses; the manager rejects unsupported declarations before loading or replacing
    a plugin. Event and state dispatch now iterate stable snapshots, so registration or

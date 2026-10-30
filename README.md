@@ -182,9 +182,11 @@ integration; fields are read opportunistically, with these rules:
   baseline. Invalid, non-finite, or missing uptime keeps the last value.
   `network.current_channel` falls back to `network.channel`; a missing, blank,
   sentinel (`"--"`), or boolean channel does not count as a channel change.
-- **Mood:** penalties use the first non-empty string among `agent_mood`,
-  `mood`, and `agent.mood`, case-insensitively. Only values containing
-  `bored` or `sad` apply their configured penalties.
+- **Mood:** penalties use the first non-empty string or `AgentMood` enum
+  value among `agent_mood`, `mood`, and `agent.mood`, case-insensitively.
+  The alias precedence is explicit: `agent_mood` first, then top-level
+  `mood`, then nested `agent.mood`. Only values containing `bored` or
+  `sad` apply their configured penalties.
 - **Discoveries:** valid six-octet AP/station IDs are rewarded once per engine
   session. Legacy string events in `recent_captures` are used only when the
   corresponding inventory is unavailable, and repeated events are deduplicated.

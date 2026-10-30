@@ -1,8 +1,12 @@
 """Regression tests for reward extraction across old and current state schemas."""
 
+import math
 from types import SimpleNamespace
 
+import pytest
+
 from kaiagotchi.ai.reward import RewardEngine
+from kaiagotchi.data.system_types import AgentMood
 
 
 def test_explicit_zero_handshakes_beats_stale_legacy_aliases():
@@ -264,3 +268,47 @@ def test_boolean_handshake_counts_are_invalid_and_fall_back_to_numeric_aliases()
     ]
 
     assert engine._extract_handshakes(agents) == 5
+
+@pytest.mark.parametrize(
+    ("snapshot", "expected_penalty"),
+    [
+        pytest.param({"agent_mood": AgentMood.BORED}, -0.4, id="agent-mood-alias"),
+        pytest.param({"mood": AgentMood.SAD}, -0.5, id="top-level-mood-alias"),
+        pytest.param(
+            {"agent": {"mood": AgentMood.BORED}},
+            -0.4,
+            id="nested-agent-mood-alias",
+        ),
+        pytest.param(
+            {"agent_mood": AgentMood.NEUTRAL, "mood": AgentMood.SAD},
+            0.0,
+            id="first-nonempty-alias-wins",
+        ),
+        pytest.param(
+            {"agent_mood": "", "mood": AgentMood.SAD},
+            -0.5,
+            id="empty-alias-falls-through",
+        ),
+    ],
+)
+def test_typed_agent_mood_aliases_preserve_precedence_and_penalties(
+    monkeypatch, snapshot, expected_penalty
+):
+    import kaiagotchi.ai.reward as reward_module
+
+    monkeypatch.setattr(reward_module.time, "time", lambda: 4000.0)
+    engine = RewardEngine(
+        {
+            "reward": {
+                "idle_decay_per_min": 0.0,
+                "weights": {
+                    "idle_decay": 0.0,
+                    "boredom": -0.4,
+                    "sadness": -0.5,
+                },
+            }
+        }
+    )
+
+    assert engine.evaluate(snapshot) == pytest.approx(math.tanh(expected_penalty))
+
