@@ -1201,3 +1201,155 @@ def test_pcapng_preflight_resets_interface_count_at_new_section(
     assert result.handshakes == []
     assert result.total_packets == 0
     assert result.total_beacons == 0
+
+
+@pytest.mark.parametrize(
+    "block_kind",
+    [
+        "section",
+        "interface",
+        "packet",
+        "name-resolution",
+        "statistics",
+        "enhanced-packet",
+    ],
+)
+def test_pcapng_preflight_rejects_repeated_singleton_options(
+    tmp_path, caplog, block_kind
+):
+    singleton_values = {
+        "section": b"synthetic hardware",
+        "interface": b"wlan-test",
+        "packet": struct.pack("<I", 0),
+        "name-resolution": b"resolver",
+        "statistics": struct.pack("<Q", 1),
+        "enhanced-packet": struct.pack("<I", 0),
+    }
+    option_code = 2
+    value = singleton_values[block_kind]
+    duplicate_options = _pcapng_option(option_code, value) * 2
+
+    if block_kind == "section":
+        capture_bytes = _pcapng_section_header(options=duplicate_options)
+    elif block_kind == "interface":
+        capture_bytes = (
+            _pcapng_section_header()
+            + _pcapng_interface_block(options=duplicate_options)
+        )
+    elif block_kind == "packet":
+        capture_bytes = (
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_packet_block(_synthetic_beacon(), options=duplicate_options)
+        )
+    elif block_kind == "name-resolution":
+        capture_bytes = (
+            _pcapng_section_header()
+            + _pcapng_name_resolution_block(
+                _pcapng_name_resolution_record(0, b""),
+                options=duplicate_options,
+            )
+        )
+    elif block_kind == "statistics":
+        capture_bytes = (
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_interface_statistics_block(options=duplicate_options)
+        )
+    else:
+        capture_bytes = (
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_enhanced_packet_block(
+                _synthetic_beacon(), options=duplicate_options
+            )
+        )
+
+    capture = tmp_path / f"duplicate-singleton-{block_kind}.pcapng"
+    capture.write_bytes(capture_bytes)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "option code 2 may appear only once" in caplog.text.lower()
+
+
+@pytest.mark.parametrize("option_code", [2988, 2989, 19372, 19373])
+def test_pcapng_preflight_rejects_custom_options_without_enterprise_number(
+    tmp_path, caplog, option_code
+):
+    capture = tmp_path / f"short-custom-option-{option_code}.pcapng"
+    options = _pcapng_option(option_code, bytes([1, 2, 3]))
+    capture.write_bytes(_pcapng_section_header(options=options))
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert (
+        f"custom option code {option_code} must have value length at least 4, got 3"
+        in caplog.text.lower()
+    )
+
+
+@pytest.mark.parametrize("directional_option", [16, 17])
+def test_pcapng_preflight_rejects_generic_and_directional_speed_options_together(
+    tmp_path, caplog, directional_option
+):
+    capture = tmp_path / f"conflicting-interface-speed-{directional_option}.pcapng"
+    options = (
+        _pcapng_option(8, struct.pack("<Q", 1_000_000))
+        + _pcapng_option(directional_option, struct.pack("<Q", 1_000_000))
+    )
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_interface_block(options=options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "if_speed option code 8 cannot be combined" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_equal_directional_interface_speeds(
+    tmp_path, caplog
+):
+    capture = tmp_path / "equal-directional-interface-speeds.pcapng"
+    speed = struct.pack("<Q", 1_000_000)
+    options = _pcapng_option(16, speed) + _pcapng_option(17, speed)
+    capture.write_bytes(
+        _pcapng_section_header() + _pcapng_interface_block(options=options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "if_txspeed and if_rxspeed must not both be used" in caplog.text.lower()
+
+
+def test_pcapng_preflight_accepts_repeatable_and_multi_address_options(
+    tmp_path,
+):
+    capture = tmp_path / "repeatable-options.pcapng"
+    section_options = (
+        _pcapng_option(1, b"first comment")
+        + _pcapng_option(1, b"second comment")
+        + _pcapng_option(2988, struct.pack("<I", 1) + b"first")
+        + _pcapng_option(2988, struct.pack("<I", 1) + b"second")
+        + _pcapng_option(0, b"")
+    )
+    interface_options = (
+        _pcapng_option(4, bytes.fromhex("c0 00 02 01 ff ff ff 00"))
+        + _pcapng_option(4, bytes.fromhex("c0 00 02 02 ff ff ff 00"))
+        + _pcapng_option(5, bytes(range(16)) + bytes([64]))
+        + _pcapng_option(5, bytes(range(1, 17)) + bytes([64]))
+        + _pcapng_option(16, struct.pack("<Q", 1_000_000))
+        + _pcapng_option(17, struct.pack("<Q", 2_000_000))
+        + _pcapng_option(0, b"")
+    )
+    capture.write_bytes(
+        _pcapng_section_header(options=section_options)
+        + _pcapng_interface_block(options=interface_options)
+    )
+
+    assert validate_file(str(capture))
+

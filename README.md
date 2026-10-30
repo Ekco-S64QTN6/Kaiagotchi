@@ -237,10 +237,12 @@ against the first interface's snaplen without loading packet bodies or secret
 contents into memory.
 A snaplen of zero means no limit. Interface transmit/receive speeds, enhanced-packet
 IDs, queue numbers, and process/thread IDs are checked against their fixed lengths;
-interface-filter, packet-hash, and verdict options enforce their minimum/type-dependent
-lengths, including the defined CRC32, MD5, SHA-1, Toeplitz, and Linux eBPF verdict
-payload sizes. Packet blocks may only reference interfaces declared in the current
-section.
+interface-filter, packet-hash, verdict, and custom options enforce their minimum or
+type-dependent lengths, including the four-byte private-enterprise number in custom
+options. Standard singleton options cannot repeat, while repeatable comments/custom
+options, multiple interface addresses, and packet hashes/verdicts remain accepted.
+Directional interface speeds follow the if_speed exclusivity rules. Packet blocks
+may only reference interfaces declared in the current section.
 Scapy then handles packet and payload decoding; malformed framing is rejected before
 partial data can be extracted.
 Captures may contain sensitive identifiers and traffic, so only inspect files you

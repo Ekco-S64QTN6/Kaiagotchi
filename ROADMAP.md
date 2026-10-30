@@ -20,10 +20,10 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions, resets interface references per section, checks packet and
    statistics interface references, validates Name Resolution Block records and their
-   mandatory terminator, checks fixed and minimum option lengths (including typed
-   packet hashes/verdicts), and checks metadata option/data boundaries alongside
-   Simple Packet Block payload size against interface snaplen. Never use real captures
-   or credentials.
+   mandatory terminator, checks fixed/minimum lengths and singleton-option multiplicity
+   (including custom-option PEN prefixes and interface-speed consistency), and checks
+   metadata option/data boundaries alongside Simple Packet Block payload size against
+   interface snaplen. Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
@@ -54,6 +54,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Validate PCAPNG option multiplicity by block type, preserve explicitly repeatable common/custom/address/hash/verdict options, enforce custom-option PEN minimum lengths, and reject conflicting interface-speed metadata using synthetic captures.
 
 - Verify `PluginManager.unload_all()` finishes invoking hooks from its initial registry snapshot even when an earlier unload hook removes a peer from the live registry.
 
