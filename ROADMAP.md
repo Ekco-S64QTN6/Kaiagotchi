@@ -18,9 +18,11 @@ features or capture-backend changes.
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
    block-specific constraints, and packet payloads. The preflight validates supported
-   section major versions, resets interface references per section, and checks
-   block/options/captured lengths including Simple Packet Block payload size against
-   interface snaplen. Never use real captures or credentials.
+   section major versions, resets interface references per section, checks packet and
+   statistics interface references, validates Name Resolution Block records and their
+   mandatory terminator, and checks metadata option/data boundaries alongside
+   Simple Packet Block payload size against interface snaplen. Never use real captures
+   or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
@@ -47,6 +49,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Validate PCAPNG Name Resolution Block record boundaries, known-record minimum lengths and name terminators, block-specific DNS/statistics option lengths, Interface Statistics Block interface references, and Decryption Secrets Block data/option boundaries with synthetic fixtures.
 
 - Keep MonitoringAgent's internal shutdown task shielded through repeated caller cancellation, then re-raise cancellation after cleanup reaches a terminal state. Add synthetic coverage for repeated cancellation during a blocked child wait and a failed post-kill wait that must retain the process handle and capture files until retry.
 

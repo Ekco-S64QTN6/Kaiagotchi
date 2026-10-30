@@ -318,6 +318,50 @@ def _pcapng_enhanced_packet_block(
     )
 
 
+def _pcapng_name_resolution_record(record_type: int, value: bytes) -> bytes:
+    padded_value = value + (bytes([0]) * (-len(value) % 4))
+    return struct.pack("<HH", record_type, len(value)) + padded_value
+
+
+def _pcapng_name_resolution_block(records: bytes, options: bytes = b"") -> bytes:
+    block_length = 12 + len(records) + len(options)
+    return (
+        struct.pack("<II", 4, block_length)
+        + records
+        + options
+        + struct.pack("<I", block_length)
+    )
+
+
+def _pcapng_interface_statistics_block(
+    *, interface_id: int = 0, options: bytes = b""
+) -> bytes:
+    block_length = 24 + len(options)
+    return (
+        struct.pack("<IIIII", 5, block_length, interface_id, 0, 0)
+        + options
+        + struct.pack("<I", block_length)
+    )
+
+
+def _pcapng_decryption_secrets_block(
+    secrets_data: bytes,
+    *,
+    options: bytes = b"",
+    declared_secrets_length: int | None = None,
+) -> bytes:
+    padded_secrets = secrets_data + (bytes([0]) * (-len(secrets_data) % 4))
+    if declared_secrets_length is None:
+        declared_secrets_length = len(secrets_data)
+    block_length = 20 + len(padded_secrets) + len(options)
+    return (
+        struct.pack("<IIII", 10, block_length, 0x01020304, declared_secrets_length)
+        + padded_secrets
+        + options
+        + struct.pack("<I", block_length)
+    )
+
+
 def _synthetic_beacon() -> bytes:
     """Build a synthetic beacon frame; no real network identifiers are used."""
     from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt
@@ -646,6 +690,211 @@ def test_pcapng_preflight_accepts_packet_referencing_second_declared_interface(
     assert "invalid pcapng block structure" not in caplog.text.lower()
     assert result.total_packets == 1
     assert result.total_beacons == 1
+
+
+def test_pcapng_preflight_accepts_valid_metadata_blocks(tmp_path):
+    capture = tmp_path / "valid-metadata-blocks.pcapng"
+    name_records = (
+        _pcapng_name_resolution_record(
+            1, bytes.fromhex("7f 00 00 01") + b"lab" + bytes([0])
+        )
+        + _pcapng_name_resolution_record(0, b"")
+    )
+    name_options = (
+        _pcapng_option(3, bytes.fromhex("08 08 08 08"))
+        + _pcapng_option(4, bytes(range(16)))
+        + _pcapng_option(0, b"")
+    )
+    statistics_options = (
+        _pcapng_option(2, struct.pack("<Q", 1))
+        + _pcapng_option(8, struct.pack("<Q", 2))
+        + _pcapng_option(0, b"")
+    )
+    secrets_options = (
+        _pcapng_option(1, b"synthetic metadata")
+        + _pcapng_option(0, b"")
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_name_resolution_block(name_records, name_options)
+        + _pcapng_interface_statistics_block(options=statistics_options)
+        + _pcapng_decryption_secrets_block(
+            b"synthetic-only-secret-data", options=secrets_options
+        )
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("records", "expected_reason"),
+    [
+        pytest.param(
+            _pcapng_name_resolution_record(
+                1, bytes.fromhex("7f 00 00 01") + b"lab" + bytes([0])
+            ),
+            "missing its end record",
+            id="missing-end-record",
+        ),
+        pytest.param(
+            struct.pack("<HH", 1, 100) + b"short" + bytes(3),
+            "record exceeding its block boundary",
+            id="record-value-exceeds-block",
+        ),
+        pytest.param(
+            _pcapng_name_resolution_record(1, bytes.fromhex("7f 00 00 01")),
+            "must have value length at least 6",
+            id="ipv4-record-too-short",
+        ),
+        pytest.param(
+            _pcapng_name_resolution_record(
+                1, bytes.fromhex("7f 00 00 01") + b"labx"
+            ),
+            "is not nul terminated",
+            id="ipv4-record-missing-name-terminator",
+        ),
+        pytest.param(
+            struct.pack("<HH", 0, 4) + b"xxxx",
+            "end record with nonzero length",
+            id="end-record-has-nonzero-length",
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_malformed_name_resolution_records(
+    tmp_path, caplog, records, expected_reason
+):
+    capture = tmp_path / "malformed-name-resolution-records.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_name_resolution_block(records)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert expected_reason in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_invalid_name_resolution_option_length(
+    tmp_path, caplog
+):
+    capture = tmp_path / "invalid-name-resolution-option.pcapng"
+    records = _pcapng_name_resolution_record(0, b"")
+    options = _pcapng_option(3, bytes([1, 2]))
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_name_resolution_block(records, options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "option code 3 must have value length 4, got 2" in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("interface_id", "options", "expected_reason"),
+    [
+        pytest.param(
+            1, b"", "references undeclared interface 1",
+            id="statistics-interface-not-declared",
+        ),
+        pytest.param(
+            0,
+            _pcapng_option(2, bytes([0, 1, 2, 3])),
+            "option code 2 must have value length 8, got 4",
+            id="statistics-start-time-has-invalid-length",
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_invalid_interface_statistics_block(
+    tmp_path, caplog, interface_id, options, expected_reason
+):
+    capture = tmp_path / "invalid-interface-statistics.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_interface_statistics_block(
+            interface_id=interface_id, options=options
+        )
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert expected_reason in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_decryption_secrets_length_beyond_block(
+    tmp_path, caplog
+):
+    capture = tmp_path / "invalid-decryption-secrets-length.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_decryption_secrets_block(
+            b"short", declared_secrets_length=40
+        )
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "secrets data exceeding its block boundary" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_malformed_decryption_secrets_options(
+    tmp_path, caplog
+):
+    capture = tmp_path / "invalid-decryption-secrets-options.pcapng"
+    options = struct.pack("<HH", 1, 12) + b"x" + bytes(3)
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_decryption_secrets_block(b"synthetic", options=options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "invalid options in block" in caplog.text.lower()
+    assert "exceeds its block boundary" in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    "parse",
+    [parse_pcap, parse_pcap_comprehensive],
+    ids=["simple-parser", "comprehensive-parser"],
+)
+def test_parser_rejects_malformed_metadata_block_without_partial_packets(
+    tmp_path, caplog, parse
+):
+    capture = tmp_path / "malformed-metadata-after-beacon.pcapng"
+    good_packet = _pcapng_enhanced_packet_block(_synthetic_beacon())
+    malformed_nrb = _pcapng_name_resolution_block(
+        _pcapng_name_resolution_record(
+            1, bytes.fromhex("7f 00 00 01") + b"lab" + bytes([0])
+        )
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + good_packet
+        + malformed_nrb
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        result = parse(str(capture))
+
+    assert "missing its end record" in caplog.text.lower()
+    if isinstance(result, list):
+        assert result == []
+    else:
+        assert result.bssids == {}
+        assert result.stations == {}
+        assert result.handshakes == []
+        assert result.total_packets == 0
+        assert result.total_beacons == 0
 
 
 def test_pcapng_preflight_rejects_simple_packet_without_declared_interface(

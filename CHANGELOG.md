@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Validate PCAPNG Name Resolution Block record boundaries, mandatory end records, known-record lengths/terminators, DNS and Interface Statistics option sizes, statistics interface references, and Decryption Secrets data/option boundaries with synthetic fixtures.
 - Keep MonitoringAgent shutdown shielded through repeated caller cancellation and retain the process handle/capture files when the post-kill wait fails, so a later stop can retry reaping before restoring the adapter or cleaning captures.
 - Make Manager startup cancellation-safe: cancellation during View, ticker, or Agent startup now runs bounded component cleanup before propagating, including when cancellation is repeated during teardown.
 - Dispatch plugin event and state callbacks over a stable registry snapshot, so registering or replacing a plugin during a callback takes effect on the next pass without invalidating the current iteration.
