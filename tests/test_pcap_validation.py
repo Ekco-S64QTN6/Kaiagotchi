@@ -1353,3 +1353,83 @@ def test_pcapng_preflight_accepts_repeatable_and_multi_address_options(
 
     assert validate_file(str(capture))
 
+def test_pcapng_preflight_rejects_nonzero_option_alignment_padding(tmp_path, caplog):
+    capture = tmp_path / "nonzero-option-padding.pcapng"
+    option = struct.pack("<HH", 2, 1) + b"x" + bytes([1, 0, 0])
+    capture.write_bytes(_pcapng_section_header(options=option))
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "option at offset" in caplog.text.lower()
+    assert "nonzero alignment padding" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_nonzero_name_resolution_record_padding(
+    tmp_path, caplog
+):
+    capture = tmp_path / "nonzero-name-record-padding.pcapng"
+    record_value = bytes.fromhex("7f 00 00 01") + b"a" + bytes([0])
+    record = struct.pack("<HH", 1, len(record_value)) + record_value
+    record += bytes([1, 0])  # Nonzero first alignment octet.
+    record += _pcapng_name_resolution_record(0, b"")
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_name_resolution_block(record)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "name resolution record" in caplog.text.lower()
+    assert "nonzero alignment padding" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_nonzero_decryption_secrets_padding(
+    tmp_path, caplog
+):
+    capture = tmp_path / "nonzero-secrets-padding.pcapng"
+    block_length = 24
+    secrets_block = (
+        struct.pack("<IIII", 10, block_length, 0x01020304, 1)
+        + b"x"
+        + bytes([1, 0, 0])
+        + struct.pack("<I", block_length)
+    )
+    capture.write_bytes(_pcapng_section_header() + secrets_block)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "decryption secrets data" in caplog.text.lower()
+    assert "nonzero alignment padding" in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    "block_kind",
+    ["packet", "enhanced-packet", "simple-packet"],
+)
+def test_pcapng_preflight_rejects_nonzero_packet_alignment_padding(
+    tmp_path, caplog, block_kind
+):
+    packet = b"abc"  # One trailing alignment octet is required.
+    if block_kind == "packet":
+        bad_block = bytearray(_pcapng_packet_block(packet))
+        preceding_blocks = _pcapng_section_header() + _pcapng_interface_block()
+    elif block_kind == "enhanced-packet":
+        bad_block = bytearray(_pcapng_enhanced_packet_block(packet))
+        preceding_blocks = _pcapng_section_header() + _pcapng_interface_block()
+    else:
+        bad_block = bytearray(_pcapng_simple_packet_block(packet))
+        preceding_blocks = _pcapng_section_header() + _pcapng_interface_block()
+
+    bad_block[-5] = 1  # Corrupt the single packet-data padding octet.
+    capture = tmp_path / f"nonzero-{block_kind}-padding.pcapng"
+    capture.write_bytes(preceding_blocks + bytes(bad_block))
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "nonzero alignment padding" in caplog.text.lower()
+    assert "packet data" in caplog.text.lower()
+
