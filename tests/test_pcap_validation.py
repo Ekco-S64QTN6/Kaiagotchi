@@ -1909,6 +1909,7 @@ def test_pcapng_preflight_ignores_nonzero_interface_description_reserved_field(
 
     assert validate_file(str(capture))
 
+
 def test_pcapng_preflight_treats_minor_version_2_as_minor_version_zero(
     tmp_path,
 ):
