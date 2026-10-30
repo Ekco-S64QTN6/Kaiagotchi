@@ -1532,7 +1532,10 @@ def test_pcapng_preflight_rejects_next_section_before_declared_end(
 
 def test_pcapng_preflight_accepts_big_endian_finite_section_length(tmp_path):
     capture = tmp_path / "big-endian-finite-section.pcapng"
-    section_body = struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+    section_body = (
+        struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+        + struct.pack(">I", 20)
+    )
     section_header = (
         bytes.fromhex("0a 0d 0d 0a")
         + struct.pack(">I", 28)
