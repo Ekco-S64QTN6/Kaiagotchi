@@ -226,9 +226,13 @@ is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
 integrity check; the preflight scan verifies PCAPNG section byte order, block
 boundaries, declared lengths, trailing lengths, packet captured lengths, option
-value boundaries, known fixed-size option values, supported section-header major
-versions, packet-to-interface references, and Simple Packet Block payload lengths
-against the first interface's snaplen without loading packet bodies into memory.
+framing and known fixed-size values across section, interface, packet, name
+resolution, interface statistics, and decryption secrets blocks, supported
+section-header major versions, packet and statistics interface references,
+mandatory Name Resolution Block record terminators and known-record lengths,
+Decryption Secrets Block data extents, and Simple Packet Block payload lengths
+against the first interface's snaplen without loading packet bodies or secret
+contents into memory.
 A snaplen of zero means no limit. Timestamp-resolution and packet-flags values are checked against required
 lengths; packet blocks may only reference interfaces declared in the current section.
 Scapy then handles packet and payload decoding; malformed framing is rejected before
