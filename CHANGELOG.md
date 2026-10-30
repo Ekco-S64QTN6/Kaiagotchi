@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Preserve PCAPNG section reader compatibility by accepting minor version 2 as equivalent to minor version 0, with a synthetic section-header regression.
 - Preserve PCAPNG reader compatibility by ignoring the Interface Description Block's reserved field, with synthetic nonzero-value regressions.
 - Require the four-byte PEN field in both standardized PCAPNG Custom Block types while leaving vendor-defined custom data opaque, with synthetic acceptance/rejection fixtures.
 - Validate Packet and Enhanced Packet Block flags: reject undefined direction/reception values and nonzero reserved bits 12–15, while preserving checksum/offload and link-layer-specific bits, with synthetic little-/big-endian fixtures.
