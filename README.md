@@ -228,9 +228,10 @@ ignores the Interface Description Block's reserved field as required for readers
 even though writers must set it to zero. The extension
 is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
-integrity check; the preflight scan verifies PCAPNG section byte order, treats
-minor version 2 as equivalent to 0, checks finite Section Header Block length
-boundaries, block framing, declared/trailing lengths, packet captured lengths, and
+integrity check; the preflight scan verifies PCAPNG section byte order independently
+at each concatenated section boundary, treats minor version 2 as equivalent to 0,
+checks finite Section Header Block length boundaries, block framing, declared/trailing
+lengths, packet captured lengths, and
 option framing and fixed-size values across section, interface, packet, name resolution,
 interface statistics, and decryption secrets blocks. It also checks supported
 section-header major versions, packet and statistics interface references,
