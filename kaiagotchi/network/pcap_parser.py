@@ -440,6 +440,19 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"packet block at offset {offset} has captured length greater than original length"
                         )
+                    interface_snaplen = interface_snaplens[interface_id]
+                    expected_captured_length = (
+                        original_length
+                        if interface_snaplen == 0
+                        else min(original_length, interface_snaplen)
+                    )
+                    if captured_length != expected_captured_length:
+                        return reject(
+                            f"packet block at offset {offset} has captured length "
+                            f"{captured_length}, inconsistent with interface snaplen "
+                            f"{interface_snaplen} and original length {original_length} "
+                            f"(expected {expected_captured_length})"
+                        )
                     padded_capture_length = captured_length + (-captured_length % 4)
                     available_packet_bytes = block_length - 32
                     if padded_capture_length > available_packet_bytes:
