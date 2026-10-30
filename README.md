@@ -94,8 +94,11 @@ before propagating cancellation, including when cancellation occurs during the
 emotional-loop startup barrier. The Manager also owns cleanup when startup is cancelled
 while awaiting View, ticker, or Agent startup, or when a fatal bootstrap/Agent startup
 error occurs. Already-created subsystems are stopped before the failure is propagated,
-even when Manager is used without the CLI wrapper. The monitor attempts shutdown cleanup,
-and capture-process creation is shielded long enough to retain its handle for cleanup.
+even when Manager is used without the CLI wrapper. The monitor keeps its shutdown
+cleanup shielded through repeated caller cancellation. If the capture child cannot be
+confirmed reaped after graceful and forced termination, the process handle and private
+capture files are retained for a later shutdown retry. Capture-process creation is also
+shielded long enough to retain its handle for cleanup.
 The CLI waits for the web server's blocking thread join in a worker thread, so
 that wait does not block the asyncio event loop during shutdown.
 

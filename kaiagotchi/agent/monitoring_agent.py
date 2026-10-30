@@ -211,21 +211,48 @@ class MonitoringAgent:
 
     # ------------------------------------------------------------------
     async def stop(self):
-        """Run shutdown to completion even if the caller is cancelled.
+        """Finish bounded shutdown even across repeated caller cancellation.
 
-        The inner task is shielded so outer timeouts/cancellation cannot interrupt
-        process reaping halfway through cleanup. The caller's cancellation is
-        re-raised after the bounded cleanup attempt finishes.
+        Keep the inner cleanup task shielded for the entire reaping/cleanup
+        attempt. Remember the first caller cancellation, defer it until the
+        cleanup task is terminal, and then propagate it to the caller.
         """
         cleanup_task = asyncio.create_task(self._stop_impl())
-        try:
-            await asyncio.shield(cleanup_task)
-        except asyncio.CancelledError:
+        cancellation: asyncio.CancelledError | None = None
+
+        while not cleanup_task.done():
             try:
-                await cleanup_task
+                await asyncio.shield(cleanup_task)
+            except asyncio.CancelledError as exc:
+                if cleanup_task.cancelled():
+                    break
+                if cancellation is None:
+                    cancellation = exc
             except Exception:
-                _LOG.exception("[monitoring] Shutdown cleanup failed after cancellation")
+                # Retrieve the cleanup exception after its task is terminal.
+                break
+
+        cleanup_error: Exception | None = None
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
             raise
+        except Exception as exc:
+            cleanup_error = exc
+
+        if cancellation is not None:
+            if cleanup_error is not None:
+                _LOG.error(
+                    "[monitoring] Shutdown cleanup failed after caller cancellation",
+                    exc_info=(
+                        type(cleanup_error),
+                        cleanup_error,
+                        cleanup_error.__traceback__,
+                    ),
+                )
+            raise cancellation
+        if cleanup_error is not None:
+            raise cleanup_error
 
     async def _stop_impl(self):
         # A partial startup or an earlier shutdown error can clear _running
