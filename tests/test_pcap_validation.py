@@ -232,12 +232,15 @@ def _pcapng_option(code: int, value: bytes) -> bytes:
 
 
 def _pcapng_interface_block(
-    options: bytes = b"", *, snaplen: int = 65535
+    options: bytes = b"",
+    *,
+    snaplen: int = 65535,
+    reserved: int = 0,
 ) -> bytes:
     """An IEEE 802.11 Interface Description Block."""
     block_length = 20 + len(options)
     return (
-        struct.pack("<IIHHI", 1, block_length, 105, 0, snaplen)
+        struct.pack("<IIHHI", 1, block_length, 105, reserved, snaplen)
         + options
         + struct.pack("<I", block_length)
     )
@@ -1889,6 +1892,18 @@ def test_pcapng_preflight_accepts_big_endian_standard_custom_block(tmp_path):
         + struct.pack(">I", 28)
     )
     capture.write_bytes(section_header + custom_block)
+
+    assert validate_file(str(capture))
+
+@pytest.mark.parametrize("reserved", [1, 0xA5A5, 0xFFFF])
+def test_pcapng_preflight_ignores_nonzero_interface_description_reserved_field(
+    tmp_path, reserved
+):
+    capture = tmp_path / f"idb-reserved-ignored-{reserved:04x}.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(reserved=reserved)
+    )
 
     assert validate_file(str(capture))
 
