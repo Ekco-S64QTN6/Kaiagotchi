@@ -1644,9 +1644,11 @@ def test_pcapng_preflight_accepts_packet_captured_length_for_interface_snaplen(
 @pytest.mark.parametrize(
     ("block_kind", "snaplen"),
     [
-        pytest.param("packet", 65535, id="packet-shorter-than-snaplen"),
+        pytest.param("packet", 16, id="packet-shorter-than-snaplen"),
+        pytest.param("packet", 65535, id="packet-shorter-than-large-snaplen"),
         pytest.param("packet", 0, id="packet-shorter-than-unlimited-snaplen"),
-        pytest.param("enhanced-packet", 65535, id="epb-shorter-than-snaplen"),
+        pytest.param("enhanced-packet", 16, id="epb-shorter-than-snaplen"),
+        pytest.param("enhanced-packet", 65535, id="epb-shorter-than-large-snaplen"),
         pytest.param("enhanced-packet", 0, id="epb-shorter-than-unlimited-snaplen"),
     ],
 )
