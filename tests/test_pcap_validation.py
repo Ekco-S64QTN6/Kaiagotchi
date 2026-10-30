@@ -1563,6 +1563,7 @@ def test_pcapng_preflight_accepts_empty_finite_section(tmp_path):
 
     assert validate_file(str(capture))
 
+
 @pytest.mark.parametrize(
     ("block_kind", "snaplen", "captured_size"),
     [
