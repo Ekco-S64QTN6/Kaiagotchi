@@ -319,7 +319,7 @@ def _pcapng_enhanced_packet_block(
 
 
 def _pcapng_name_resolution_record(record_type: int, value: bytes) -> bytes:
-    padded_value = value + (b"\\x00" * (-len(value) % 4))
+    padded_value = value + (bytes([0]) * (-len(value) % 4))
     return struct.pack("<HH", record_type, len(value)) + padded_value
 
 
@@ -350,7 +350,7 @@ def _pcapng_decryption_secrets_block(
     options: bytes = b"",
     declared_secrets_length: int | None = None,
 ) -> bytes:
-    padded_secrets = secrets_data + (b"\\x00" * (-len(secrets_data) % 4))
+    padded_secrets = secrets_data + (bytes([0]) * (-len(secrets_data) % 4))
     if declared_secrets_length is None:
         declared_secrets_length = len(secrets_data)
     block_length = 20 + len(padded_secrets) + len(options)
@@ -782,7 +782,7 @@ def test_pcapng_preflight_rejects_invalid_name_resolution_option_length(
 ):
     capture = tmp_path / "invalid-name-resolution-option.pcapng"
     records = _pcapng_name_resolution_record(0, b"")
-    options = _pcapng_option(3, b"\\x01\\x02")
+    options = _pcapng_option(3, bytes([1, 2]))
     capture.write_bytes(
         _pcapng_section_header()
         + _pcapng_name_resolution_block(records, options)
@@ -803,7 +803,7 @@ def test_pcapng_preflight_rejects_invalid_name_resolution_option_length(
         ),
         pytest.param(
             0,
-            _pcapng_option(2, b"\\x00\\x01\\x02\\x03"),
+            _pcapng_option(2, bytes([0, 1, 2, 3])),
             "option code 2 must have value length 8, got 4",
             id="statistics-start-time-has-invalid-length",
         ),
@@ -848,7 +848,7 @@ def test_pcapng_preflight_rejects_malformed_decryption_secrets_options(
     tmp_path, caplog
 ):
     capture = tmp_path / "invalid-decryption-secrets-options.pcapng"
-    options = struct.pack("<HH", 1, 12) + b"x\\x00\\x00\\x00"
+    options = struct.pack("<HH", 1, 12) + b"x" + bytes(3)
     capture.write_bytes(
         _pcapng_section_header()
         + _pcapng_decryption_secrets_block(b"synthetic", options=options)
