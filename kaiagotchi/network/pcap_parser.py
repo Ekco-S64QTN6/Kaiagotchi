@@ -82,7 +82,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
     def option_error(
         options_start: int, options_end: int, block_type_value: int | None
     ) -> str | None:
-        """Validate option framing and known fixed-size values without loading values."""
+        """Validate option framing and known fixed-size/type-dependent values."""
         fixed_lengths_by_block = {
             # Interface Description Block options.
             1: {
@@ -146,10 +146,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     f"{minimum_length}, got {option_length}"
                 )
 
-            if (
-                block_type_value in {2, 6}
-                and option_code == 3
-            ):
+            if block_type_value in {2, 6} and option_code == 3:
                 capture_file.seek(option_offset + 4)
                 option_value = capture_file.read(option_length)
                 if len(option_value) != option_length:
