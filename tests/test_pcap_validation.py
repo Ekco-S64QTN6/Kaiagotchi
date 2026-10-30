@@ -525,27 +525,31 @@ def test_pcapng_preflight_rejects_epb_captured_length_beyond_packet_body(
     assert result.total_beacons == 0
 
 
-def test_pcapng_preflight_rejects_captured_length_greater_than_original(
-    tmp_path, caplog
+@pytest.mark.parametrize("block_kind", ["packet", "enhanced-packet"])
+def test_pcapng_parser_accepts_preserved_original_length_below_captured_length(
+    tmp_path, block_kind
 ):
-    capture = tmp_path / "captured-length-greater-than-wire-length.pcapng"
+    capture = tmp_path / f"preserved-original-length-{block_kind}.pcapng"
     packet_bytes = _synthetic_beacon()
-    bad_packet = _pcapng_enhanced_packet_block(
-        packet_bytes,
-        captured_length=len(packet_bytes),
-        original_length=max(0, len(packet_bytes) - 4),
-    )
+    packet_args = {
+        "captured_length": len(packet_bytes),
+        "original_length": len(packet_bytes) - 4,
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(packet_bytes, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(packet_bytes, **packet_args)
     capture.write_bytes(
-        _pcapng_section_header() + _pcapng_interface_block() + bad_packet
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + packet_block
     )
 
-    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
-        result = parse_pcap_comprehensive(str(capture))
+    result = parse_pcap_comprehensive(str(capture))
 
-    assert "captured length greater than original length" in caplog.text.lower()
-    assert result.bssids == {}
-    assert result.total_packets == 0
-    assert result.total_beacons == 0
+    assert result.total_packets == 1
+    assert result.total_beacons == 1
+    assert "02:00:00:00:00:01" in result.bssids
 
 
 
