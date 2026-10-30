@@ -233,8 +233,12 @@ mandatory Name Resolution Block record terminators and known-record lengths,
 Decryption Secrets Block data extents, and Simple Packet Block payload lengths
 against the first interface's snaplen without loading packet bodies or secret
 contents into memory.
-A snaplen of zero means no limit. Timestamp-resolution and packet-flags values are checked against required
-lengths; packet blocks may only reference interfaces declared in the current section.
+A snaplen of zero means no limit. Interface transmit/receive speeds, enhanced-packet
+IDs, queue numbers, and process/thread IDs are checked against their fixed lengths;
+interface-filter, packet-hash, and verdict options enforce their minimum/type-dependent
+lengths, including the defined CRC32, MD5, SHA-1, Toeplitz, and Linux eBPF verdict
+payload sizes. Packet blocks may only reference interfaces declared in the current
+section.
 Scapy then handles packet and payload decoding; malformed framing is rejected before
 partial data can be extracted.
 Captures may contain sensitive identifiers and traffic, so only inspect files you
