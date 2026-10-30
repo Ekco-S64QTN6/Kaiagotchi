@@ -85,7 +85,10 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         """Validate option framing and known fixed-size values without loading values."""
         fixed_lengths_by_block = {
             # Interface Description Block options.
-            1: {4: 8, 5: 17, 6: 6, 7: 8, 8: 8, 9: 1, 10: 4, 13: 1, 14: 8},
+            1: {
+                4: 8, 5: 17, 6: 6, 7: 8, 8: 8, 9: 1, 10: 4,
+                13: 1, 14: 8, 16: 8, 17: 8,
+            },
             # Legacy Packet Block options.
             2: {2: 4, 4: 8},
             # Name Resolution Block DNS-address options.
@@ -93,7 +96,15 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             # Interface Statistics Block counters and timestamps.
             5: {2: 8, 3: 8, 4: 8, 5: 8, 6: 8, 7: 8, 8: 8},
             # Enhanced Packet Block options.
-            6: {2: 4, 4: 8, 0x8001: 4, 0x8003: 4},
+            6: {2: 4, 4: 8, 5: 8, 6: 4, 8: 8, 0x8001: 4, 0x8003: 4},
+        }
+        minimum_lengths_by_block = {
+            1: {11: 1},  # if_filter includes a one-byte filter-type identifier.
+            2: {3: 1},  # pack_hash starts with its algorithm identifier.
+            6: {
+                3: 1,  # epb_hash starts with its algorithm identifier.
+                7: 1,  # epb_verdict starts with its verdict-type identifier.
+            },
         }
         option_offset = options_start
         while option_offset < options_end:
@@ -125,6 +136,50 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     f"option code {option_code} must have value length "
                     f"{expected_length}, got {option_length}"
                 )
+
+            minimum_length = minimum_lengths_by_block.get(
+                block_type_value, {}
+            ).get(option_code)
+            if minimum_length is not None and option_length < minimum_length:
+                return (
+                    f"option code {option_code} must have value length at least "
+                    f"{minimum_length}, got {option_length}"
+                )
+
+            if (
+                block_type_value in {2, 6}
+                and option_code == 3
+            ):
+                capture_file.seek(option_offset + 4)
+                option_value = capture_file.read(option_length)
+                if len(option_value) != option_length:
+                    return f"truncated option value at offset {option_offset}"
+                hash_lengths = {2: 4, 3: 16, 4: 20, 5: 4}
+                expected_hash_length = hash_lengths.get(option_value[0])
+                if (
+                    expected_hash_length is not None
+                    and option_length != expected_hash_length + 1
+                ):
+                    return (
+                        f"option code 3 hash algorithm {option_value[0]} must have "
+                        f"value length {expected_hash_length + 1}, got {option_length}"
+                    )
+
+            if block_type_value == 6 and option_code == 7:
+                capture_file.seek(option_offset + 4)
+                option_value = capture_file.read(option_length)
+                if len(option_value) != option_length:
+                    return f"truncated option value at offset {option_offset}"
+                verdict_lengths = {1: 8, 2: 8}
+                expected_verdict_length = verdict_lengths.get(option_value[0])
+                if (
+                    expected_verdict_length is not None
+                    and option_length != expected_verdict_length + 1
+                ):
+                    return (
+                        f"option code 7 verdict type {option_value[0]} must have "
+                        f"value length {expected_verdict_length + 1}, got {option_length}"
+                    )
 
             option_offset = option_end
 
