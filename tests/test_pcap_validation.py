@@ -641,6 +641,176 @@ def test_pcapng_preflight_rejects_invalid_fixed_size_option_values(
     assert result.total_beacons == 0
 
 
+@pytest.mark.parametrize(
+    ("block_kind", "option_code", "value", "expected_reason"),
+    [
+        pytest.param(
+            "interface", 16, bytes([1, 2, 3, 4]),
+            "option code 16 must have value length 8, got 4",
+            id="interface-transmit-speed-is-eight-bytes",
+        ),
+        pytest.param(
+            "interface", 17, bytes([1, 2, 3, 4]),
+            "option code 17 must have value length 8, got 4",
+            id="interface-receive-speed-is-eight-bytes",
+        ),
+        pytest.param(
+            "enhanced-packet", 5, bytes([1, 2, 3, 4]),
+            "option code 5 must have value length 8, got 4",
+            id="packet-id-is-eight-bytes",
+        ),
+        pytest.param(
+            "enhanced-packet", 6, bytes([1, 2]),
+            "option code 6 must have value length 4, got 2",
+            id="packet-queue-is-four-bytes",
+        ),
+        pytest.param(
+            "enhanced-packet", 8, bytes([1, 2, 3, 4]),
+            "option code 8 must have value length 8, got 4",
+            id="packet-process-thread-ids-are-eight-bytes",
+        ),
+    ],
+)
+def test_pcapng_preflight_rejects_invalid_additional_fixed_size_options(
+    tmp_path, caplog, block_kind, option_code, value, expected_reason
+):
+    capture = tmp_path / f"invalid-additional-fixed-option-{block_kind}.pcapng"
+    options = _pcapng_option(option_code, value) + _pcapng_option(0, b"")
+    if block_kind == "interface":
+        blocks = _pcapng_section_header() + _pcapng_interface_block(options=options)
+    else:
+        blocks = (
+            _pcapng_section_header()
+            + _pcapng_interface_block()
+            + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+        )
+    capture.write_bytes(blocks)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert expected_reason in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "option_code"),
+    [
+        pytest.param("interface", 11, id="interface-filter-needs-type-byte"),
+        pytest.param("packet", 3, id="legacy-packet-hash-needs-algorithm-byte"),
+        pytest.param("enhanced-packet", 3, id="enhanced-packet-hash-needs-algorithm-byte"),
+        pytest.param("enhanced-packet", 7, id="enhanced-packet-verdict-needs-type-byte"),
+    ],
+)
+def test_pcapng_preflight_rejects_empty_variable_minimum_options(
+    tmp_path, caplog, block_kind, option_code
+):
+    capture = tmp_path / f"empty-variable-minimum-{block_kind}.pcapng"
+    options = _pcapng_option(option_code, b"") + _pcapng_option(0, b"")
+    blocks = _pcapng_section_header()
+    if block_kind != "interface":
+        blocks += _pcapng_interface_block()
+    if block_kind == "interface":
+        blocks += _pcapng_interface_block(options=options)
+    elif block_kind == "packet":
+        blocks += _pcapng_packet_block(_synthetic_beacon(), options=options)
+    else:
+        blocks += _pcapng_enhanced_packet_block(
+            _synthetic_beacon(), options=options
+        )
+    capture.write_bytes(blocks)
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "must have value length at least 1, got 0" in caplog.text.lower()
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "digest_length", "expected_length"),
+    [
+        pytest.param(2, 3, 5, id="crc32"),
+        pytest.param(3, 15, 17, id="md5"),
+        pytest.param(4, 19, 21, id="sha1"),
+        pytest.param(5, 3, 5, id="toeplitz"),
+    ],
+)
+def test_pcapng_preflight_rejects_wrong_known_packet_hash_length(
+    tmp_path, caplog, algorithm, digest_length, expected_length
+):
+    capture = tmp_path / f"wrong-packet-hash-length-{algorithm}.pcapng"
+    hash_value = bytes([algorithm]) + bytes(digest_length)
+    options = _pcapng_option(3, hash_value) + _pcapng_option(0, b"")
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert (
+        f"hash algorithm {algorithm} must have value length {expected_length}"
+        in caplog.text.lower()
+    )
+
+
+@pytest.mark.parametrize("verdict_type", [1, 2])
+def test_pcapng_preflight_rejects_wrong_known_packet_verdict_length(
+    tmp_path, caplog, verdict_type
+):
+    capture = tmp_path / f"wrong-packet-verdict-length-{verdict_type}.pcapng"
+    verdict = bytes([verdict_type]) + bytes(7)
+    options = _pcapng_option(7, verdict) + _pcapng_option(0, b"")
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_enhanced_packet_block(_synthetic_beacon(), options=options)
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert (
+        f"verdict type {verdict_type} must have value length 9, got 8"
+        in caplog.text.lower()
+    )
+
+
+def test_pcapng_preflight_accepts_valid_extended_idb_and_epb_options(tmp_path):
+    capture = tmp_path / "valid-extended-options.pcapng"
+    interface_options = (
+        _pcapng_option(11, bytes([0]) + b"tcp")
+        + _pcapng_option(16, struct.pack("<Q", 1_000_000))
+        + _pcapng_option(17, struct.pack("<Q", 2_000_000))
+        + _pcapng_option(0, b"")
+    )
+    packet_options = (
+        _pcapng_option(2, struct.pack("<I", 0))
+        + _pcapng_option(3, bytes([2]) + bytes(4))
+        + _pcapng_option(3, bytes([3]) + bytes(16))
+        + _pcapng_option(3, bytes([4]) + bytes(20))
+        + _pcapng_option(3, bytes([5]) + bytes(4))
+        + _pcapng_option(3, bytes([0]) + bytes([1, 2, 3]))
+        + _pcapng_option(5, struct.pack("<Q", 7))
+        + _pcapng_option(6, struct.pack("<I", 2))
+        + _pcapng_option(7, bytes([0]) + b"hardware")
+        + _pcapng_option(7, bytes([1]) + struct.pack("<Q", 1))
+        + _pcapng_option(7, bytes([2]) + struct.pack("<Q", 2))
+        + _pcapng_option(8, struct.pack("<II", 1234, 5678))
+        + _pcapng_option(0, b"")
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(options=interface_options)
+        + _pcapng_enhanced_packet_block(
+            _synthetic_beacon(), options=packet_options
+        )
+    )
+
+    assert validate_file(str(capture))
+
+
 @pytest.mark.parametrize("packet_kind", ["packet", "enhanced-packet"])
 def test_pcapng_preflight_rejects_undeclared_packet_interface_without_partial_results(
     tmp_path, caplog, packet_kind
