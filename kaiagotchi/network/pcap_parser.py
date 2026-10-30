@@ -674,9 +674,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"custom block at offset {offset} has a truncated "
                             "private enterprise number"
                         )
-                    # Decode in section byte order to validate the field scope,
-                    # but leave the vendor-defined value uninterpreted.
-                    struct.unpack(endian + "I", private_enterprise_number)
+                    # Keep the PEN value and vendor-defined Custom Data opaque.
 
                 if options_start is not None:
                     options_end = block_end - 4
