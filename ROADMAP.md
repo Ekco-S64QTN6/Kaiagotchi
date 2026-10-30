@@ -18,13 +18,13 @@ features or capture-backend changes.
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
    block-specific constraints, and packet payloads. The preflight validates supported
-   section major versions, resets interface references per section, checks packet and
-   statistics interface references, validates Name Resolution Block records and their
-   mandatory terminator, checks fixed/minimum lengths and singleton-option multiplicity
-   (including custom-option PEN prefixes and interface-speed consistency), checks
-   zero-filled alignment padding for all padded metadata/packet data, and checks
-   Simple Packet Block payload size against interface snaplen. Never use real captures
-   or credentials.
+   section major versions and finite Section Header Block length boundaries, resets
+   interface references per section, checks packet and statistics interface references,
+   validates Name Resolution Block records and their mandatory terminator, checks
+   fixed/minimum lengths and singleton-option multiplicity (including custom-option
+   PEN prefixes and interface-speed consistency), checks zero-filled alignment padding
+   for all padded metadata/packet data, and checks Simple Packet Block payload size
+   against interface snaplen. Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
@@ -55,6 +55,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Validate PCAPNG signed Section Header Block section lengths and exact section boundaries, including the -1 unspecified-length sentinel, finite lengths across concatenated sections, four-byte alignment, and both section byte orders.
 
 - Reject nonzero alignment padding in PCAPNG option values, Name Resolution records, Decryption Secrets data, and Packet/Enhanced Packet/Simple Packet payloads by reading only the padding bytes.
 
