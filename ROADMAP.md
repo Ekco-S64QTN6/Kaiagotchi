@@ -23,7 +23,8 @@ features or capture-backend changes.
    equivalent to 0; ignores the Interface Description Block reserved
    field as required for readers and resets interface references per section. It checks
    packet and statistics interface references, Packet/Enhanced Packet captured lengths
-   against each referenced interface's snaplen, and Packet/Enhanced Packet flag
+   against each referenced interface's snaplen as an upper bound (allowing shorter
+   captures), and Packet/Enhanced Packet flag
    enumerations and reserved bits;
    validates Name Resolution Block records and their mandatory terminator, checks
    fixed/minimum lengths and singleton-option multiplicity while preserving
