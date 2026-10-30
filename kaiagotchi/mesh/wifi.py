@@ -39,7 +39,7 @@ class WiFiBand:
             return list(range(1, 15))  # Channels 1-14
         elif self.name == '5GHz':
             # Standard 5GHz channels
-            channels = []
+            channels: list[int] = []
             # UNII-1 (36-64)
             channels.extend(range(36, 65, 4))
             # UNII-2 (100-144)
