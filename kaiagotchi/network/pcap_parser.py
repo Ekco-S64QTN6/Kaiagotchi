@@ -133,7 +133,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             2: {2, 4},  # Obsolete Packet Block.
             4: {2, 3, 4},  # Name Resolution Block.
             5: {2, 3, 4, 5, 6, 7, 8},  # Interface Statistics Block.
-            6: {2, 4, 5, 6, 8},  # Enhanced Packet Block.
+            6: {2, 4, 5, 6},  # Enhanced Packet Block; option 8 may repeat.
         }
         custom_option_codes = {2988, 2989, 19372, 19373}
         seen_option_codes: set[int] = set()
