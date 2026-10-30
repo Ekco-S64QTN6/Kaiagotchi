@@ -86,8 +86,13 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         fixed_lengths_by_block = {
             # Interface Description Block options.
             1: {4: 8, 5: 17, 6: 6, 7: 8, 8: 8, 9: 1, 10: 4, 13: 1, 14: 8},
-            # Packet and Enhanced Packet Block options.
+            # Legacy Packet Block options.
             2: {2: 4, 4: 8},
+            # Name Resolution Block DNS-address options.
+            4: {3: 4, 4: 16},
+            # Interface Statistics Block counters and timestamps.
+            5: {2: 8, 3: 8, 4: 8, 5: 8, 6: 8, 7: 8, 8: 8},
+            # Enhanced Packet Block options.
             6: {2: 4, 4: 8, 0x8001: 4, 0x8003: 4},
         }
         option_offset = options_start
@@ -296,6 +301,110 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"simple packet block at offset {offset} has a block length "
                             f"inconsistent with original length and interface snaplen "
                             f"(expected {expected_block_length}, got {block_length})"
+                        )
+
+                elif block_type_value == 4:
+                    # Name Resolution Blocks contain a record TLV list followed
+                    # by optional block options. The end record is mandatory and
+                    # separates those two areas.
+                    record_offset = offset + 8
+                    records_end = block_end - 4
+                    end_record_found = False
+                    options_start = records_end
+                    minimum_record_lengths = {1: 6, 2: 18, 3: 8, 4: 10}
+                    while record_offset < records_end:
+                        if records_end - record_offset < 4:
+                            return reject(
+                                f"name resolution block at offset {offset} has a truncated record header"
+                            )
+                        capture_file.seek(record_offset)
+                        record_header = capture_file.read(4)
+                        if len(record_header) != 4:
+                            return reject(
+                                f"name resolution block at offset {offset} has a truncated record header"
+                            )
+                        record_type, record_length = struct.unpack(
+                            endian + "HH", record_header
+                        )
+                        if record_type == 0:
+                            if record_length != 0:
+                                return reject(
+                                    f"name resolution block at offset {offset} has an end record with nonzero length"
+                                )
+                            record_offset += 4
+                            options_start = record_offset
+                            end_record_found = True
+                            break
+
+                        padded_record_length = (
+                            record_length + (-record_length % 4)
+                        )
+                        record_value_end = record_offset + 4 + record_length
+                        record_end = record_offset + 4 + padded_record_length
+                        if record_end > records_end:
+                            return reject(
+                                f"name resolution block at offset {offset} has a record exceeding its block boundary"
+                            )
+
+                        minimum_length = minimum_record_lengths.get(record_type)
+                        if minimum_length is not None:
+                            if record_length < minimum_length:
+                                return reject(
+                                    f"name resolution record type {record_type} must have value length at least {minimum_length}, got {record_length}"
+                                )
+                            capture_file.seek(record_value_end - 1)
+                            if capture_file.read(1) != b"\\x00":
+                                return reject(
+                                    f"name resolution record type {record_type} is not NUL terminated"
+                                )
+
+                        record_offset = record_end
+
+                    if not end_record_found:
+                        return reject(
+                            f"name resolution block at offset {offset} is missing its end record"
+                        )
+                elif block_type_value == 5:
+                    if block_length < 24:
+                        return reject(
+                            f"interface statistics block at offset {offset} is too short"
+                        )
+                    capture_file.seek(offset + 8)
+                    interface_id_bytes = capture_file.read(4)
+                    if len(interface_id_bytes) != 4:
+                        return reject(
+                            f"interface statistics block at offset {offset} has a truncated interface ID"
+                        )
+                    interface_id = struct.unpack(
+                        endian + "I", interface_id_bytes
+                    )[0]
+                    if interface_id >= interface_count:
+                        return reject(
+                            f"interface statistics block at offset {offset} references undeclared "
+                            f"interface {interface_id} (section has {interface_count})"
+                        )
+                    options_start = offset + 20
+                elif block_type_value == 10:
+                    if block_length < 20:
+                        return reject(
+                            f"decryption secrets block at offset {offset} is too short"
+                        )
+                    capture_file.seek(offset + 12)
+                    secrets_length_bytes = capture_file.read(4)
+                    if len(secrets_length_bytes) != 4:
+                        return reject(
+                            f"decryption secrets block at offset {offset} has a truncated secrets length"
+                        )
+                    secrets_length = struct.unpack(
+                        endian + "I", secrets_length_bytes
+                    )[0]
+                    padded_secrets_length = secrets_length + (
+                        -secrets_length % 4
+                    )
+                    options_start = offset + 16 + padded_secrets_length
+                    if options_start > block_end - 4:
+                        return reject(
+                            f"decryption secrets block at offset {offset} has secrets data exceeding its block boundary"
                         )
 
                 if options_start is not None:
