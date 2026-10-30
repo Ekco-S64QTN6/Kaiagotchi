@@ -738,7 +738,7 @@ def test_pcapng_preflight_accepts_valid_metadata_blocks(tmp_path):
             id="missing-end-record",
         ),
         pytest.param(
-            struct.pack("<HH", 1, 100) + b"short",
+            struct.pack("<HH", 1, 100) + b"short" + bytes(3),
             "record exceeding its block boundary",
             id="record-value-exceeds-block",
         ),
@@ -755,7 +755,7 @@ def test_pcapng_preflight_accepts_valid_metadata_blocks(tmp_path):
             id="ipv4-record-missing-name-terminator",
         ),
         pytest.param(
-            struct.pack("<HH", 0, 1) + b"x",
+            struct.pack("<HH", 0, 4) + b"xxxx",
             "end record with nonzero length",
             id="end-record-has-nonzero-length",
         ),
