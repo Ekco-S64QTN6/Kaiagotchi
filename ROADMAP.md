@@ -23,10 +23,10 @@ features or capture-backend changes.
    interface snaplen. Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
-   under repeated cancellation. Fatal bootstrap or Agent startup failures also trigger
-   cleanup. Continue testing process-reap failures and verifying shutdown ordering.
-   Monitoring bounds graceful and post-kill waits and preserves capture files until the
-   child is reaped.
+   under repeated cancellation. MonitoringAgent defers cancellation through repeated
+   caller cancellation until bounded process reaping and cleanup finish; failed graceful
+   or post-kill waits retain the child handle and capture files for a later retry. Continue
+   testing process-reap failures and verifying shutdown ordering.
 3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
@@ -47,6 +47,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Keep MonitoringAgent's internal shutdown task shielded through repeated caller cancellation, then re-raise cancellation after cleanup reaches a terminal state. Add synthetic coverage for repeated cancellation during a blocked child wait and a failed post-kill wait that must retain the process handle and capture files until retry.
 
 - Make Manager startup cleanup-owned: cancellation while awaiting View, ticker, or Agent
   startup stops already-created components before propagating. Fatal bootstrap and Agent
