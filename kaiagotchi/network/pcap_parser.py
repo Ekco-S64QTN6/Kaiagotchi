@@ -136,7 +136,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     return f"end-of-options at offset {option_offset} has nonzero length"
                 if option_offset + 4 != options_end:
                     return f"data follows end-of-options at offset {option_offset}"
-                return None
+                break
 
             padded_length = option_length + (-option_length % 4)
             option_end = option_offset + 4 + padded_length
