@@ -20,8 +20,8 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions and finite Section Header Block length boundaries, treats
    minor version 2 as equivalent to 0, ignores the Interface Description Block reserved
-   field as required for readers, resets
-   interface references per section, checks packet and statistics interface references
+   field as required for readers, resets interface references per section, and checks
+   packet and statistics interface references
    and Packet/Enhanced Packet captured lengths against each referenced interface's
    snaplen, validates Packet/Enhanced Packet flag enumerations and reserved bits,
    validates Name Resolution Block records and their mandatory terminator, checks
