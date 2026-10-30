@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Correct EPB option multiplicity so multiple process/thread ID pairs are accepted alongside repeatable packet hashes and verdicts, with a synthetic regression.
 - Preserve PCAPNG section reader compatibility by accepting minor version 2 as equivalent to minor version 0, with a synthetic section-header regression.
 - Preserve PCAPNG reader compatibility by ignoring the Interface Description Block's reserved field, with synthetic nonzero-value regressions.
 - Require the four-byte PEN field in both standardized PCAPNG Custom Block types while leaving vendor-defined custom data opaque, with synthetic acceptance/rejection fixtures.
