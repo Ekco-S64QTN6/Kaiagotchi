@@ -1,5 +1,6 @@
 """Regression tests for reward extraction across old and current state schemas."""
 
+import math
 from types import SimpleNamespace
 
 import pytest
@@ -293,8 +294,6 @@ def test_boolean_handshake_counts_are_invalid_and_fall_back_to_numeric_aliases()
 def test_typed_agent_mood_aliases_preserve_precedence_and_penalties(
     monkeypatch, snapshot, expected_penalty
 ):
-    import math
-
     import kaiagotchi.ai.reward as reward_module
 
     monkeypatch.setattr(reward_module.time, "time", lambda: 4000.0)
