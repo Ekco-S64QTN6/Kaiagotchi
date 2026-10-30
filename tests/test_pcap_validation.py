@@ -1937,6 +1937,7 @@ def test_pcapng_preflight_treats_minor_version_2_as_minor_version_zero(
 
     assert validate_file(str(capture))
 
+
 @pytest.mark.parametrize(
     ("first_endian", "second_endian"),
     [
