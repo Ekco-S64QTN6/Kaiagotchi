@@ -23,8 +23,8 @@ features or capture-backend changes.
    field as required for readers and resets interface references per section. It checks
    packet and statistics interface references, Packet/Enhanced Packet captured lengths
    against each referenced interface's snaplen, and Packet/Enhanced Packet flag
-   enumerations and reserved bits;
-   validates Name Resolution Block records and their mandatory terminator, checks
+   enumerations and reserved bits. It validates Name Resolution Block records and
+   their mandatory terminator, then checks
    fixed/minimum lengths and singleton-option multiplicity while preserving repeatable
    EPB hash/verdict/process-thread options (including custom-option PEN prefixes and
    interface-speed consistency), validates the PEN field in standardized Custom Blocks,
