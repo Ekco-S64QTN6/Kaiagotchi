@@ -18,7 +18,8 @@ features or capture-backend changes.
 
 1. **PCAP parser** — continue synthetic coverage for remaining PCAPNG option semantics,
    block-specific constraints, and packet payloads. The preflight validates supported
-   section major versions and finite Section Header Block length boundaries, resets
+   section major versions and finite Section Header Block length boundaries, ignores
+   the Interface Description Block reserved field as required for readers, resets
    interface references per section, checks packet and statistics interface references
    and Packet/Enhanced Packet captured lengths against each referenced interface's
    snaplen, validates Packet/Enhanced Packet flag enumerations and reserved bits,
@@ -59,6 +60,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Assert that the PCAPNG reader ignores the IDB's reserved 16-bit field even for nonzero values, as required of readers (while writers are expected to emit zero).
 
 - Require the four-byte PEN field in the standardized copyable/non-copyable PCAPNG Custom Block types while keeping vendor-defined data opaque; retain generic framing-only handling for other local-use block types.
 
