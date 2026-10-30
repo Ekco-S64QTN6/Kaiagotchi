@@ -1869,6 +1869,7 @@ def test_pcapng_preflight_keeps_local_use_block_types_opaque(tmp_path):
 
     assert validate_file(str(capture))
 
+
 def test_pcapng_preflight_accepts_big_endian_standard_custom_block(tmp_path):
     capture = tmp_path / "big-endian-custom-block.pcapng"
     custom_data = b"vendor"
