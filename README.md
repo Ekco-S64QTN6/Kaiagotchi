@@ -249,8 +249,8 @@ interface-filter, packet-hash, verdict, and custom options enforce their minimum
 type-dependent lengths, including the four-byte private-enterprise number in custom
 options. The two standardized Custom Block types require their four-byte PEN
 field; their vendor-defined custom data remains opaque. Standard singleton options
-cannot repeat, while repeatable comments/custom options, multiple interface addresses,
-and packet hashes/verdicts remain accepted.
+cannot repeat, while comments/custom options, multiple interface addresses, and
+EPB packet hashes, verdicts, and process/thread ID pairs remain repeatable.
 Directional interface speeds follow the if_speed exclusivity rules. Packet blocks
 may only reference interfaces declared in the current section.
 Scapy then handles packet and payload decoding; malformed framing is rejected before
