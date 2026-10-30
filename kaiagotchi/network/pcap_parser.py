@@ -108,7 +108,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                 13: 1, 14: 8, 16: 8, 17: 8,
             },
             # Legacy Packet Block options.
-            2: {2: 4, 4: 8},
+            2: {2: 4},  # Only pack_flags is fixed-length here.
             # Name Resolution Block DNS-address options.
             4: {3: 4, 4: 16},
             # Interface Statistics Block counters and timestamps.
@@ -130,7 +130,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         single_occurrence_options_by_block = {
             None: {2, 3, 4},  # Section Header Block.
             1: {2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
-            2: {2, 4},  # Obsolete Packet Block.
+            2: {2},  # Obsolete Packet Block: pack_flags is the only singleton.
             4: {2, 3, 4},  # Name Resolution Block.
             5: {2, 3, 4, 5, 6, 7, 8},  # Interface Statistics Block.
             6: {2, 4, 5, 6},  # Enhanced Packet Block; option 8 may repeat.
