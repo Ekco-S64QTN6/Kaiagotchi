@@ -22,10 +22,11 @@ features or capture-backend changes.
    block/options/captured lengths including Simple Packet Block payload size against
    interface snaplen. Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
-   cleans up already-started View/ticker/Agent components when startup fails or is cancelled,
-   even under repeated cancellation. Continue testing process-reap failures and verifying
-   shutdown ordering. Monitoring bounds graceful and post-kill waits and preserves capture
-   files until the child is reaped.
+   cleans up already-started View/ticker/Agent components when startup is cancelled, even
+   under repeated cancellation. Fatal bootstrap or Agent startup failures also trigger
+   cleanup. Continue testing process-reap failures and verifying shutdown ordering.
+   Monitoring bounds graceful and post-kill waits and preserves capture files until the
+   child is reaped.
 3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
