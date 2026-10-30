@@ -296,8 +296,8 @@ plugin registered or replaced during a callback becomes eligible on the next
 dispatch pass, so lifecycle changes cannot invalidate the in-progress iteration.
 
 The current manager accepts only an integer exactly equal to the host's API
-version and rejects unsupported integers, booleans, strings, and numeric floats
-(including `1.0`) before calling `on_load`; an incompatible same-name replacement
+version and rejects `None`, unsupported integers, booleans, strings, and numeric
+floats (including `1.0`) before calling `on_load`; an incompatible same-name replacement
 cannot displace the working plugin. A future multi-version transition must explicitly
 define the supported version set and test each version before the host starts
 accepting it.
