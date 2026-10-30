@@ -377,16 +377,14 @@ def _pcapng_custom_block(
     *,
     private_enterprise_number: int = 32473,
     custom_data: bytes = b"",
-    options: bytes = b"",
 ) -> bytes:
     """Build a standardized PCAPNG Custom Block with opaque vendor data."""
     padded_data = custom_data + (bytes([0]) * (-len(custom_data) % 4))
-    block_length = 16 + len(padded_data) + len(options)
+    block_length = 16 + len(padded_data)
     return (
         struct.pack("<II", block_type, block_length)
         + struct.pack("<I", private_enterprise_number)
         + padded_data
-        + options
         + struct.pack("<I", block_length)
     )
 
