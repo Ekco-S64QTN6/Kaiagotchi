@@ -1530,3 +1530,24 @@ def test_pcapng_preflight_rejects_next_section_before_declared_end(
 
     assert "begins before or after" in caplog.text.lower()
 
+def test_pcapng_preflight_accepts_big_endian_finite_section_length(tmp_path):
+    capture = tmp_path / "big-endian-finite-section.pcapng"
+    section_body = struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, len(section_body))
+        + struct.pack(">I", 28)
+    )
+    capture.write_bytes(section_header + section_body)
+
+    assert validate_file(str(capture))
+
+
+def test_pcapng_preflight_accepts_empty_finite_section(tmp_path):
+    capture = tmp_path / "empty-finite-section.pcapng"
+    capture.write_bytes(_pcapng_section_header(section_length=0))
+
+    assert validate_file(str(capture))
+
