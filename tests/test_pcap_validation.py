@@ -232,6 +232,22 @@ def _pcapng_option(code: int, value: bytes) -> bytes:
     return struct.pack("<HH", code, len(value)) + padded_value
 
 
+def _pcapng_big_endian_section_with_interface() -> bytes:
+    """Build a complete big-endian section containing one synthetic IDB."""
+    interface_block = (
+        struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+        + struct.pack(">I", 20)
+    )
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, len(interface_block))
+        + struct.pack(">I", 28)
+    )
+    return section_header + interface_block
+
+
 def _pcapng_interface_block(
     options: bytes = b"",
     *,
@@ -1917,6 +1933,33 @@ def test_pcapng_preflight_treats_minor_version_2_as_minor_version_zero(
     capture.write_bytes(
         _pcapng_section_header(minor_version=2)
         + _pcapng_interface_block()
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("first_endian", "second_endian"),
+    [
+        pytest.param("little", "big", id="little-then-big"),
+        pytest.param("big", "little", id="big-then-little"),
+    ],
+)
+def test_pcapng_preflight_allows_byte_order_to_change_between_sections(
+    tmp_path, first_endian, second_endian
+):
+    capture = tmp_path / f"mixed-endian-{first_endian}-{second_endian}.pcapng"
+    little_section = (
+        _pcapng_section_header(section_length=20)
+        + _pcapng_interface_block()
+    )
+    big_section = _pcapng_big_endian_section_with_interface()
+    sections = {
+        "little": little_section,
+        "big": big_section,
+    }
+    capture.write_bytes(
+        sections[first_endian] + sections[second_endian]
     )
 
     assert validate_file(str(capture))

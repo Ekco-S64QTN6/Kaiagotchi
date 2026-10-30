@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Verify that concatenated PCAPNG sections may switch byte order independently at each section boundary, with synthetic finite-length little-to-big and big-to-little fixtures.
 - Preserve PCAPNG section reader compatibility by accepting minor version 2 as equivalent to minor version 0, with a synthetic section-header regression.
 - Preserve PCAPNG reader compatibility by ignoring the Interface Description Block's reserved field, with synthetic nonzero-value regressions.
 - Require the four-byte PEN field in both standardized PCAPNG Custom Block types while leaving vendor-defined custom data opaque, with synthetic acceptance/rejection fixtures.
