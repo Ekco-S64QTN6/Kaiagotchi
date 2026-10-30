@@ -1563,3 +1563,113 @@ def test_pcapng_preflight_accepts_empty_finite_section(tmp_path):
 
     assert validate_file(str(capture))
 
+@pytest.mark.parametrize(
+    ("block_kind", "snaplen", "captured_size"),
+    [
+        pytest.param("packet", 65535, None, id="packet-full-capture"),
+        pytest.param("packet", 12, 12, id="packet-snaplen-truncation"),
+        pytest.param("packet", 0, None, id="packet-zero-unlimited"),
+        pytest.param("enhanced-packet", 65535, None, id="epb-full-capture"),
+        pytest.param("enhanced-packet", 12, 12, id="epb-snaplen-truncation"),
+        pytest.param("enhanced-packet", 0, None, id="epb-zero-unlimited"),
+    ],
+)
+def test_pcapng_preflight_accepts_packet_captured_length_for_interface_snaplen(
+    tmp_path, block_kind, snaplen, captured_size
+):
+    capture = tmp_path / f"valid-{block_kind}-snaplen.pcapng"
+    original_packet = _synthetic_beacon()
+    captured_packet = (
+        original_packet[:captured_size]
+        if captured_size is not None
+        else original_packet
+    )
+    packet_args = {
+        "captured_length": len(captured_packet),
+        "original_length": len(original_packet),
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(captured_packet, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(
+            captured_packet, **packet_args
+        )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=snaplen)
+        + packet_block
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "snaplen", "captured_size"),
+    [
+        pytest.param("packet", 12, None, id="packet-exceeds-snaplen"),
+        pytest.param("packet", 65535, 12, id="packet-under-captured"),
+        pytest.param("packet", 0, 12, id="packet-zero-snaplen-under-captured"),
+        pytest.param("enhanced-packet", 12, None, id="epb-exceeds-snaplen"),
+        pytest.param("enhanced-packet", 65535, 12, id="epb-under-captured"),
+        pytest.param("enhanced-packet", 0, 12, id="epb-zero-snaplen-under-captured"),
+    ],
+)
+def test_pcapng_preflight_rejects_packet_captured_length_inconsistent_with_snaplen(
+    tmp_path, caplog, block_kind, snaplen, captured_size
+):
+    capture = tmp_path / f"invalid-{block_kind}-snaplen.pcapng"
+    original_packet = _synthetic_beacon()
+    captured_packet = (
+        original_packet
+        if captured_size is None
+        else original_packet[:captured_size]
+    )
+    packet_args = {
+        "captured_length": len(captured_packet),
+        "original_length": len(original_packet),
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(captured_packet, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(
+            captured_packet, **packet_args
+        )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=snaplen)
+        + packet_block
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "inconsistent with interface snaplen" in caplog.text.lower()
+
+
+@pytest.mark.parametrize("block_kind", ["packet", "enhanced-packet"])
+def test_pcapng_preflight_uses_referenced_interface_snaplen(
+    tmp_path, block_kind
+):
+    capture = tmp_path / f"interface-specific-{block_kind}-snaplen.pcapng"
+    original_packet = _synthetic_beacon()
+    captured_packet = original_packet[:12]
+    packet_args = {
+        "captured_length": len(captured_packet),
+        "original_length": len(original_packet),
+        "interface_id": 1,
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(captured_packet, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(
+            captured_packet, **packet_args
+        )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=65535)
+        + _pcapng_interface_block(snaplen=12)
+        + packet_block
+    )
+
+    assert validate_file(str(capture))
+
