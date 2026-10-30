@@ -5,7 +5,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 ## Unreleased
 
 - Skip an unrecoverable access-point record when fallback construction fails for an invalid BSSID key, preserving valid interfaces and other network state; add a synthetic regression.
-- Reduce the advisory mypy baseline by annotating the 5 GHz Wi-Fi channel accumulator as `list[int]`; CI measured 95 errors across 17 source files, down from 96 across 18.
+- Reduce the advisory mypy baseline to 94 errors across 17 source files with behavior-neutral container annotations in the Wi-Fi channel accumulator and interface-address mapping (down from 96 errors across 18 files).
 - Correct EPB option multiplicity so multiple process/thread ID pairs are accepted alongside repeatable packet hashes and verdicts, with a synthetic regression.
 - Verify that concatenated PCAPNG sections may switch byte order independently at each section boundary, with synthetic finite-length little-to-big and big-to-little fixtures.
 - Preserve PCAPNG section reader compatibility by accepting minor version 2 as equivalent to minor version 0, with a synthetic section-header regression.
