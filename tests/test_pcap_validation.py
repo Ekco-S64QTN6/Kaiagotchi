@@ -1724,7 +1724,12 @@ def test_pcapng_preflight_accepts_defined_packet_flag_values(
         pytest.param("packet", 1 << 13, "reserved bits 12-15", id="packet-reserved-13"),
         pytest.param("packet", 1 << 14, "reserved bits 12-15", id="packet-reserved-14"),
         pytest.param("packet", 1 << 15, "reserved bits 12-15", id="packet-reserved-15"),
-        pytest.param("enhanced-packet", 3, "reserved direction value 3", id="epb-direction"),
+        pytest.param(
+            "enhanced-packet",
+            3,
+            "reserved direction value 3",
+            id="epb-direction",
+        ),
         pytest.param(
             "enhanced-packet", 6 << 2, "reserved reception type 6", id="epb-reception"
         ),
