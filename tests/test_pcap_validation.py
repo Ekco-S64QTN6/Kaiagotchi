@@ -642,6 +642,24 @@ def test_pcapng_preflight_accepts_valid_legacy_packet_block_options(tmp_path):
     assert "02:00:00:00:00:01" in result.bssids
 
 
+def test_pcapng_preflight_keeps_unknown_legacy_packet_options_opaque(tmp_path):
+    capture = tmp_path / "unknown-legacy-packet-options.pcapng"
+    # Option 4 is defined for Enhanced Packet Blocks, not obsolete Packet
+    # Blocks. For the latter it is unknown and must not inherit EPB rules.
+    options = (
+        _pcapng_option(4, b"x")
+        + _pcapng_option(4, b"vendor")
+        + _pcapng_option(0, b"")
+    )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block()
+        + _pcapng_packet_block(_synthetic_beacon(), options=options)
+    )
+
+    assert validate_file(str(capture))
+
+
 @pytest.mark.parametrize(
     ("block_kind", "option_code", "value", "expected_reason"),
     [
