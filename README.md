@@ -91,7 +91,9 @@ and restore the capture interface to managed mode. Interface restoration is
 best-effort when the driver or system tools report an error.
 If startup is cancelled at any await point, the Agent's lifecycle guard runs cleanup
 before propagating cancellation, including when cancellation occurs during the
-emotional-loop startup barrier. The monitor attempts shutdown cleanup, and capture-process
+emotional-loop startup barrier. The Manager also owns startup cleanup: cancellation or an error during View,
+ticker, or Agent startup stops already-created subsystems before the failure is
+propagated, even when Manager is used without the CLI wrapper. The monitor attempts shutdown cleanup, and capture-process
 creation is shielded long enough to retain its handle for cleanup.
 The CLI waits for the web server's blocking thread join in a worker thread, so
 that wait does not block the asyncio event loop during shutdown.
