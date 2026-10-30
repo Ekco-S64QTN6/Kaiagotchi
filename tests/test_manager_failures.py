@@ -399,3 +399,136 @@ async def test_cli_does_not_start_legacy_agent_after_manager_bootstrap_failure(m
     assert await cli.run_agent() == 1
     assert not legacy_agent_constructed
     assert stopped.is_set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "blocked_stage",
+    ["view.start", "view.on_starting", "ticker.start", "agent.start"],
+)
+async def test_manager_cancellation_during_startup_stops_started_components(
+    monkeypatch, blocked_stage
+):
+    entered_blocking_stage = asyncio.Event()
+    agent_stopped = asyncio.Event()
+    blocking_stage_cancelled = asyncio.Event()
+
+    async def block_startup(stage):
+        if blocked_stage == stage:
+            entered_blocking_stage.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                blocking_stage_cancelled.set()
+
+    class FakeView:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def start(self):
+            await block_startup("view.start")
+
+        async def on_starting(self):
+            await block_startup("view.on_starting")
+
+        async def stop(self):
+            self.stop_calls += 1
+
+    ticker_instances = []
+
+    class FakeTicker:
+        def __init__(self, **_kwargs):
+            self.stop_calls = 0
+            ticker_instances.append(self)
+
+        async def start(self):
+            await block_startup("ticker.start")
+
+        async def stop(self):
+            self.stop_calls += 1
+
+    class FakeAgent:
+        async def start(self):
+            await block_startup("agent.start")
+
+        async def stop(self):
+            agent_stopped.set()
+
+    view = FakeView()
+    manager = Manager(
+        config={"log": {"level": "INFO"}},
+        view=view,
+        system_state={"status": "booting"},
+    )
+    manager.agent = FakeAgent()
+    manager._bootstrap_done = True
+    monkeypatch.setattr(manager_module, "SystemTicker", FakeTicker)
+
+    start_task = asyncio.create_task(manager.start())
+    await asyncio.wait_for(entered_blocking_stage.wait(), timeout=1.0)
+    start_task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(start_task, timeout=2.0)
+
+    assert blocking_stage_cancelled.is_set()
+    assert view.stop_calls == 1
+    assert agent_stopped.is_set()
+    if blocked_stage in {"ticker.start", "agent.start"}:
+        assert len(ticker_instances) == 1
+        assert ticker_instances[0].stop_calls == 1
+    else:
+        assert ticker_instances == []
+
+
+@pytest.mark.asyncio
+async def test_manager_defers_repeated_cancellation_until_startup_cleanup_finishes(
+    monkeypatch,
+):
+    startup_blocked = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    allow_cleanup = asyncio.Event()
+    cleanup_finished = asyncio.Event()
+
+    class BlockingView:
+        async def start(self):
+            startup_blocked.set()
+            await asyncio.Event().wait()
+
+        async def on_starting(self):
+            return None
+
+        async def stop(self):
+            cleanup_finished.set()
+
+    class BlockingAgent:
+        async def start(self):
+            return None
+
+        async def stop(self):
+            cleanup_started.set()
+            await allow_cleanup.wait()
+
+    manager = Manager(
+        config={"log": {"level": "INFO"}},
+        view=BlockingView(),
+        system_state={},
+    )
+    manager.agent = BlockingAgent()
+    manager._bootstrap_done = True
+    monkeypatch.setattr(manager_module, "SystemTicker", None)
+
+    start_task = asyncio.create_task(manager.start())
+    await asyncio.wait_for(startup_blocked.wait(), timeout=1.0)
+    start_task.cancel()
+    await asyncio.wait_for(cleanup_started.wait(), timeout=1.0)
+
+    start_task.cancel()
+    await asyncio.sleep(0)
+    assert not cleanup_finished.is_set()
+
+    allow_cleanup.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(start_task, timeout=2.0)
+
+    assert cleanup_finished.is_set()
