@@ -267,7 +267,11 @@ optional (`on_load`, `on_unload`, `on_event`, and `on_state_update`).
 When making an incompatible change to hook signatures or lifecycle semantics,
 introduce a new version deliberately and document migration steps before enabling
 it. Prefer additive optional hooks and optional arguments for backwards-compatible
-changes. The current manager accepts only the host's exact integer API version and
+changes.
+
+Plugin event and state callbacks run against a snapshot of the active registry. A
+plugin registered or replaced during a callback becomes eligible on the next
+dispatch pass, so lifecycle changes cannot invalidate the in-progress iteration. The current manager accepts only the host's exact integer API version and
 rejects unsupported, boolean, or non-integer declarations before calling
 `on_load`; an incompatible same-name replacement cannot displace the working
 plugin. A future multi-version transition must explicitly define the supported
