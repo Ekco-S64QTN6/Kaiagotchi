@@ -48,9 +48,10 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Make Manager startup cleanup-owned: cancellation or an exception during View, ticker, or
-  Agent startup now stops already-created components before propagating. Shield the bounded
-  teardown from repeated cancellation and cover each await boundary with synthetic tests.
+- Make Manager startup cleanup-owned: cancellation while awaiting View, ticker, or Agent
+  startup stops already-created components before propagating. Fatal bootstrap and Agent
+  startup failures also trigger teardown. Shield the bounded cleanup from repeated
+  cancellation and cover each await boundary with synthetic tests.
 
 - Dispatch event and state callbacks over a snapshot of active plugins. Plugins registered
   or replaced from within a callback become eligible on the next dispatch pass, avoiding
