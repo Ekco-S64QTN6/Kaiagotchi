@@ -44,8 +44,9 @@ features or capture-backend changes.
    a plugin. Event and state dispatch now iterate stable snapshots, so registration or
    replacement inside a hook takes effect on the next pass. `unload_all()` also snapshots
    its initial registry, so a hook removing a peer cannot skip that peer's unload callback.
-   Registration and re-entrant `unload_all()` from hooks are rejected/guarded. Continue
-   validating future API-version declarations before supporting a newer hook contract.
+   Registration and re-entrant `unload_all()` from hooks are rejected/guarded. Synthetic
+   tests now cover inherited/explicit v1 declarations and reject booleans, strings, None,
+   integral floats, zero, negative, and unsupported future integer versions before hooks.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
@@ -56,6 +57,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Exercise strict plugin API-version declaration boundaries with synthetic plugins: inherited and explicit v1 are accepted, while boolean, string, None, integral-float, zero, negative, and unsupported future integer declarations are rejected before lifecycle hooks.
 
 - Validate Packet and Enhanced Packet captured lengths against the snaplen of each packet's referenced interface, including full capture, truncation, and zero-as-unlimited cases.
 
