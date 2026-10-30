@@ -134,6 +134,7 @@ def _pcapng_section_header(
     byte_order_magic: bytes = bytes.fromhex("4d 3c 2b 1a"),
     options: bytes = b"",
     major_version: int = 1,
+    minor_version: int = 0,
     section_length: int = -1,
 ) -> bytes:
     """Build a synthetic little-endian PCAPNG Section Header Block."""
@@ -146,7 +147,7 @@ def _pcapng_section_header(
         bytes.fromhex("0a 0d 0d 0a")
         + struct.pack("<I", declared_length)
         + byte_order_magic
-        + struct.pack("<HHq", major_version, 0, section_length)
+        + struct.pack("<HHq", major_version, minor_version, section_length)
         + options
         + struct.pack("<I", trailer_length)
     )
@@ -1904,6 +1905,17 @@ def test_pcapng_preflight_ignores_nonzero_interface_description_reserved_field(
     capture.write_bytes(
         _pcapng_section_header()
         + _pcapng_interface_block(reserved=reserved)
+    )
+
+    assert validate_file(str(capture))
+
+def test_pcapng_preflight_treats_minor_version_2_as_minor_version_zero(
+    tmp_path,
+):
+    capture = tmp_path / "section-minor-version-2.pcapng"
+    capture.write_bytes(
+        _pcapng_section_header(minor_version=2)
+        + _pcapng_interface_block()
     )
 
     assert validate_file(str(capture))
