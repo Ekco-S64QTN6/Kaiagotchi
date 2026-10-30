@@ -305,6 +305,7 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
     monkeypatch.setattr(
         monitor, "_archive_pcap_sync", lambda: archive_calls.append(True)
     )
+
     def cleanup_capture():
         cleanup_calls.append(True)
         monitor._capture_tmp_dir = None
