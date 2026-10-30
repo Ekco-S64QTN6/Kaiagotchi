@@ -240,7 +240,6 @@ def test_malformed_plugin_api_version_is_rejected_before_load(api_version):
     assert "malformed-version" not in manager.plugins
 
 
-
 def test_dispatch_event_uses_snapshot_when_callback_registers_plugin():
     manager = PluginManager()
     late_plugin = LifecyclePlugin("late-event-plugin")
