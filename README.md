@@ -223,7 +223,9 @@ snapshots.
 ### PCAP input validation
 
 Before parsing, Kaiagotchi rejects missing or empty files and files whose first
-four bytes do not match a known classic PCAP or PCAPNG signature. The extension
+four bytes do not match a known classic PCAP or PCAPNG signature. The PCAPNG reader
+ignores the Interface Description Block's reserved field as required for readers,
+even though writers must set it to zero. The extension
 is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
 integrity check; the preflight scan verifies PCAPNG section byte order and finite

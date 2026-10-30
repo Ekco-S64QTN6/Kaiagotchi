@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Preserve PCAPNG reader compatibility by ignoring the Interface Description Block's reserved field, with synthetic nonzero-value regressions.
 - Require the four-byte PEN field in both standardized PCAPNG Custom Block types while leaving vendor-defined custom data opaque, with synthetic acceptance/rejection fixtures.
 - Validate Packet and Enhanced Packet Block flags: reject undefined direction/reception values and nonzero reserved bits 12–15, while preserving checksum/offload and link-layer-specific bits, with synthetic little-/big-endian fixtures.
 - Enforce the PCAPNG Packet and Enhanced Packet Block captured-length rule against the snaplen of the packet's referenced interface, including zero-as-unlimited behavior, with synthetic full/truncated/mismatch fixtures.
