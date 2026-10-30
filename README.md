@@ -230,10 +230,9 @@ is advisory: nonstandard extensions produce a warning, but a recognized capture
 signature is accepted. This is a lightweight preflight check, not a full
 integrity check; the preflight scan verifies PCAPNG section byte order and finite
 Section Header Block length boundaries, treats minor version 2 as equivalent to 0,
-checks block boundaries and declared lengths,
-trailing lengths, packet captured lengths, option framing and known fixed-size
-values across section, interface, packet, name
-resolution, interface statistics, and decryption secrets blocks, supported
+checks block boundaries, declared/trailing lengths, packet captured lengths, option
+framing and known fixed-size values across section, interface, packet, name resolution,
+interface statistics, and decryption secrets blocks, supported
 section-header major versions, packet and statistics interface references,
 mandatory Name Resolution Block record terminators and known-record lengths,
 Decryption Secrets Block data extents, zero-filled alignment padding for option
