@@ -106,6 +106,20 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                 7: 1,  # epb_verdict starts with its verdict-type identifier.
             },
         }
+        # Only enforce multiplicity for standardized options whose current
+        # PCAPNG definition explicitly disallows repeats. Unknown/vendor options
+        # remain opaque, and common comments/custom options remain repeatable.
+        single_occurrence_options_by_block = {
+            None: {2, 3, 4},  # Section Header Block.
+            1: {2, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18},
+            2: {2, 4},  # Obsolete Packet Block.
+            4: {2, 3, 4},  # Name Resolution Block.
+            5: {2, 3, 4, 5, 6, 7, 8},  # Interface Statistics Block.
+            6: {2, 4, 5, 6, 8},  # Enhanced Packet Block.
+        }
+        custom_option_codes = {2988, 2989, 19372, 19373}
+        seen_option_codes: set[int] = set()
+        interface_speed_values: dict[int, int] = {}
         option_offset = options_start
         while option_offset < options_end:
             if options_end - option_offset < 4:
@@ -128,6 +142,20 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             option_end = option_offset + 4 + padded_length
             if option_end > options_end:
                 return f"option at offset {option_offset} exceeds its block boundary"
+
+            if (
+                option_code
+                in single_occurrence_options_by_block.get(block_type_value, set())
+                and option_code in seen_option_codes
+            ):
+                return f"option code {option_code} may appear only once in this block"
+            seen_option_codes.add(option_code)
+
+            if option_code in custom_option_codes and option_length < 4:
+                return (
+                    f"custom option code {option_code} must have value length "
+                    f"at least 4, got {option_length}"
+                )
 
             fixed_lengths = fixed_lengths_by_block.get(block_type_value, {})
             expected_length = fixed_lengths.get(option_code)
@@ -178,7 +206,34 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         f"value length {expected_verdict_length + 1}, got {option_length}"
                     )
 
+            if block_type_value == 1 and option_code in {8, 16, 17}:
+                capture_file.seek(option_offset + 4)
+                speed_value = capture_file.read(8)
+                if len(speed_value) != 8:
+                    return f"truncated interface speed option at offset {option_offset}"
+                interface_speed_values[option_code] = struct.unpack(
+                    endian + "Q", speed_value
+                )[0]
+
             option_offset = option_end
+
+        if block_type_value == 1:
+            if 8 in interface_speed_values and (
+                16 in interface_speed_values or 17 in interface_speed_values
+            ):
+                return (
+                    "interface if_speed option code 8 cannot be combined with "
+                    "directional if_txspeed/if_rxspeed options"
+                )
+            if (
+                16 in interface_speed_values
+                and 17 in interface_speed_values
+                and interface_speed_values[16] == interface_speed_values[17]
+            ):
+                return (
+                    "interface if_txspeed and if_rxspeed must not both be used "
+                    "when their values are equal; use if_speed instead"
+                )
 
         # PCAPNG permits option lists to end at the end of their enclosing block
         # without an explicit end-of-options marker.
