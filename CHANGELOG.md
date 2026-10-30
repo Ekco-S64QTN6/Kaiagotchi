@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Reduce the advisory mypy baseline by annotating the 5 GHz Wi-Fi channel accumulator as `list[int]`; CI measured 95 errors across 17 source files, down from 96 across 18.
 - Correct EPB option multiplicity so multiple process/thread ID pairs are accepted alongside repeatable packet hashes and verdicts, with a synthetic regression.
 - Verify that concatenated PCAPNG sections may switch byte order independently at each section boundary, with synthetic finite-length little-to-big and big-to-little fixtures.
 - Preserve PCAPNG section reader compatibility by accepting minor version 2 as equivalent to minor version 0, with a synthetic section-header regression.
