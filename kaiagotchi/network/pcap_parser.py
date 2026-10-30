@@ -79,6 +79,24 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         )
         return False
 
+    def alignment_padding_error(
+        data_offset: int,
+        value_length: int,
+        padded_length: int,
+        description: str,
+    ) -> str | None:
+        """Check only the at-most-three alignment bytes required to be zero."""
+        padding_length = padded_length - value_length
+        if padding_length <= 0:
+            return None
+        capture_file.seek(data_offset + value_length)
+        padding = capture_file.read(padding_length)
+        if len(padding) != padding_length:
+            return f"{description} has truncated alignment padding"
+        if any(padding):
+            return f"{description} has nonzero alignment padding"
+        return None
+
     def option_error(
         options_start: int, options_end: int, block_type_value: int | None
     ) -> str | None:
@@ -142,6 +160,15 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             option_end = option_offset + 4 + padded_length
             if option_end > options_end:
                 return f"option at offset {option_offset} exceeds its block boundary"
+
+            padding_problem = alignment_padding_error(
+                option_offset + 4,
+                option_length,
+                padded_length,
+                f"option at offset {option_offset}",
+            )
+            if padding_problem is not None:
+                return padding_problem
 
             if (
                 option_code
@@ -371,6 +398,14 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"packet block at offset {offset} has captured length exceeding available block data"
                         )
+                    padding_problem = alignment_padding_error(
+                        offset + 28,
+                        captured_length,
+                        padded_capture_length,
+                        f"packet data in block at offset {offset}",
+                    )
+                    if padding_problem is not None:
+                        return reject(padding_problem)
                     options_start = offset + 28 + padded_capture_length
                 elif block_type_value == 3:
                     if block_length < 16:
@@ -409,6 +444,14 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             f"inconsistent with original length and interface snaplen "
                             f"(expected {expected_block_length}, got {block_length})"
                         )
+                    padding_problem = alignment_padding_error(
+                        offset + 12,
+                        captured_length,
+                        padded_capture_length,
+                        f"simple packet data in block at offset {offset}",
+                    )
+                    if padding_problem is not None:
+                        return reject(padding_problem)
 
                 elif block_type_value == 4:
                     # Name Resolution Blocks contain a record TLV list followed
@@ -452,6 +495,15 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                             return reject(
                                 f"name resolution block at offset {offset} has a record exceeding its block boundary"
                             )
+
+                        padding_problem = alignment_padding_error(
+                            record_offset + 4,
+                            record_length,
+                            padded_record_length,
+                            f"name resolution record at offset {record_offset}",
+                        )
+                        if padding_problem is not None:
+                            return reject(padding_problem)
 
                         minimum_length = minimum_record_lengths.get(record_type)
                         if minimum_length is not None:
@@ -513,6 +565,14 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"decryption secrets block at offset {offset} has secrets data exceeding its block boundary"
                         )
+                    padding_problem = alignment_padding_error(
+                        offset + 16,
+                        secrets_length,
+                        padded_secrets_length,
+                        f"decryption secrets data in block at offset {offset}",
+                    )
+                    if padding_problem is not None:
+                        return reject(padding_problem)
 
                 if options_start is not None:
                     options_end = block_end - 4
