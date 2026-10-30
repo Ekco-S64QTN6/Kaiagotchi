@@ -136,8 +136,12 @@ class PluginManager:
             self._unloading = False
 
     def dispatch_event(self, event_name: str, data: Any = None):
-        """Dispatch an event to all enabled plugins."""
-        for plugin in self.plugins.values():
+        """Dispatch an event to a stable snapshot of enabled plugins.
+
+        Plugins registered or replaced by a callback participate on the next
+        dispatch pass, not in the pass already in progress.
+        """
+        for plugin in tuple(self.plugins.values()):
             if plugin.enabled:
                 try:
                     plugin.on_event(event_name, data)
@@ -145,8 +149,12 @@ class PluginManager:
                     _LOG.error(f"Error in on_event for plugin {plugin.name}: {e}")
 
     def dispatch_state_update(self, state: dict[str, Any]):
-        """Dispatch state update to all enabled plugins."""
-        for plugin in self.plugins.values():
+        """Dispatch state to a stable snapshot of enabled plugins.
+
+        Plugins registered or replaced by a callback participate on the next
+        dispatch pass, not in the pass already in progress.
+        """
+        for plugin in tuple(self.plugins.values()):
             if plugin.enabled:
                 try:
                     plugin.on_state_update(state)

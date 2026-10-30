@@ -238,3 +238,59 @@ def test_malformed_plugin_api_version_is_rejected_before_load(api_version):
     assert plugin.load_called is False
     assert plugin.unload_called is False
     assert "malformed-version" not in manager.plugins
+
+
+def test_dispatch_event_uses_snapshot_when_callback_registers_plugin():
+    manager = PluginManager()
+    late_plugin = LifecyclePlugin("late-event-plugin")
+
+    class RegisteringPlugin(LifecyclePlugin):
+        def __init__(self):
+            super().__init__("registering-event-plugin")
+            self.registered = False
+
+        def on_event(self, event_name, data=None):
+            super().on_event(event_name, data)
+            if not self.registered:
+                self.registered = manager.register_plugin(late_plugin)
+
+    current_plugin = RegisteringPlugin()
+    assert manager.register_plugin(current_plugin) is True
+
+    manager.dispatch_event("snapshot-test")
+
+    assert current_plugin.event_called is True
+    assert current_plugin.registered is True
+    assert late_plugin.event_called is False
+    assert manager.plugins[late_plugin.name] is late_plugin
+
+    manager.dispatch_event("next-pass")
+    assert late_plugin.event_called is True
+
+
+def test_dispatch_state_update_uses_snapshot_when_callback_registers_plugin():
+    manager = PluginManager()
+    late_plugin = LifecyclePlugin("late-state-plugin")
+
+    class RegisteringPlugin(LifecyclePlugin):
+        def __init__(self):
+            super().__init__("registering-state-plugin")
+            self.registered = False
+
+        def on_state_update(self, state):
+            super().on_state_update(state)
+            if not self.registered:
+                self.registered = manager.register_plugin(late_plugin)
+
+    current_plugin = RegisteringPlugin()
+    assert manager.register_plugin(current_plugin) is True
+
+    manager.dispatch_state_update({})
+
+    assert current_plugin.state_called is True
+    assert current_plugin.registered is True
+    assert late_plugin.state_called is False
+    assert manager.plugins[late_plugin.name] is late_plugin
+
+    manager.dispatch_state_update({})
+    assert late_plugin.state_called is True

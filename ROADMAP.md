@@ -31,8 +31,10 @@ features or capture-backend changes.
    preservation when optional counters/channels are absent.
 4. **Plugin lifecycle** — host API version 1 is now explicit and inherited by legacy
    subclasses; the manager rejects unsupported declarations before loading or replacing
-   a plugin. Continue testing unload hooks that mutate manager state and support for
-   future hook versions. Registration and re-entrant `unload_all()` are already guarded.
+   a plugin. Event and state dispatch now iterate stable snapshots, so registration or
+   replacement inside a hook takes effect on the next pass. Continue testing unload
+   hooks that mutate manager state and support for future hook versions; registration
+   and re-entrant `unload_all()` are already guarded.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
@@ -43,6 +45,10 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Dispatch event and state callbacks over a snapshot of active plugins. Plugins registered
+  or replaced from within a callback become eligible on the next dispatch pass, avoiding
+  dictionary-size errors and keeping each pass's membership stable.
 
 - Validate Simple Packet Block payload sizes against the first interface's snaplen, treating
   zero snaplen as unlimited, and fail closed before parsing malformed/truncated payloads.
