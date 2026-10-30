@@ -1921,6 +1921,7 @@ def test_pcapng_preflight_treats_minor_version_2_as_minor_version_zero(
 
     assert validate_file(str(capture))
 
+
 def test_pcapng_preflight_accepts_multiple_epb_process_thread_id_options(tmp_path):
     capture = tmp_path / "multiple-epb-process-thread-ids.pcapng"
     options = (
