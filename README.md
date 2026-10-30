@@ -295,11 +295,12 @@ Plugin event and state callbacks run against a snapshot of the active registry. 
 plugin registered or replaced during a callback becomes eligible on the next
 dispatch pass, so lifecycle changes cannot invalidate the in-progress iteration.
 
-The current manager accepts only the host's exact integer API version and rejects
-unsupported, boolean, or non-integer declarations before calling
-`on_load`; an incompatible same-name replacement cannot displace the working
-plugin. A future multi-version transition must explicitly define the supported
-version set and test each version before the host starts accepting it.
+The current manager accepts only an integer exactly equal to the host's API
+version and rejects unsupported integers, booleans, strings, and numeric floats
+(including `1.0`) before calling `on_load`; an incompatible same-name replacement
+cannot displace the working plugin. A future multi-version transition must explicitly
+define the supported version set and test each version before the host starts
+accepting it.
 
 A plugin is only registered for event/state dispatch after `on_load()` succeeds.
 If loading raises, the manager logs the failure and attempts `on_unload()` to
