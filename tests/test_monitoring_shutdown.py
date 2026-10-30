@@ -305,9 +305,11 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
     monkeypatch.setattr(
         monitor, "_archive_pcap_sync", lambda: archive_calls.append(True)
     )
-    monkeypatch.setattr(
-        monitor, "_cleanup_capture_temp_dir", lambda: cleanup_calls.append(True)
-    )
+    def cleanup_capture():
+        cleanup_calls.append(True)
+        monitor._capture_tmp_dir = None
+
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", cleanup_capture)
 
     await monitor.stop()
 
@@ -331,9 +333,7 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
     assert process.wait_attempts == 3
     assert process.returncode == 0
     assert monitor._process is None
-    assert monitor._capture_tmp_dir == "/private/capture"
+    assert monitor._capture_tmp_dir is None
     restore_managed_mode.assert_awaited_once()
     assert archive_calls == [True]
-    # This test deliberately leaves temp cleanup as a separate recovery check;
-    # the archive fake does not remove or rewrite the capture directory.
     assert cleanup_calls == [True]
