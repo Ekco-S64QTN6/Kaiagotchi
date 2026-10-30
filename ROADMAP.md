@@ -55,8 +55,10 @@ features or capture-backend changes.
    integral floats, zero, negative, and unsupported future integer versions before hooks.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
-   uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
-   across 18 source files and full reports attached for systematic triage.
+   uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
+   measured baseline is 95 errors across 17 source files, with full reports attached for
+   systematic triage. An explicit `list[int]` annotation in `mesh/wifi.py` removed one
+   inference error without changing channel generation.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
