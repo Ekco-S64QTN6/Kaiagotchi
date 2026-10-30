@@ -461,10 +461,10 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     captured_length, original_length = struct.unpack(
                         endian + "II", packet_lengths
                     )
-                    if captured_length > original_length:
-                        return reject(
-                            f"packet block at offset {offset} has captured length greater than original length"
-                        )
+                    # Some pass-through capture files preserve an original
+                    # length smaller than the captured length. PCAPNG readers
+                    # may normalize that metadata; captured bytes remain bounded
+                    # by the block body and the interface snaplen below.
                     interface_snaplen = interface_snaplens[interface_id]
                     # Snaplen is an upper bound, not a requirement to
                     # capture every packet up to that exact length. Packet
