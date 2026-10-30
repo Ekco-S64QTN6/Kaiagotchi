@@ -202,6 +202,17 @@ def test_legacy_plugin_inherits_current_api_version_without_changes():
     assert plugin.load_called is True
 
 
+def test_plugin_can_explicitly_declare_supported_api_version():
+    class ExplicitVersionPlugin(LifecyclePlugin):
+        PLUGIN_API_VERSION = PLUGIN_API_VERSION
+
+    plugin = ExplicitVersionPlugin("explicit-version-plugin")
+    manager = PluginManager()
+
+    assert manager.register_plugin(plugin) is True
+    assert plugin.load_called is True
+
+
 def test_incompatible_plugin_version_is_rejected_before_load_or_replacement():
     class IncompatiblePlugin(LifecyclePlugin):
         PLUGIN_API_VERSION = 2
@@ -223,8 +234,8 @@ def test_incompatible_plugin_version_is_rejected_before_load_or_replacement():
 
 @pytest.mark.parametrize(
     "api_version",
-    [True, "1", None],
-    ids=["boolean", "string", "missing"],
+    [True, "1", None, 1.0, 0, -1],
+    ids=["boolean", "string", "none", "integral-float", "zero", "negative"],
 )
 def test_malformed_plugin_api_version_is_rejected_before_load(api_version):
     class MalformedPlugin(LifecyclePlugin):
