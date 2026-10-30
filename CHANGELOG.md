@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Enforce the PCAPNG Packet and Enhanced Packet Block captured-length rule against the snaplen of the packet's referenced interface, including zero-as-unlimited behavior, with synthetic full/truncated/mismatch fixtures.
 - Validate signed PCAPNG Section Header Block section lengths: accept the -1 unspecified-length sentinel and exact finite section lengths, enforce four-byte alignment, and reject section/block boundary mismatches across concatenated sections in both byte orders.
 - Validate zero-filled PCAPNG alignment padding in option values, Name Resolution records, Decryption Secrets data, and Packet/Enhanced Packet/Simple Packet payloads using bounded synthetic fixtures.
 - Enforce PCAPNG standardized option multiplicity with synthetic fixtures: reject repeated singleton options while preserving repeatable comments/custom extensions, multiple interface addresses, and packet hashes/verdicts; require the four-byte PEN prefix in custom options and enforce interface-speed option exclusivity.
