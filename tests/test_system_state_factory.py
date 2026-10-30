@@ -3,6 +3,7 @@
 from kaiagotchi.data.system_types import (
     AccessPoint,
     GlobalSystemState,
+    InterfaceState,
     NetworkState,
     SessionMetrics,
     SystemMetrics,
@@ -48,3 +49,21 @@ def test_minimal_state_instances_do_not_share_mutable_defaults():
     assert second.aps_list == []
     assert second.network.access_points == {}
     assert second.session_metrics.handshakes_secured == 0
+
+
+def test_unrecoverable_access_point_does_not_discard_valid_network_state():
+    valid_bssid = "02:00:00:00:00:01"
+    state = SystemState(
+        network={
+            "interfaces": {
+                "wlan-test": InterfaceState(name="wlan-test"),
+            },
+            "access_points": {
+                "invalid-bssid-key": None,
+                valid_bssid: AccessPoint(bssid=valid_bssid),
+            },
+        }
+    )
+
+    assert set(state.network.interfaces) == {"wlan-test"}
+    assert set(state.network.access_points) == {valid_bssid}

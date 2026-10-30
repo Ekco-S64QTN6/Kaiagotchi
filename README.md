@@ -161,6 +161,10 @@ typed model's default factories for network, system, and session metrics. The
 CLI, manager, and base agent share this constructor rather than maintaining
 separate copies of the nested defaults.
 
+Network snapshots are recovered best-effort. If an access-point entry cannot be
+reconstructed from its value or fallback BSSID key, only that entry is skipped;
+valid interfaces and other access points remain available.
+
 ### Reward state contract
 
 `RewardEngine.evaluate()` accepts a dictionary snapshot or a Pydantic model
