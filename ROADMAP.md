@@ -24,9 +24,10 @@ features or capture-backend changes.
    snaplen, validates Packet/Enhanced Packet flag enumerations and reserved bits,
    validates Name Resolution Block records and their mandatory terminator, checks
    fixed/minimum lengths and singleton-option multiplicity (including custom-option
-   PEN prefixes and interface-speed consistency), checks zero-filled alignment padding
-   for all padded metadata/packet data, and checks Simple Packet Block payload size
-   against interface snaplen. Never use real captures or credentials.
+   PEN prefixes and interface-speed consistency), validates the PEN field in standardized
+   Custom Blocks, checks zero-filled alignment padding for all padded metadata/packet
+   data, and checks Simple Packet Block payload size against interface snaplen.
+   Never use real captures or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
@@ -58,6 +59,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Require the four-byte PEN field in the standardized copyable/non-copyable PCAPNG Custom Block types while keeping vendor-defined data opaque; retain generic framing-only handling for other local-use block types.
 
 - Validate Packet/Enhanced Packet flags for defined direction and reception values and zero reserved bits 12–15, while preserving checksum/offload and link-layer-specific flag bits with synthetic little-/big-endian captures.
 
