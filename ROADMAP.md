@@ -20,7 +20,8 @@ features or capture-backend changes.
    block-specific constraints, and packet payloads. The preflight validates supported
    section major versions, resets interface references per section, checks packet and
    statistics interface references, validates Name Resolution Block records and their
-   mandatory terminator, and checks metadata option/data boundaries alongside
+   mandatory terminator, checks fixed and minimum option lengths (including typed
+   packet hashes/verdicts), and checks metadata option/data boundaries alongside
    Simple Packet Block payload size against interface snaplen. Never use real captures
    or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
