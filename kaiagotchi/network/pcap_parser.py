@@ -268,6 +268,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
     endian: str | None = None
     offset = 0
+    section_end_offset: int | None = None
     interface_count = 0
     interface_snaplens: list[int] = []
     try:
@@ -284,6 +285,15 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
                 is_section_header = block_type == _PCAPNG_MAGIC
                 if is_section_header:
+                    if (
+                        section_end_offset is not None
+                        and offset != section_end_offset
+                    ):
+                        return reject(
+                            f"section at offset {offset} begins before or after "
+                            f"the previous section's declared end "
+                            f"{section_end_offset}"
+                        )
                     byte_order_magic = capture_file.read(4)
                     if byte_order_magic == b"\x1a\x2b\x3c\x4d":
                         endian = ">"
@@ -315,6 +325,17 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     return reject(
                         f"block at offset {offset} extends beyond end of file"
                     )
+                if not is_section_header and section_end_offset is not None:
+                    if offset >= section_end_offset:
+                        return reject(
+                            f"block at offset {offset} starts at or beyond the "
+                            f"declared section end {section_end_offset}"
+                        )
+                    if block_end > section_end_offset:
+                        return reject(
+                            f"block at offset {offset} extends beyond the declared "
+                            f"section end {section_end_offset}"
+                        )
 
                 if is_section_header:
                     capture_file.seek(offset + 12)
@@ -328,6 +349,33 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         return reject(
                             f"unsupported section header major version {major_version}"
                         )
+
+                    capture_file.seek(offset + 16)
+                    section_length_bytes = capture_file.read(8)
+                    if len(section_length_bytes) != 8:
+                        return reject("section header has a truncated section length")
+                    section_length = struct.unpack(
+                        endian + "q", section_length_bytes
+                    )[0]
+                    if section_length == -1:
+                        section_end_offset = None
+                    elif section_length < 0:
+                        return reject(
+                            f"section header at offset {offset} has invalid negative "
+                            f"section length {section_length}"
+                        )
+                    elif section_length % 4:
+                        return reject(
+                            f"section header at offset {offset} has a section length "
+                            f"that is not a multiple of four: {section_length}"
+                        )
+                    else:
+                        section_end_offset = block_end + section_length
+                        if section_end_offset > file_size:
+                            return reject(
+                                f"section header at offset {offset} declares an end "
+                                f"beyond the end of the file"
+                            )
 
                 block_type_value = (
                     None
@@ -605,7 +653,13 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         parser_logger.error("Unable to validate PCAPNG structure in %s: %s", path, exc)
         return False
 
-    return offset == file_size
+    if offset != file_size:
+        return reject("capture scan did not end at the file boundary")
+    if section_end_offset is not None and section_end_offset != file_size:
+        return reject(
+            f"final section ends at {section_end_offset}, not end of file {file_size}"
+        )
+    return True
 
 
 def validate_file(filepath: str) -> bool:

@@ -134,6 +134,7 @@ def _pcapng_section_header(
     byte_order_magic: bytes = bytes.fromhex("4d 3c 2b 1a"),
     options: bytes = b"",
     major_version: int = 1,
+    section_length: int = -1,
 ) -> bytes:
     """Build a synthetic little-endian PCAPNG Section Header Block."""
     actual_length = 28 + len(options)
@@ -145,7 +146,7 @@ def _pcapng_section_header(
         bytes.fromhex("0a 0d 0d 0a")
         + struct.pack("<I", declared_length)
         + byte_order_magic
-        + struct.pack("<HHq", major_version, 0, -1)
+        + struct.pack("<HHq", major_version, 0, section_length)
         + options
         + struct.pack("<I", trailer_length)
     )
@@ -1435,4 +1436,121 @@ def test_pcapng_preflight_rejects_nonzero_packet_alignment_padding(
 
     assert "nonzero alignment padding" in caplog.text.lower()
     assert "packet data" in caplog.text.lower()
+
+def test_pcapng_preflight_accepts_exact_finite_section_length(tmp_path):
+    capture = tmp_path / "finite-section.pcapng"
+    section_body = _pcapng_interface_block()
+    capture.write_bytes(
+        _pcapng_section_header(section_length=len(section_body))
+        + section_body
+    )
+
+    assert validate_file(str(capture))
+
+
+def test_pcapng_preflight_accepts_multiple_finite_sections(tmp_path):
+    capture = tmp_path / "multiple-finite-sections.pcapng"
+    first_body = _pcapng_interface_block()
+    second_body = _pcapng_interface_block()
+    capture.write_bytes(
+        _pcapng_section_header(section_length=len(first_body))
+        + first_body
+        + _pcapng_section_header(section_length=len(second_body))
+        + second_body
+    )
+
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("section_length", "expected_reason"),
+    [
+        pytest.param(3, "not a multiple of four", id="not-four-byte-aligned"),
+        pytest.param(-2, "invalid negative section length", id="invalid-negative"),
+    ],
+)
+def test_pcapng_preflight_rejects_invalid_section_length_fields(
+    tmp_path, caplog, section_length, expected_reason
+):
+    capture = tmp_path / "invalid-section-length-field.pcapng"
+    capture.write_bytes(_pcapng_section_header(section_length=section_length))
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert expected_reason in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_section_length_that_cuts_through_a_block(
+    tmp_path, caplog
+):
+    capture = tmp_path / "section-length-cuts-block.pcapng"
+    section_body = _pcapng_interface_block()
+    capture.write_bytes(
+        _pcapng_section_header(section_length=len(section_body) - 4)
+        + section_body
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "extends beyond the declared section end" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_section_length_past_end_of_file(
+    tmp_path, caplog
+):
+    capture = tmp_path / "section-length-past-eof.pcapng"
+    section_body = _pcapng_interface_block()
+    capture.write_bytes(
+        _pcapng_section_header(section_length=len(section_body) + 4)
+        + section_body
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "declares an end beyond the end of the file" in caplog.text.lower()
+
+
+def test_pcapng_preflight_rejects_next_section_before_declared_end(
+    tmp_path, caplog
+):
+    capture = tmp_path / "next-section-before-declared-end.pcapng"
+    section_body = _pcapng_interface_block()
+    next_section = _pcapng_section_header(section_length=0)
+    capture.write_bytes(
+        _pcapng_section_header(section_length=len(section_body) + 4)
+        + section_body
+        + next_section
+    )
+
+    with caplog.at_level(logging.ERROR, logger="pcap_parser"):
+        assert not validate_file(str(capture))
+
+    assert "begins before or after" in caplog.text.lower()
+
+def test_pcapng_preflight_accepts_big_endian_finite_section_length(tmp_path):
+    capture = tmp_path / "big-endian-finite-section.pcapng"
+    section_body = (
+        struct.pack(">IIHHI", 1, 20, 105, 0, 65535)
+        + struct.pack(">I", 20)
+    )
+    section_header = (
+        bytes.fromhex("0a 0d 0d 0a")
+        + struct.pack(">I", 28)
+        + bytes.fromhex("1a 2b 3c 4d")
+        + struct.pack(">HHq", 1, 0, len(section_body))
+        + struct.pack(">I", 28)
+    )
+    capture.write_bytes(section_header + section_body)
+
+    assert validate_file(str(capture))
+
+
+def test_pcapng_preflight_accepts_empty_finite_section(tmp_path):
+    capture = tmp_path / "empty-finite-section.pcapng"
+    capture.write_bytes(_pcapng_section_header(section_length=0))
+
+    assert validate_file(str(capture))
 
