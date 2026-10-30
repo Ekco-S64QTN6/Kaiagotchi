@@ -27,8 +27,9 @@ features or capture-backend changes.
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
    caller cancellation until bounded process reaping and cleanup finish; failed graceful
-   or post-kill waits retain the child handle and capture files for a later retry. Continue
-   testing process-reap failures and verifying shutdown ordering.
+   or post-kill waits retain the child handle and capture files for a later retry. Synthetic
+   tests now assert the shutdown side-effect order: reap child, restore managed mode,
+   archive capture, remove private temp data, persist network/mood state, then emit summary.
 3. **Reward and mood contract** — extend tests for typed mood aliases, partial/stale
    snapshots, and malformed discovery inputs. README documents accepted snapshot
    fields, precedence, authoritative zeros, discovery deduplication, and baseline
@@ -49,6 +50,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Assert monitor shutdown ordering with a synthetic process and persistence doubles: child reaping precedes managed-mode restoration, which precedes capture archiving/temp cleanup and network/mood persistence.
 
 - Validate PCAPNG Name Resolution Block record boundaries, known-record minimum lengths and name terminators, block-specific DNS/statistics option lengths, Interface Statistics Block interface references, and Decryption Secrets Block data/option boundaries with synthetic fixtures.
 
