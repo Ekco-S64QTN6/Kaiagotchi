@@ -340,7 +340,6 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
     assert cleanup_calls == [True]
 
 
-
 @pytest.mark.asyncio
 async def test_stop_orders_reaping_restore_archive_and_persistence(monkeypatch):
     monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
