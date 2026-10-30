@@ -294,3 +294,26 @@ def test_dispatch_state_update_uses_snapshot_when_callback_registers_plugin():
 
     manager.dispatch_state_update({})
     assert late_plugin.state_called is True
+
+def test_unload_all_finishes_snapshot_when_hook_removes_another_plugin():
+    manager = PluginManager()
+    peer = LifecyclePlugin("peer")
+
+    class RemovingPeerPlugin(LifecyclePlugin):
+        def on_unload(self):
+            self.unload_called = True
+            assert manager.plugins.pop(peer.name) is peer
+
+    remover = RemovingPeerPlugin("remover")
+    assert manager.register_plugin(remover) is True
+    assert manager.register_plugin(peer) is True
+
+    manager.unload_all()
+
+    # unload_all snapshots every registered plugin before invoking hooks.
+    # A peer removed by an earlier hook still receives its unload callback.
+    assert remover.unload_called is True
+    assert peer.unload_called is True
+    assert manager.plugins == {}
+    assert manager._unloading is False
+
