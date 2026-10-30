@@ -659,6 +659,24 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     )
                     if padding_problem is not None:
                         return reject(padding_problem)
+                elif block_type_value in {0x00000BAD, 0x40000BAD}:
+                    # Standardized Custom Blocks always carry a four-byte PEN.
+                    # The vendor-defined Custom Data remains opaque here.
+                    if block_length < 16:
+                        return reject(
+                            f"custom block at offset {offset} is too short to "
+                            "contain its private enterprise number"
+                        )
+                    capture_file.seek(offset + 8)
+                    private_enterprise_number = capture_file.read(4)
+                    if len(private_enterprise_number) != 4:
+                        return reject(
+                            f"custom block at offset {offset} has a truncated "
+                            "private enterprise number"
+                        )
+                    # Decode in section byte order to validate the field scope,
+                    # but leave the vendor-defined value uninterpreted.
+                    struct.unpack(endian + "I", private_enterprise_number)
 
                 if options_start is not None:
                     options_end = block_end - 4
