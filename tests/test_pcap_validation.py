@@ -259,11 +259,20 @@ def _pcapng_simple_packet_block(
 
 
 def _pcapng_packet_block(
-    packet: bytes, *, options: bytes = b"", interface_id: int = 0
+    packet: bytes,
+    *,
+    options: bytes = b"",
+    interface_id: int = 0,
+    captured_length: int | None = None,
+    original_length: int | None = None,
 ) -> bytes:
     """Build an obsolete-style Packet Block to exercise parsing and option framing."""
     padded_packet = packet + (b"\x00" * (-len(packet) % 4))
     block_length = 32 + len(padded_packet) + len(options)
+    if captured_length is None:
+        captured_length = len(packet)
+    if original_length is None:
+        original_length = len(packet)
     return (
         struct.pack(
             "<IIHHIIII",
@@ -273,8 +282,8 @@ def _pcapng_packet_block(
             0,  # drops count
             0,  # timestamp high
             0,  # timestamp low
-            len(packet),
-            len(packet),
+            captured_length,
+            original_length,
         )
         + padded_packet
         + options
