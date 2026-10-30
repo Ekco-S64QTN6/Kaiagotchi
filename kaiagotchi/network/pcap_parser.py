@@ -353,7 +353,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                                     f"name resolution record type {record_type} must have value length at least {minimum_length}, got {record_length}"
                                 )
                             capture_file.seek(record_value_end - 1)
-                            if capture_file.read(1) != b"\\x00":
+                            if capture_file.read(1) != bytes([0]):
                                 return reject(
                                     f"name resolution record type {record_type} is not NUL terminated"
                                 )
