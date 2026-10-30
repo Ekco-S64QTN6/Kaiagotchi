@@ -1642,26 +1642,22 @@ def test_pcapng_preflight_accepts_packet_captured_length_for_interface_snaplen(
 
 
 @pytest.mark.parametrize(
-    ("block_kind", "snaplen", "captured_size"),
+    ("block_kind", "snaplen"),
     [
-        pytest.param("packet", 12, None, id="packet-exceeds-snaplen"),
-        pytest.param("packet", 65535, 12, id="packet-under-captured"),
-        pytest.param("packet", 0, 12, id="packet-zero-snaplen-under-captured"),
-        pytest.param("enhanced-packet", 12, None, id="epb-exceeds-snaplen"),
-        pytest.param("enhanced-packet", 65535, 12, id="epb-under-captured"),
-        pytest.param("enhanced-packet", 0, 12, id="epb-zero-snaplen-under-captured"),
+        pytest.param("packet", 16, id="packet-shorter-than-snaplen"),
+        pytest.param("packet", 65535, id="packet-shorter-than-large-snaplen"),
+        pytest.param("packet", 0, id="packet-shorter-than-unlimited-snaplen"),
+        pytest.param("enhanced-packet", 16, id="epb-shorter-than-snaplen"),
+        pytest.param("enhanced-packet", 65535, id="epb-shorter-than-large-snaplen"),
+        pytest.param("enhanced-packet", 0, id="epb-shorter-than-unlimited-snaplen"),
     ],
 )
-def test_pcapng_preflight_rejects_packet_captured_length_inconsistent_with_snaplen(
-    tmp_path, caplog, block_kind, snaplen, captured_size
+def test_pcapng_preflight_accepts_packet_captured_length_below_snaplen(
+    tmp_path, block_kind, snaplen
 ):
-    capture = tmp_path / f"invalid-{block_kind}-snaplen.pcapng"
+    capture = tmp_path / f"short-capture-{block_kind}-{snaplen}.pcapng"
     original_packet = _synthetic_beacon()
-    captured_packet = (
-        original_packet
-        if captured_size is None
-        else original_packet[:captured_size]
-    )
+    captured_packet = original_packet[:12]
     packet_args = {
         "captured_length": len(captured_packet),
         "original_length": len(original_packet),
@@ -1678,11 +1674,41 @@ def test_pcapng_preflight_rejects_packet_captured_length_inconsistent_with_snapl
         + packet_block
     )
 
+    assert validate_file(str(capture))
+
+
+@pytest.mark.parametrize(
+    ("block_kind", "snaplen"),
+    [
+        pytest.param("packet", 12, id="packet-exceeds-snaplen"),
+        pytest.param("enhanced-packet", 12, id="epb-exceeds-snaplen"),
+    ],
+)
+def test_pcapng_preflight_rejects_packet_captured_length_exceeding_snaplen(
+    tmp_path, caplog, block_kind, snaplen
+):
+    capture = tmp_path / f"invalid-{block_kind}-snaplen.pcapng"
+    original_packet = _synthetic_beacon()
+    packet_args = {
+        "captured_length": len(original_packet),
+        "original_length": len(original_packet),
+    }
+    if block_kind == "packet":
+        packet_block = _pcapng_packet_block(original_packet, **packet_args)
+    else:
+        packet_block = _pcapng_enhanced_packet_block(
+            original_packet, **packet_args
+        )
+    capture.write_bytes(
+        _pcapng_section_header()
+        + _pcapng_interface_block(snaplen=snaplen)
+        + packet_block
+    )
+
     with caplog.at_level(logging.ERROR, logger="pcap_parser"):
         assert not validate_file(str(capture))
 
-    assert "inconsistent with interface snaplen" in caplog.text.lower()
-
+    assert "exceeding interface snaplen" in caplog.text.lower()
 
 @pytest.mark.parametrize("block_kind", ["packet", "enhanced-packet"])
 def test_pcapng_preflight_uses_referenced_interface_snaplen(
@@ -1710,6 +1736,7 @@ def test_pcapng_preflight_uses_referenced_interface_snaplen(
     )
 
     assert validate_file(str(capture))
+
 
 @pytest.mark.parametrize(
     ("block_kind", "flags"),

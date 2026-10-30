@@ -245,10 +245,11 @@ values, Name Resolution records, secrets, and packet payloads, and Simple Packet
 Block payload lengths against the first interface's snaplen without loading packet
 bodies or secret contents into memory.
 A snaplen of zero means no limit. Legacy Packet and Enhanced Packet captured
-lengths must equal the minimum of the original packet length and the referenced
-interface's snaplen. Packet flags validate direction/reception enumerations and
-zero reserved bits while preserving link-layer-specific error flags. Interface
-transmit/receive speeds, enhanced-packet IDs, queue numbers, and process/thread IDs
+lengths may be shorter than the original packet, but cannot exceed either the
+original length or a nonzero snaplen. Packet flags validate direction/reception
+enumerations and zero reserved bits while preserving link-layer-specific error
+flags. Interface transmit/receive speeds, enhanced-packet IDs, queue numbers, and
+process/thread IDs
 are checked against their fixed lengths;
 interface-filter, packet-hash, verdict, and custom options enforce their minimum or
 type-dependent lengths, including the four-byte private-enterprise number in custom

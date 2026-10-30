@@ -23,7 +23,8 @@ features or capture-backend changes.
    equivalent to 0; ignores the Interface Description Block reserved
    field as required for readers and resets interface references per section. It checks
    packet and statistics interface references, Packet/Enhanced Packet captured lengths
-   against each referenced interface's snaplen, and Packet/Enhanced Packet flag
+   against each referenced interface's snaplen as an upper bound (allowing shorter
+   captures), and Packet/Enhanced Packet flag
    enumerations and reserved bits;
    validates Name Resolution Block records and their mandatory terminator, checks
    fixed/minimum lengths and singleton-option multiplicity while preserving
@@ -66,6 +67,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Treat PCAPNG interface snaplen as a maximum rather than an exact capture-length target; accept valid shorter Packet and Enhanced Packet captures while rejecting lengths above snaplen.
 
 - Preserve typed network state when an access-point record cannot be reconstructed from its value or fallback BSSID key: skip only that record instead of discarding the full network snapshot. A synthetic regression verifies that valid interfaces and other access points survive.
 
