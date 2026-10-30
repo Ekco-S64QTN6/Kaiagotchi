@@ -40,9 +40,10 @@ features or capture-backend changes.
 4. **Plugin lifecycle** — host API version 1 is now explicit and inherited by legacy
    subclasses; the manager rejects unsupported declarations before loading or replacing
    a plugin. Event and state dispatch now iterate stable snapshots, so registration or
-   replacement inside a hook takes effect on the next pass. Continue testing unload
-   hooks that mutate manager state and support for future hook versions; registration
-   and re-entrant `unload_all()` are already guarded.
+   replacement inside a hook takes effect on the next pass. `unload_all()` also snapshots
+   its initial registry, so a hook removing a peer cannot skip that peer's unload callback.
+   Registration and re-entrant `unload_all()` from hooks are rejected/guarded. Continue
+   validating future API-version declarations before supporting a newer hook contract.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory with 92 errors
@@ -53,6 +54,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Verify `PluginManager.unload_all()` finishes invoking hooks from its initial registry snapshot even when an earlier unload hook removes a peer from the live registry.
 
 - Assert monitor shutdown ordering with a synthetic process and persistence doubles: child reaping precedes managed-mode restoration, which precedes capture archiving/temp cleanup and network/mood persistence.
 
