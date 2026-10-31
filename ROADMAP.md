@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Model `SystemTicker` output with a `TypedDict` so nullable CPU/uptime values, memory maps, temperature, and timestamps keep distinct types; allow synchronous or awaitable callbacks and await async callbacks instead of dropping their coroutine; test regular sync, native async, and sync-wrapped awaitable callbacks with deterministic metric snapshots.
+- Model `SystemTicker` output with a `TypedDict` so nullable CPU/uptime values, memory maps, temperature, and timestamps keep distinct types; allow synchronous or awaitable callbacks and await async callbacks instead of dropping their coroutine; test regular sync, native async, and sync-wrapped awaitable callbacks with deterministic metric snapshots. Also propagate available temperature readings into `SystemState.metrics` while preserving the last known reading when the sensor is unavailable.
 
 - Call the inherited async Agent decision cycle directly and await any awaitable returned by view shutdown hooks, including synchronous wrappers; add synthetic coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 across 9.
 
