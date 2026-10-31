@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission.
+
 - Type the `iw` and `iwconfig` interface-info result mappings explicitly so textual mode values and numeric channel values share a safe `dict[str, Any]` shape; add synthetic subprocess coverage for parsed monitor mode and channel number; reduce the measured mypy baseline from 81 to 80 errors across 16 source files.
 
 - Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping; reduce the measured mypy baseline from 83 to 81 errors across 16 source files.
