@@ -510,13 +510,13 @@ async def run_agent() -> int:
                                 fallback_exit_code = 1
                             return fallback_exit_code
 
-                        waiting: list[asyncio.Task[Any]] = [
+                        legacy_startup_tasks: list[asyncio.Task[Any]] = [
                             startup_barrier,
                             shutdown_wait,
                             agent_start_task,
                         ]
                         done, _pending = await asyncio.wait(
-                            waiting,
+                            legacy_startup_tasks,
                             return_when=asyncio.FIRST_COMPLETED,
                         )
                         if shutdown_wait in done:
