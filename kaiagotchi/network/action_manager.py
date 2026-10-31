@@ -25,7 +25,7 @@ class InterfaceActionManager:
         self._channel_hop_disabled_logged = False
 
         # ✅ Shared View reference for UI updates
-        self.view = None
+        self.view: Any | None = None
 
         # Channel hopping setup
         self._channel_list = config.get("personality", {}).get("channels", [])
