@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Model `SystemTicker` output with a `TypedDict` so nullable CPU/uptime values, memory maps, temperature, and timestamps keep distinct types; allow synchronous or awaitable callbacks and await async callbacks instead of dropping their coroutine; test regular sync, native async, and sync-wrapped awaitable callbacks with deterministic metric snapshots.
+
 - Call the inherited async Agent decision cycle directly and await any awaitable returned by view shutdown hooks, including synchronous wrappers; add synthetic coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 across 9.
 
 - Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback; remove the remaining voice translator finding and reduce the measured mypy baseline from 65 errors across 10 files to 62 errors across 9 files.
