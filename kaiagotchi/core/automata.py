@@ -72,7 +72,7 @@ class Automata:
         # Mood coordination and debouncing
         self._mood_change_lock = asyncio.Lock()
         self._mood_update_in_progress = False
-        self._last_mood_check = 0
+        self._last_mood_check: float = 0.0
         self._mood_check_interval = 2.0  # Only check mood every 2 seconds
 
         _LOG.debug(
@@ -358,7 +358,7 @@ class Automata:
         while self._running:
             try:
                 if callable(self._state_getter):
-                    state = (
+                    state: dict[str, Any] = (
                         await self._state_getter()
                         if asyncio.iscoroutinefunction(self._state_getter)
                         else self._state_getter()

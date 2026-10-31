@@ -58,7 +58,7 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 90 errors across 16 source files, with full reports attached for
+   measured baseline is 87 errors across 16 source files, with full reports attached for
    systematic triage. Explicit container annotations in `mesh/wifi.py`,
    `network/interface_monitor.py`, and `ai/epoch.py` have removed six inference
    errors since the 96-error, 18-file baseline without changing runtime behavior.
@@ -68,6 +68,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Add explicit types to plugin status storage and Automata's debounce timer/loop snapshot; cover non-object JSON status roots with a regression that confirms the invalid file is not rewritten until an explicit update; reduce the measured mypy baseline from 90 to 87 errors across 16 source files.
 
 - Add explicit types for Epoch's AP, station, and capture snapshots and its floating-point duration; this removes four straightforward mypy findings without changing runtime behavior.
 

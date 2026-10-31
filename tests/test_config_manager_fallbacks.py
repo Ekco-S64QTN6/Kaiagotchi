@@ -1,4 +1,5 @@
 import builtins
+import json
 from pathlib import Path
 
 import tomlkit
@@ -74,6 +75,18 @@ def test_status_file_saves_bare_relative_filename(tmp_path, monkeypatch):
     status.set("state", "ready")
 
     assert StatusFile("plugin-status.json").get("state") == "ready"
+
+
+def test_status_file_ignores_non_object_json_root(tmp_path):
+    path = tmp_path / "plugin-status.json"
+    path.write_text("[]", encoding="utf-8")
+
+    status = StatusFile(str(path))
+    assert status.get("state", "missing") == "missing"
+    assert path.read_text(encoding="utf-8") == "[]"
+
+    status.set("state", "ready")
+    assert json.loads(path.read_text(encoding="utf-8")) == {"state": "ready"}
 
 
 def test_core_utils_save_config_supports_relative_filename(tmp_path, monkeypatch):
