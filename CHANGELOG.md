@@ -4,7 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
-- Explicitly type wireless `iw`/`iwconfig` parser result mappings and add a synthetic subprocess regression for mode and integer channel extraction.
+- Explicitly type wireless `iw`/`iwconfig` parser result mappings and add a synthetic subprocess regression for mode and integer channel extraction, reducing the measured mypy baseline from 81 to 80 errors across 16 source files.
 - Make splash-image ASCII conversion use distinct character, flattened-buffer, and row variables; add a synthetic image regression for grayscale mapping and fixed-width output, reducing the measured mypy baseline from 83 to 81 errors across 16 source files.
 - Add explicit types for wireless-interface records and merged interface snapshots, with synthetic regression coverage for parsed type/channel fields and all aggregate status outcomes; reduce the measured mypy baseline from 87 to 83 errors across 16 source files.
 - Type `StatusFile`'s JSON state and Automata's debounce timer/loop snapshot explicitly; cover safe fallback from non-object status-file roots and verify the file is rewritten only on an explicit update, reducing the measured mypy baseline from 90 to 87 errors across 16 source files.
