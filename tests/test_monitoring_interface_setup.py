@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import os
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -378,3 +380,25 @@ async def test_cancelled_during_startup_summary_stops_running_capture(monkeypatc
     assert monitor._loop_task is None
     assert restored is True
     assert stop_summaries == ["Monitoring stopped."]
+
+
+
+@pytest.mark.asyncio
+async def test_update_state_keeps_unknown_channel_unset():
+    state = {}
+    view = SimpleNamespace(
+        state={"channel": None},
+        async_update=AsyncMock(),
+        display=None,
+    )
+    monitor = MonitoringAgent(
+        interface="wlan1",
+        view=view,
+        config={},
+        system_state=state,
+    )
+
+    await monitor._update_state([], [])
+
+    assert "network" not in state
+    view.async_update.assert_awaited_once()

@@ -1077,12 +1077,14 @@ class MonitoringAgent:
         current_channel: int | None = None
         view_state = getattr(self.view, "state", None)
         if isinstance(view_state, dict):
-            try:
-                candidate = int(view_state.get("channel"))
-                if 1 <= candidate <= 165:
-                    current_channel = candidate
-            except (TypeError, ValueError):
-                pass
+            channel_value = view_state.get("channel")
+            if channel_value is not None:
+                try:
+                    candidate = int(channel_value)
+                    if 1 <= candidate <= 165:
+                        current_channel = candidate
+                except (TypeError, ValueError):
+                    pass
 
         # Get recent captures for epoch tracking
         recent_captures = self._get_recent_captures_list()
