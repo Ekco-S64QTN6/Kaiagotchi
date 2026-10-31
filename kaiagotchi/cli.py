@@ -394,7 +394,7 @@ async def run_agent() -> int:
                             manager_startup_observed = True
                             continue
 
-                        waiting = [shutdown_wait]
+                        waiting: list[asyncio.Task[Any]] = [shutdown_wait]
                         if not startup_barrier.done():
                             waiting.append(startup_barrier)
                         if not manager_startup_observed and not manager_task.done():
@@ -510,8 +510,13 @@ async def run_agent() -> int:
                                 fallback_exit_code = 1
                             return fallback_exit_code
 
+                        waiting: list[asyncio.Task[Any]] = [
+                            startup_barrier,
+                            shutdown_wait,
+                            agent_start_task,
+                        ]
                         done, _pending = await asyncio.wait(
-                            [startup_barrier, shutdown_wait, agent_start_task],
+                            waiting,
                             return_when=asyncio.FIRST_COMPLETED,
                         )
                         if shutdown_wait in done:
