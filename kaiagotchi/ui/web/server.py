@@ -389,7 +389,7 @@ class WebServer:
 
     # ── Request Handlers ──────────────────────────────────────
 
-    async def _handle_index(self, request: web.Request) -> web.Response:
+    async def _handle_index(self, request: web.Request) -> web.StreamResponse:
         """Serve index.html."""
         index_file = _STATIC_DIR / "index.html"
         if index_file.is_file():
@@ -532,7 +532,8 @@ class WebServer:
                 m = re.match(r"^\[(\d{2}:\d{2}:\d{2})\]\s*(.*)$", entry)
                 chatter.append({"time": m.group(1) if m else "", "type": "info", "text": m.group(2) if m else entry})
 
-        net = snap.get("network") if isinstance(snap.get("network"), dict) else {}
+        network_snapshot = snap.get("network")
+        net = network_snapshot if isinstance(network_snapshot, dict) else {}
         channel = _to_int(snap.get("channel")) or _to_int(net.get("current_channel"))
         on_channel = [a["pwr"] for a in aps if a["ch"] == channel and a["pwr"] is not None]
 

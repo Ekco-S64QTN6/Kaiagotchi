@@ -4,6 +4,7 @@ Tests for the Kaiagotchi Cyber-Deck web server and telemetry serialization.
 from types import SimpleNamespace
 
 import pytest
+from aiohttp import web
 
 from kaiagotchi.config.manager import load_config as load_legacy_config
 from kaiagotchi.ui.web.server import WebServer, _generate_mock_snapshot
@@ -88,6 +89,26 @@ def test_serialize_snapshot():
     assert out["stations"][1]["status"] == "PROBING"
 
     assert out["chatter"][0] == {"time": "12:00:00", "type": "info", "text": "Initialized"}
+
+
+@pytest.mark.asyncio
+async def test_index_handler_returns_file_response_for_existing_asset(tmp_path, monkeypatch):
+    import kaiagotchi.ui.web.server as server_module
+
+    index_file = tmp_path / "index.html"
+    index_file.write_text("<h1>Kaiagotchi</h1>", encoding="utf-8")
+    monkeypatch.setattr(server_module, "_STATIC_DIR", tmp_path)
+
+    response = await WebServer()._handle_index(SimpleNamespace())
+
+    assert isinstance(response, web.FileResponse)
+
+
+def test_serialize_snapshot_tolerates_explicit_null_network():
+    output = WebServer()._serialize_snapshot({"aps_list": [], "network": None})
+
+    assert output["current_channel"] is None
+    assert output["current_rssi"] is None
 
 
 def test_serialize_does_not_invent_metrics():
