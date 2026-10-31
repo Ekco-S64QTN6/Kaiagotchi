@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides.
+- Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides; reduce the measured mypy baseline from 79 to 78 errors across 16 source files.
 
 - Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission; reduce the measured mypy baseline from 80 to 79 errors across 16 source files.
 
