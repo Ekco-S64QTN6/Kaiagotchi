@@ -4,7 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
-- Type `StatusFile`'s JSON state and Automata's debounce timer/loop snapshot explicitly; cover safe fallback from non-object status-file roots and verify the file is rewritten only on an explicit update.
+- Type `StatusFile`'s JSON state and Automata's debounce timer/loop snapshot explicitly; cover safe fallback from non-object status-file roots and verify the file is rewritten only on an explicit update, reducing the measured mypy baseline from 90 to 87 errors across 16 source files.
 - Add explicit types to Epoch network/capture snapshots and elapsed-duration state, reducing the measured mypy baseline from 94 to 90 errors across 16 source files without changing runtime behavior.
 - Track managed-mode restoration failures during monitor shutdown and retry only the adapter restoration on a later stop, without repeating completed capture archiving, persistence, or shutdown summaries; reject starting another capture until restoration succeeds.
 - Preserve PCAPNG reader compatibility with pass-through captures whose original packet-length metadata is smaller than captured length; keep snaplen and block-data bounds enforced, and cover both Packet and Enhanced Packet Blocks with synthetic parser regressions.
