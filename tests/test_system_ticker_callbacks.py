@@ -1,5 +1,9 @@
 import asyncio
 
+import pytest
+
+import asyncio
+
 import kaiagotchi.core.system as system_module
 from kaiagotchi.core.system import SystemTicker
 
@@ -26,6 +30,7 @@ def expected_snapshot():
     }
 
 
+@pytest.mark.asyncio
 async def test_system_ticker_calls_synchronous_on_tick_callback(monkeypatch):
     stub_system_metrics(monkeypatch)
     snapshots = []
@@ -42,6 +47,7 @@ async def test_system_ticker_calls_synchronous_on_tick_callback(monkeypatch):
     assert ticker._last_update == 1700.0
 
 
+@pytest.mark.asyncio
 async def test_system_ticker_awaits_asynchronous_on_tick_callback(monkeypatch):
     stub_system_metrics(monkeypatch)
     snapshots = []
