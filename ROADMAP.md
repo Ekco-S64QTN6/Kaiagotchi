@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping.
+- Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping; reduce the measured mypy baseline from 83 to 81 errors across 16 source files.
 
 - Type the `iw dev` mixed wireless-interface records and the aggregate interface snapshot explicitly; cover wireless type/channel parsing plus READY, NET_DOWN, and NO_INTERFACES aggregation with synthetic fixtures; reduce the measured mypy baseline from 87 to 83 errors across 16 source files.
 
