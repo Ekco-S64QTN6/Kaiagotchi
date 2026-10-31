@@ -17,36 +17,54 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kaiagotchi.config.config import load_config
 from kaiagotchi.data.system_types import GlobalSystemState, SystemState
 from kaiagotchi.ui.view import View
+
+if TYPE_CHECKING:
+    import kaiagotchi.agent.agent
+    import kaiagotchi.core.manager
+    import kaiagotchi.ui.splash
+    import kaiagotchi.ui.terminal_display
+    import kaiagotchi.ui.web.server
 
 logger = logging.getLogger("kaiagotchi.cli")
 
 # Preferred local log directory (created lazily in setup_logging()).
 local_logs = Path(__file__).resolve().parent.parent / "logs"
 
-# Optional imports (Manager preferred)
-Manager = None
-Agent = None
+# Optional imports (Manager preferred). Keep typed None fallbacks so the
+# legacy CLI path remains available when optional subsystems cannot be loaded.
+Manager: type[kaiagotchi.core.manager.Manager] | None = None
 try:
-    from kaiagotchi.core.manager import Manager  # preferred orchestrator
+    from kaiagotchi.core.manager import Manager as _Manager
 except Exception:
-    Manager = None
+    pass
+else:
+    Manager = _Manager
 
+Agent: type[kaiagotchi.agent.agent.Agent] | None = None
+SplashScreen: type[kaiagotchi.ui.splash.SplashScreen] | None = None
+TerminalDisplay: type[kaiagotchi.ui.terminal_display.TerminalDisplay] | None = None
+WebServer: type[kaiagotchi.ui.web.server.WebServer] | None = None
 try:
-    from kaiagotchi.agent.agent import Agent
-    from kaiagotchi.ui.splash import SplashScreen
-    from kaiagotchi.ui.terminal_display import TerminalDisplay
-    from kaiagotchi.ui.web.server import WebServer
-except Exception as e:
-    logger.error("Failed to import core subsystems (Agent/UI/Splash/Web): %s", e, exc_info=True)
-    Agent = None
-    SplashScreen = None
-    TerminalDisplay = None
-    WebServer = None
+    from kaiagotchi.agent.agent import Agent as _Agent
+    from kaiagotchi.ui.splash import SplashScreen as _SplashScreen
+    from kaiagotchi.ui.terminal_display import TerminalDisplay as _TerminalDisplay
+    from kaiagotchi.ui.web.server import WebServer as _WebServer
+except Exception as exc:
+    logger.error(
+        "Failed to import core subsystems (Agent/UI/Splash/Web): %s",
+        exc,
+        exc_info=True,
+    )
+else:
+    Agent = _Agent
+    SplashScreen = _SplashScreen
+    TerminalDisplay = _TerminalDisplay
+    WebServer = _WebServer
 
 # Global flag for shutdown
 _shutdown_event = asyncio.Event()
