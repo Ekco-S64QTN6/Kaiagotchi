@@ -323,11 +323,14 @@ async def run_agent() -> int:
 
         # Show splash screen (after View init so it clears screen first)
         splash = None
-        try:
-            splash = SplashScreen()
-            # Don't await here, we'll do it in parallel with startup
-        except Exception as e:
-            logger.warning(f"Failed to init splash screen: {e}")
+        if SplashScreen is not None:
+            try:
+                splash = SplashScreen()
+                # Don't await here, we'll do it in parallel with startup
+            except Exception as e:
+                logger.warning(f"Failed to init splash screen: {e}")
+        else:
+            logger.warning("Splash screen implementation is unavailable")
 
         # Prefer Manager if it exists (wires AI subsystems and orchestrates lifecycle)
         if Manager is not None:
