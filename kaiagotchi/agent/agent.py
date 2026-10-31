@@ -14,6 +14,7 @@
 """
 
 import asyncio
+import inspect
 import logging
 import time
 from typing import Any
@@ -327,26 +328,9 @@ class Agent(kaiagotchiBase):
         self.logger.debug("Decision loop started (delay=%s)", delay)
         while self._running:
             try:
-                if hasattr(super(), "run_decision_cycle"):
-                    func = super().run_decision_cycle
-                    if asyncio.iscoroutinefunction(func):
-                        await func()
-                    else:
-                        loop = asyncio.get_running_loop()
-                        await loop.run_in_executor(None, func)
-                else:
-                    state_dict = {
-                        "current_system_state": getattr(self.system_state, "current_system_state", None),
-                        "network": {
-                            "access_points": getattr(self.system_state.network, "access_points", {}),
-                            "interfaces": getattr(self.system_state.network, "interfaces", {}),
-                        },
-                        "metrics": getattr(self.system_state, "metrics", {}),
-                        "session_metrics": getattr(self.system_state, "session_metrics", {}),
-                    }
-                    result = await self.decision_engine.process_state(state_dict, self.action_manager)
-                    if hasattr(result, "name"):
-                        self.logger.debug("DecisionEngine state: %s", result.name)
+                # kaiagotchiBase defines this as async; call it directly rather
+                # than routing a coroutine function through an executor.
+                await super().run_decision_cycle()
 
                 if self.epoch_tracker:
                     loop = asyncio.get_running_loop()
@@ -508,10 +492,9 @@ class Agent(kaiagotchiBase):
 
         if self._view and hasattr(self._view, "on_shutdown"):
             try:
-                if asyncio.iscoroutinefunction(self._view.on_shutdown):
-                    await self._view.on_shutdown()
-                else:
-                    self._view.on_shutdown()
+                shutdown_result = self._view.on_shutdown()
+                if inspect.isawaitable(shutdown_result):
+                    await shutdown_result
                 self.logger.info("View on_shutdown() executed")
             except Exception as e:
                 self.logger.error(f"View.on_shutdown() failed: {e}")

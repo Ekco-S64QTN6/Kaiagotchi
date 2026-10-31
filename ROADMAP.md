@@ -58,9 +58,9 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 64 errors across 9 source files, with full reports attached for
+   measured baseline is 62 errors across 9 source files, with full reports attached for
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 64 errors across 9 files. Recent modules
+   96-error, 18-file starting point to 62 errors across 9 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
    `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, `ui/terminal_display.py`, and `ui/voice/voice.py`.
 6. **Operator validation** — checklist documented at
@@ -70,7 +70,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback; remove the remaining voice translator finding and reduce the measured mypy baseline from 65 errors across 10 files to 64 errors across 9 files.
+- Call the inherited async Agent decision cycle directly and await any awaitable returned by view shutdown hooks, including synchronous wrappers; add synthetic coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 across 9.
+
+- Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback; remove the remaining voice translator finding and reduce the measured mypy baseline from 65 errors across 10 files to 62 errors across 9 files.
 
 - Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout; remove all 13 `terminal_display.py` findings and reduce the measured mypy baseline from 78 errors across 11 files to 65 errors across 10 files.
 
