@@ -58,11 +58,14 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 50 errors across 7 source files, with full reports attached for
+   measured baseline is 8 errors across 1 source file, with full reports attached for
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 50 errors across 7 files. Recent modules
+   96-error, 18-file starting point to 8 errors across 1 file. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
-   `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, `ui/terminal_display.py`, and `ui/voice/voice.py`, `core/system.py`.
+   `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`,
+   `agent/decision_engine.py`, `ui/terminal_display.py`, `ui/voice/voice.py`,
+   `core/system.py`, `core/manager.py`, `cli.py`, `agent/monitoring_agent.py`,
+   `ui/web/server.py`, and `network/pcap_parser.py`.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
@@ -70,7 +73,14 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Propagate available sensor temperature readings into `SystemState.metrics.temperature` while preserving the last known value when a sensor read is unavailable; cover both paths with deterministic ticker fixtures.
+- Normalize Scapy's 802.11/EAPOL imports to their owning modules, pass a non-optional byte order into PCAPNG option validation, separate optional record lengths, and type eager/streaming packet sources as `Iterable[Packet]`; retain Section Header Block singleton-option validation and existing reader cleanup, reducing the verified mypy baseline from 21 errors across 2 files to 8 across 1.
+- Type the web index route as aiohttp's shared `StreamResponse` base and narrow the optional network snapshot once; add coverage for `FileResponse` and an explicit null network snapshot.
+- Make CLI optional subsystem imports explicitly nullable without evaluating optional class types at runtime; headless startup now handles a missing or broken splash implementation through a tested factory, and the CLI mypy findings are cleared.
+- Keep an unknown monitoring channel unset when the View snapshot contains `None`; avoid converting missing data or fabricating network state, with a regression for the unavailable-channel path.
+- Pass a `Path` to the Manager's configuration loader, type optional Agent/View/SystemTicker/State implementations while retaining import fallbacks, and await values returned by synchronous shutdown wrappers; add regressions for configured paths and wrapped async shutdown.
+- Preserve optional `RewardEngine` and `Epoch` exports with nullable class types while retaining the module's graceful import fallback.
+- Update shared system temperature only when a sensor reading is available, retaining the last known value during sensor dropouts.
+- Type Agent's optional ActionManager lifecycle state and the optional ActionManager view; setup narrows the concrete manager, while shutdown tolerates partial initialization without losing persisted state.
 
 - Type the base Agent action manager as optional and narrow the constructed manager during setup; cleanup now tolerates a missing manager after partial initialization. Explicitly type the optional view on `InterfaceActionManager`, cover the uninitialized cleanup path, remove all four Agent mypy findings, and reduce the measured baseline from 54 errors across 8 files to 50 across 7.
 
