@@ -69,7 +69,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Add explicit types to plugin status storage and Automata's debounce timer/loop snapshot; cover non-object JSON status roots with a regression that confirms the invalid file is not rewritten until an explicit update.
+- Add explicit types to plugin status storage and Automata's debounce timer/loop snapshot; cover non-object JSON status roots with a regression that confirms the invalid file is not rewritten until an explicit update; reduce the measured mypy baseline from 90 to 87 errors across 16 source files.
 
 - Add explicit types for Epoch's AP, station, and capture snapshots and its floating-point duration; this removes four straightforward mypy findings without changing runtime behavior.
 
