@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Update `SystemState.metrics.temperature` from successful ticker sensor reads while retaining the last known reading when temperature is unavailable, with synthetic regression coverage.
 - Type the heterogeneous `SystemTicker` metric snapshot and await async `on_tick` callbacks while retaining synchronous callbacks; cover synchronous, asynchronous, and sync-wrapper-returned awaitables, removing all six `core/system.py` mypy findings and reducing the measured baseline from 62 errors across 9 files to 54 errors across 8 files.
 - Await the Agent's async decision cycle directly and consume awaitables returned by view shutdown hooks, with regression coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 errors across 9 files.
 - Define a common callable type for gettext-backed and identity-fallback voice translation, with regression coverage for both paths; remove the voice translator mypy finding and reduce the measured baseline from 65 errors across 10 files to 64 errors across 9 files.
