@@ -144,7 +144,7 @@ class InterfaceMonitor:
                 check=False
             )
 
-            wireless_data = {}
+            wireless_data: dict[str, dict[str, bool | str]] = {}
             if proc.returncode == 0:
                 current_iface = None
                 for line in proc.stdout.split('\n'):
@@ -187,7 +187,7 @@ class InterfaceMonitor:
 
     def _merge_interface_data(self, *data_sources: dict[str, Any]) -> dict[str, Any]:
         """Merge data from multiple sources into unified interface state."""
-        merged = {
+        merged: dict[str, Any] = {
             "overall_status": "UNKNOWN",
             "interface_count": 0,
             "timestamp": time.time(),
