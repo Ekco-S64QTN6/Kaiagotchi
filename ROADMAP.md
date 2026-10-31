@@ -69,6 +69,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Add explicit types to plugin status storage and Automata's debounce timer/loop snapshot; cover non-object JSON status roots with a regression that confirms the invalid file is not rewritten until an explicit update.
+
 - Add explicit types for Epoch's AP, station, and capture snapshots and its floating-point duration; this removes four straightforward mypy findings without changing runtime behavior.
 
 - Treat PCAPNG interface snaplen as a maximum rather than an exact capture-length target; accept valid shorter Packet and Enhanced Packet captures while rejecting lengths above snaplen.
