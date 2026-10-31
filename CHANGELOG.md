@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Add explicit types to Epoch network/capture snapshots and elapsed-duration state to reduce four mypy findings without changing runtime behavior.
 - Track managed-mode restoration failures during monitor shutdown and retry only the adapter restoration on a later stop, without repeating completed capture archiving, persistence, or shutdown summaries; reject starting another capture until restoration succeeds.
 - Preserve PCAPNG reader compatibility with pass-through captures whose original packet-length metadata is smaller than captured length; keep snaplen and block-data bounds enforced, and cover both Packet and Enhanced Packet Blocks with synthetic parser regressions.
 - Keep legacy Packet Block option semantics separate from Enhanced Packet Blocks: option 4 remains an opaque unknown option there instead of being incorrectly required to be a singleton eight-byte drop counter; cover repeated unknown options with a synthetic fixture.
