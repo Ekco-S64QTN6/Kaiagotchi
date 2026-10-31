@@ -8,13 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from kaiagotchi.agent.agent import Agent as AgentType
-    from kaiagotchi.core.system import SystemTicker as SystemTickerType
-    from kaiagotchi.data.system_types import (
-        GlobalSystemState as GlobalSystemStateType,
-        SystemState as SystemStateType,
-    )
-    from kaiagotchi.ui.view import View as ViewType
+    import kaiagotchi.agent.agent
+    import kaiagotchi.core.system
+    import kaiagotchi.data.system_types
+    import kaiagotchi.ui.view
 
 try:
     from kaiagotchi.config.config import load_config
@@ -22,7 +19,7 @@ except Exception:
     def load_config(system_path: Path | None = None) -> dict[Any, Any]:
         return {}
 
-Agent: type[AgentType] | None = None
+Agent: type[kaiagotchi.agent.agent.Agent] | None = None
 try:
     from kaiagotchi.agent.agent import Agent as _Agent
 except Exception:
@@ -30,7 +27,7 @@ except Exception:
 else:
     Agent = _Agent
 
-ViewClass: type[ViewType] | None = None
+ViewClass: type[kaiagotchi.ui.view.View] | None = None
 try:
     from kaiagotchi.ui.view import View as _View
 except Exception:
@@ -38,7 +35,7 @@ except Exception:
 else:
     ViewClass = _View
 
-SystemTicker: type[SystemTickerType] | None = None
+SystemTicker: type[kaiagotchi.core.system.SystemTicker] | None = None
 try:
     from kaiagotchi.core.system import SystemTicker as _SystemTicker
 except Exception:
@@ -46,8 +43,8 @@ except Exception:
 else:
     SystemTicker = _SystemTicker
 
-GlobalSystemStateClass: type[GlobalSystemStateType] | None = None
-SystemStateClass: type[SystemStateType] | None = None
+GlobalSystemStateClass: type[kaiagotchi.data.system_types.GlobalSystemState] | None = None
+SystemStateClass: type[kaiagotchi.data.system_types.SystemState] | None = None
 try:
     from kaiagotchi.data.system_types import GlobalSystemState as _GlobalSystemState
     from kaiagotchi.data.system_types import SystemState as _SystemState
@@ -80,10 +77,10 @@ class Manager:
     ):
         self.config = config or {}
         self.view = view
-        self.agent: AgentType | None = None
+        self.agent: kaiagotchi.agent.agent.Agent | None = None
         self.system_state = system_state
         self._state_lock = state_lock or asyncio.Lock()
-        self._ticker: SystemTickerType | None = None
+        self._ticker: kaiagotchi.core.system.SystemTicker | None = None
         self._run_event: asyncio.Event | None = None
         self._bootstrap_done = False
         self._started = False
