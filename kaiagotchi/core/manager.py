@@ -46,8 +46,10 @@ else:
 GlobalSystemStateClass: type[kaiagotchi.data.system_types.GlobalSystemState] | None = None
 SystemStateClass: type[kaiagotchi.data.system_types.SystemState] | None = None
 try:
-    from kaiagotchi.data.system_types import GlobalSystemState as _GlobalSystemState
-    from kaiagotchi.data.system_types import SystemState as _SystemState
+    from kaiagotchi.data.system_types import (
+        GlobalSystemState as _GlobalSystemState,
+        SystemState as _SystemState,
+    )
 except Exception:
     pass
 else:
