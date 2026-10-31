@@ -17,6 +17,31 @@ class FakeProcess:
 
 
 @pytest.mark.asyncio
+async def test_get_iw_info_preserves_string_mode_and_integer_channel(monkeypatch):
+    manager = InterfaceActionManager({"main": {"iface": "wlan1"}})
+    output = (
+        b"Interface wlan1\n"
+        b"\ttype monitor\n"
+        b"\tchannel 6 (2437 MHz), width: 20 MHz\n"
+    )
+
+    async def fake_create_subprocess_exec(*command, **_kwargs):
+        assert command == ("iw", "dev", "wlan1", "info")
+        return FakeProcess(stdout=output)
+
+    monkeypatch.setattr(
+        action_manager_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    assert await manager._get_iw_info("wlan1") == {
+        "mode": "monitor",
+        "channel": 6,
+    }
+
+
+@pytest.mark.asyncio
 async def test_mode_changes_stay_pinned_to_capture_adapter(monkeypatch):
     calls = []
     manager = InterfaceActionManager({"main": {"iface": "wlan0"}})
