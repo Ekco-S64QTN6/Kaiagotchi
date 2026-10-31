@@ -48,7 +48,7 @@ class StatusFile:
 
     def __init__(self, path: str, data_format=None):  # Add data_format parameter
         self.path = path
-        self._data = {}
+        self._data: dict[str, Any] = {}
         self._data_format = data_format  # Store it even if unused
         self._load()
 
