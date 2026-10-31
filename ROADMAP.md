@@ -58,7 +58,7 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 83 errors across 16 source files, with full reports attached for
+   measured baseline is 81 errors across 16 source files, with full reports attached for
    systematic triage. Behavior-neutral type annotations across `mesh/wifi.py`,
    `network/interface_monitor.py`, `ai/epoch.py`, `core/automata.py`, and
    `core/utils.py` have reduced that baseline from 96 errors across 18 files to
