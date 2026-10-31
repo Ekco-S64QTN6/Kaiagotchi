@@ -59,9 +59,10 @@ features or capture-backend changes.
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
    measured baseline is 83 errors across 16 source files, with full reports attached for
-   systematic triage. Explicit container annotations in `mesh/wifi.py`,
-   `network/interface_monitor.py`, and `ai/epoch.py` have removed six inference
-   errors since the 96-error, 18-file baseline without changing runtime behavior.
+   systematic triage. Behavior-neutral type annotations across `mesh/wifi.py`,
+   `network/interface_monitor.py`, `ai/epoch.py`, `core/automata.py`, and
+   `core/utils.py` have reduced that baseline from 96 errors across 18 files to
+   83 errors across 16 files.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
