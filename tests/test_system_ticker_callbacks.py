@@ -84,3 +84,41 @@ async def test_system_ticker_awaits_awaitable_from_sync_callback(monkeypatch):
     assert snapshots == [expected_snapshot()]
     assert ticker._tick_count == 1
     assert ticker._last_update == 1700.0
+
+@pytest.mark.asyncio
+async def test_system_ticker_updates_temperature_when_sensor_is_available(monkeypatch):
+    from kaiagotchi.data.system_types import SystemState
+
+    monkeypatch.setattr(system_module, "uptime", lambda: None)
+    monkeypatch.setattr(system_module, "cpu_load", lambda: None)
+    monkeypatch.setattr(system_module, "mem_usage", lambda: {})
+    monkeypatch.setattr(system_module, "temperature", lambda: 48.5)
+    monkeypatch.setattr(system_module.time, "time", lambda: 1701.0)
+
+    state = SystemState()
+    state.metrics.temperature = 42.0
+    ticker = SystemTicker(system_state=state)
+
+    await ticker._tick()
+
+    assert state.metrics.temperature == 48.5
+
+
+@pytest.mark.asyncio
+async def test_system_ticker_preserves_last_temperature_when_sensor_unavailable(monkeypatch):
+    from kaiagotchi.data.system_types import SystemState
+
+    monkeypatch.setattr(system_module, "uptime", lambda: None)
+    monkeypatch.setattr(system_module, "cpu_load", lambda: None)
+    monkeypatch.setattr(system_module, "mem_usage", lambda: {})
+    monkeypatch.setattr(system_module, "temperature", lambda: None)
+    monkeypatch.setattr(system_module.time, "time", lambda: 1702.0)
+
+    state = SystemState()
+    state.metrics.temperature = 42.0
+    ticker = SystemTicker(system_state=state)
+
+    await ticker._tick()
+
+    assert state.metrics.temperature == 42.0
+
