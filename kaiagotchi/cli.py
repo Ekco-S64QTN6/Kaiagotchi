@@ -144,6 +144,18 @@ def _web_enabled(args: Any, config: dict[str, Any]) -> bool:
     return bool(web_config.get("enabled", True)) if isinstance(web_config, dict) else True
 
 
+def _create_splash_screen() -> Any | None:
+    """Create the optional splash screen without blocking headless startup."""
+    if SplashScreen is None:
+        logger.warning("Splash screen implementation is unavailable")
+        return None
+    try:
+        return SplashScreen()
+    except Exception as exc:
+        logger.warning("Failed to init splash screen: %s", exc)
+        return None
+
+
 def setup_logging(debug: bool = False) -> None:
     """Configure logging to separate debug from UI output."""
     # Try log directories in order of preference until we find one we can write to
@@ -322,15 +334,7 @@ async def run_agent() -> int:
         display_monitor_task = asyncio.create_task(monitor_display_quit())
 
         # Show splash screen (after View init so it clears screen first)
-        splash = None
-        if SplashScreen is not None:
-            try:
-                splash = SplashScreen()
-                # Don't await here, we'll do it in parallel with startup
-            except Exception as e:
-                logger.warning(f"Failed to init splash screen: {e}")
-        else:
-            logger.warning("Splash screen implementation is unavailable")
+        splash = _create_splash_screen()
 
         # Prefer Manager if it exists (wires AI subsystems and orchestrates lifecycle)
         if Manager is not None:
