@@ -58,9 +58,9 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 56 errors across 8 source files, with full reports attached for
+   measured baseline is 54 errors across 8 source files, with full reports attached for
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 56 errors across 8 files. Recent modules
+   96-error, 18-file starting point to 54 errors across 8 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
    `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, `ui/terminal_display.py`, and `ui/voice/voice.py`, `core/system.py`.
 6. **Operator validation** — checklist documented at
@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Model `SystemTicker` snapshots with a `TypedDict` and support both synchronous and awaitable callbacks; await callback results rather than dropping coroutines, handle unavailable uptime in CLI output, and cover synchronous, asynchronous, and sync-wrapper-returned awaitables with deterministic metric fixtures; reduce the measured mypy baseline from 62 errors across 9 files to 56 across 8.
+- Model `SystemTicker` snapshots with a `TypedDict` and support both synchronous and awaitable callbacks; await callback results rather than dropping coroutines, handle unavailable uptime in CLI output, and cover synchronous, asynchronous, and sync-wrapper-returned awaitables with deterministic metric fixtures; reduce the measured mypy baseline from 62 errors across 9 files to 54 across 8.
 
 - Call the inherited async Agent decision cycle directly and await any awaitable returned by view shutdown hooks, including synchronous wrappers; add synthetic coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 across 9.
 
