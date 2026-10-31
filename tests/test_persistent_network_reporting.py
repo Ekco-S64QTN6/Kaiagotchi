@@ -54,3 +54,23 @@ def test_explicit_save_still_forces_fresh_reports(tmp_path, monkeypatch):
 
     assert network.save()
     assert report_calls == ["report"]
+
+
+
+def test_report_generation_tolerates_missing_last_seen_timestamp(tmp_path):
+    network = _network(tmp_path)
+    network._data["bssids"]["AA:BB:CC:DD:EE:FF"] = {
+        "bssid": "AA:BB:CC:DD:EE:FF",
+        "essid": "timestamp-free-network",
+        "channel": 6,
+        "encryption": "WPA2",
+        "packets": 0,
+        "beacons": 0,
+        "last_seen": None,
+    }
+
+    network.generate_reports()
+
+    report = (tmp_path / "handshakes_summary.md").read_text(encoding="utf-8")
+    assert "timestamp-free-network" in report
+    assert "AA:BB:CC:DD:EE:FF" in report
