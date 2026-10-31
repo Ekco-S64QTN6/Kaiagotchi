@@ -81,8 +81,6 @@ features or capture-backend changes.
 - Preserve optional `RewardEngine` and `Epoch` exports with nullable class types while retaining the module's graceful import fallback.
 - Update shared system temperature only when a sensor reading is available, retaining the last known value during sensor dropouts.
 - Type Agent's optional ActionManager lifecycle state and the optional ActionManager view; setup narrows the concrete manager, while shutdown tolerates partial initialization without losing persisted state.
-- 
-- Propagate available sensor temperature readings into `SystemState.metrics.temperature` while preserving the last known value when a sensor read is unavailable; cover both paths with deterministic ticker fixtures.
 
 - Type the base Agent action manager as optional and narrow the constructed manager during setup; cleanup now tolerates a missing manager after partial initialization. Explicitly type the optional view on `InterfaceActionManager`, cover the uninitialized cleanup path, remove all four Agent mypy findings, and reduce the measured baseline from 54 errors across 8 files to 50 across 7.
 
