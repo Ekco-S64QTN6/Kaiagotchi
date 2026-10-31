@@ -19,6 +19,9 @@ import time
 from typing import TYPE_CHECKING, Any
 
 import kaiagotchi.plugins as plugins
+from kaiagotchi.data.system_types import AgentMood
+from kaiagotchi.ui import faces
+from kaiagotchi.ui.voice import Voice
 
 if TYPE_CHECKING:
     from kaiagotchi.ai.epoch import Epoch as EpochType
@@ -39,10 +42,6 @@ except Exception:
     pass
 else:
     Epoch = _Epoch
-
-from kaiagotchi.data.system_types import AgentMood
-from kaiagotchi.ui import faces
-from kaiagotchi.ui.voice import Voice
 
 _LOG = logging.getLogger("kaiagotchi.core.automata")
 
