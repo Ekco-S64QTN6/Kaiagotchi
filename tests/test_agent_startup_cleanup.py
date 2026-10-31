@@ -134,3 +134,27 @@ async def test_agent_stop_handles_all_view_shutdown_hook_results(hook_kind):
 
     assert calls == ["shutdown"]
     agent.action_manager.cleanup.assert_awaited_once_with()
+
+
+
+@pytest.mark.asyncio
+async def test_agent_stop_skips_action_manager_cleanup_when_uninitialized():
+    agent = Agent.__new__(Agent)
+    agent.logger = Mock()
+    agent._running = True
+    agent.automata = None
+    agent._update_task = None
+    agent._decision_task = None
+    agent._monitor_task = None
+    agent.monitoring_agent = None
+    agent.persistent_mood = None
+    agent.persistent_network = None
+    agent.last_session = SimpleNamespace(save=Mock())
+    agent.action_manager = None
+    agent.system_state = SimpleNamespace(mood="neutral")
+    agent._view = None
+
+    await agent.stop()
+
+    agent.last_session.save.assert_called_once_with()
+    assert agent._running is False
