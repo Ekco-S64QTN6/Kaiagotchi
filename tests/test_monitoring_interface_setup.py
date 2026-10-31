@@ -61,6 +61,18 @@ async def test_monitor_mode_setup_raises_when_iw_fails(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_start_refuses_new_capture_while_managed_mode_restore_is_pending():
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    monitor._managed_mode_restore_pending = True
+
+    with pytest.raises(RuntimeError, match="call stop\\(\\) to retry"):
+        await monitor.start()
+
+    assert monitor._running is False
+    assert monitor._loop_task is None
+
+
+@pytest.mark.asyncio
 async def test_monitoring_aborts_startup_if_monitor_mode_setup_fails(monkeypatch):
     monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
     restored = False
