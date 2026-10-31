@@ -106,7 +106,8 @@ class Agent(kaiagotchiBase):
         self.ui_delay = 1.0 / self.ui_fps
 
         # Initialize helpers
-        self.action_manager = InterfaceActionManager(config)
+        action_manager = InterfaceActionManager(config)
+        self.action_manager = action_manager
         self.last_session = LastSession()
         try:
             self.last_session.load()
@@ -125,7 +126,7 @@ class Agent(kaiagotchiBase):
         # Keep every channel operation on the capture dongle. [main].iface can
         # name the internet-facing adapter (for example wlan0), while the
         # MonitoringAgent intentionally defaults to wlan1.
-        self.action_manager.set_monitor_interface(self.monitoring_agent.interface)
+        action_manager.set_monitor_interface(self.monitoring_agent.interface)
 
         # Connect all persistence and AI systems to monitoring agent
         self.monitoring_agent.set_persistence(self.persistent_network)
@@ -167,7 +168,7 @@ class Agent(kaiagotchiBase):
         # Connect view references across subsystems
         if self._view:
             self.monitoring_agent.view = self._view
-            self.action_manager.view = self._view
+            action_manager.view = self._view
             self.logger.info("View references connected to all subsystems.")
 
         self._interface_ready = False
@@ -487,8 +488,9 @@ class Agent(kaiagotchiBase):
         except Exception as e:
             self.logger.error(f"Failed to save last session: {e}")
 
-        await self.action_manager.cleanup()
-        self.logger.info("ActionManager cleaned up.")
+        if self.action_manager is not None:
+            await self.action_manager.cleanup()
+            self.logger.info("ActionManager cleaned up.")
 
         if self._view and hasattr(self._view, "on_shutdown"):
             try:
