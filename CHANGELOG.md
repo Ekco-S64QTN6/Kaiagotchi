@@ -4,7 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
-- Handle `sys.__stdout__` being absent during terminal-display initialization, cleanup, goodbye, and compatibility rendering; add a regression for non-interactive/headless startup and later stream loss.
+- Handle `sys.__stdout__` being absent during terminal-display initialization, cleanup, goodbye, and compatibility rendering; add a regression for non-interactive/headless startup and later stream loss, clearing all 13 terminal-display mypy findings and reducing the overall baseline from 78 errors across 16 files to 65 across 10 files.
 - Type the core utility default configuration mapping explicitly and cover partial nested TOML overrides that must preserve unspecified default values, reducing the measured mypy baseline from 79 to 78 errors across 16 source files.
 - Guard the optional decision-engine view before redraw and cover view-less transitions plus synchronous and asynchronous redraw hooks with synthetic tests, reducing the measured mypy baseline from 80 to 79 errors across 16 source files.
 - Explicitly type wireless `iw`/`iwconfig` parser result mappings and add a synthetic subprocess regression for mode and integer channel extraction, reducing the measured mypy baseline from 81 to 80 errors across 16 source files.
