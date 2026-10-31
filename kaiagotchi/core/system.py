@@ -11,13 +11,30 @@ This module provides:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import time
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, TypedDict
 
 _logger = logging.getLogger("kaiagotchi.core.system")
+
+
+class SystemMetricsSnapshot(TypedDict):
+    """Heterogeneous metric values emitted by one SystemTicker update."""
+
+    uptime_seconds: float | None
+    cpu_load: float | None
+    meminfo: dict[str, Any]
+    temperature: float | None
+    timestamp: float
+
+
+SystemTickCallback = Callable[
+    [SystemMetricsSnapshot],
+    None | Awaitable[None],
+]
 
 
 # ==========================================================
@@ -109,7 +126,7 @@ class SystemTicker:
         system_state: Any | None = None,
         *,
         interval: float = 2.0,
-        on_tick: Callable[[dict[str, Any]], None] | None = None,
+        on_tick: SystemTickCallback | None = None,
     ):
         self.system_state = system_state
         self.interval = interval
@@ -153,7 +170,7 @@ class SystemTicker:
 
     async def _tick(self) -> None:
         """Perform a single system metrics update."""
-        metrics_data = {
+        metrics_data: SystemMetricsSnapshot = {
             "uptime_seconds": uptime(),
             "cpu_load": cpu_load(),
             "meminfo": mem_usage(),
@@ -187,10 +204,12 @@ class SystemTicker:
             except Exception:
                 _logger.debug("SystemTicker: failed to apply metrics", exc_info=True)
 
-        # Optional callback
-        if self.on_tick:
+        # Optional callback; support both regular functions and async hooks.
+        if self.on_tick is not None:
             try:
-                self.on_tick(metrics_data)
+                callback_result = self.on_tick(metrics_data)
+                if inspect.isawaitable(callback_result):
+                    await callback_result
             except Exception:
                 _logger.debug("SystemTicker: on_tick callback failed", exc_info=True)
 
@@ -211,8 +230,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     async def main():
-        async def show_tick(data):
-            print(f"[{time.strftime('%H:%M:%S')}] CPU={data['cpu_load']}, TEMP={data['temperature']}, UP={data['uptime_seconds']:.1f}s")
+        async def show_tick(data: SystemMetricsSnapshot) -> None:
+            uptime_value = data["uptime_seconds"]
+            uptime_text = f"{uptime_value:.1f}s" if uptime_value is not None else "unavailable"
+            print(
+                f"[{time.strftime('%H:%M:%S')}] CPU={data['cpu_load']}, "
+                f"TEMP={data['temperature']}, UP={uptime_text}"
+            )
 
         ticker = SystemTicker(interval=args.interval, on_tick=show_tick)
         await ticker.start()
