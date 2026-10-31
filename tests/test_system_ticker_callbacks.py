@@ -85,6 +85,7 @@ async def test_system_ticker_awaits_awaitable_from_sync_callback(monkeypatch):
     assert ticker._tick_count == 1
     assert ticker._last_update == 1700.0
 
+
 @pytest.mark.asyncio
 async def test_system_ticker_updates_temperature_when_sensor_is_available(monkeypatch):
     from kaiagotchi.data.system_types import SystemState
