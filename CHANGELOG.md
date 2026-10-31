@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Type the heterogeneous `SystemTicker` metric snapshot and await async `on_tick` callbacks while retaining synchronous callbacks; cover both paths with deterministic synthetic metric data.
 - Define a common callable type for gettext-backed and identity-fallback voice translation, with regression coverage for both paths; remove the voice translator mypy finding and reduce the measured baseline from 65 errors across 10 files to 64 errors across 9 files.
 - Handle `sys.__stdout__` being absent during terminal-display initialization, cleanup, goodbye, and compatibility rendering; add a regression for non-interactive/headless startup and later stream loss, clearing all 13 terminal-display mypy findings and reducing the overall baseline from 78 errors across 11 files to 65 across 10 files.
 - Type the core utility default configuration mapping explicitly and cover partial nested TOML overrides that must preserve unspecified default values, reducing the measured mypy baseline from 79 errors across 12 source files to 78 errors across 11 source files.
