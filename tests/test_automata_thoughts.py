@@ -67,3 +67,13 @@ def test_voice_recognizes_automata_mood_for_thoughts(monkeypatch):
         voice.get_mood_line(AgentMood.CONFIDENT)
         == Voice.VOICE_LINES["confident"][0]
     )
+
+
+
+def test_automata_optional_engine_exports_retain_the_real_classes():
+    from kaiagotchi.ai.epoch import Epoch
+    from kaiagotchi.ai.reward import RewardEngine
+    from kaiagotchi.core import automata as automata_module
+
+    assert automata_module.Epoch is Epoch
+    assert automata_module.RewardEngine is RewardEngine
