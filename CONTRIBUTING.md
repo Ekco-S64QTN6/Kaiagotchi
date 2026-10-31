@@ -28,7 +28,7 @@ CI gates `compileall` and Ruff, builds the wheel, and runs pytest on Python 3.11
 and 3.13. The Python 3.11 quality job records Ruff's exit code/count and uploads its
 full report; any Ruff diagnostic fails CI. Mypy remains advisory and its full report
 is uploaded for triage. The initial baseline had 17 Ruff diagnostics (now cleared) and
-64 mypy errors across 9 source files, down from 96 errors across 18 files. A passing
+56 mypy errors across 8 source files, down from 96 errors across 18 files. A passing
 mypy baseline job does not mean there are no mypy findings.
 
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
