@@ -13,6 +13,7 @@ import gettext
 import logging
 import os
 import random
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -121,12 +122,13 @@ class Voice:
     CHATTER_INTERVALS: dict[str, float] = {k: v["interval"] for k, v in MOOD_PROFILES.items()}
 
     def __init__(self, lang: str = "en"):
+        self._: Callable[[str], str]
         try:
             localedir = os.path.join(os.path.abspath(os.path.dirname(__file__)), "locale")
             translation = gettext.translation("voice", localedir=localedir, languages=[lang], fallback=True)
             self._ = translation.gettext
         except Exception:
-            self._ = lambda s: s
+            self._ = lambda message: message
         self._last_line: str | None = None
 
     def custom(self, s: str) -> str:
