@@ -175,7 +175,7 @@ class InterfaceActionManager:
                 return {}
 
             output = stdout.decode(errors="ignore")
-            info = {}
+            info: dict[str, Any] = {}
             for line in output.splitlines():
                 if "type" in line:
                     info["mode"] = line.split()[-1].lower()
@@ -200,7 +200,7 @@ class InterfaceActionManager:
                 return {}
 
             output = stdout.decode(errors="ignore")
-            info = {}
+            info: dict[str, Any] = {}
 
             if "Mode:" in output:
                 match = re.search(r"Mode:(\w+)", output)
