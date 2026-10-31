@@ -4,7 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
-- Type the core utility default configuration mapping explicitly and cover partial nested TOML overrides that must preserve unspecified default values.
+- Type the core utility default configuration mapping explicitly and cover partial nested TOML overrides that must preserve unspecified default values, reducing the measured mypy baseline from 79 to 78 errors across 16 source files.
 - Guard the optional decision-engine view before redraw and cover view-less transitions plus synchronous and asynchronous redraw hooks with synthetic tests, reducing the measured mypy baseline from 80 to 79 errors across 16 source files.
 - Explicitly type wireless `iw`/`iwconfig` parser result mappings and add a synthetic subprocess regression for mode and integer channel extraction, reducing the measured mypy baseline from 81 to 80 errors across 16 source files.
 - Make splash-image ASCII conversion use distinct character, flattened-buffer, and row variables; add a synthetic image regression for grayscale mapping and fixed-width output, reducing the measured mypy baseline from 83 to 81 errors across 16 source files.
