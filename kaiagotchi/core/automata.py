@@ -16,19 +16,29 @@ import inspect
 import logging
 import random
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import kaiagotchi.plugins as plugins
 
-try:
-    from kaiagotchi.ai.reward import RewardEngine
-except Exception:
-    RewardEngine = None
+if TYPE_CHECKING:
+    from kaiagotchi.ai.epoch import Epoch as EpochType
+    from kaiagotchi.ai.reward import RewardEngine as RewardEngineType
 
+RewardEngine: type[RewardEngineType] | None = None
 try:
-    from kaiagotchi.ai.epoch import Epoch
+    from kaiagotchi.ai.reward import RewardEngine as _RewardEngine
 except Exception:
-    Epoch = None
+    pass
+else:
+    RewardEngine = _RewardEngine
+
+Epoch: type[EpochType] | None = None
+try:
+    from kaiagotchi.ai.epoch import Epoch as _Epoch
+except Exception:
+    pass
+else:
+    Epoch = _Epoch
 
 from kaiagotchi.data.system_types import AgentMood
 from kaiagotchi.ui import faces
