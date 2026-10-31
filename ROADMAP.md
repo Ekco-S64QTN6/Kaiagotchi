@@ -58,17 +58,19 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 83 errors across 16 source files, with full reports attached for
-   systematic triage. Behavior-neutral type annotations across `mesh/wifi.py`,
-   `network/interface_monitor.py`, `ai/epoch.py`, `core/automata.py`, and
-   `core/utils.py` have reduced that baseline from 96 errors across 18 files to
-   83 errors across 16 files.
+   measured baseline is 81 errors across 16 source files, with full reports attached for
+   systematic triage. Explicit type-focused cleanup has reduced mypy from the
+   96-error, 18-file starting point to 81 errors across 16 files. Recent modules
+   include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
+   `core/automata.py`, `core/utils.py`, and `ui/splash.py`.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping; reduce the measured mypy baseline from 83 to 81 errors across 16 source files.
 
 - Type the `iw dev` mixed wireless-interface records and the aggregate interface snapshot explicitly; cover wireless type/channel parsing plus READY, NET_DOWN, and NO_INTERFACES aggregation with synthetic fixtures; reduce the measured mypy baseline from 87 to 83 errors across 16 source files.
 
