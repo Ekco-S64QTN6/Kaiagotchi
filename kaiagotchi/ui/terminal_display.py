@@ -72,18 +72,20 @@ class TerminalDisplay:
         self._last_state: dict[str, Any] = {}
         self._last_draw_time = 0.0
 
-        # Backward-compat stdout handle (for test stubs and splash)
-        self._out = sys.__stdout__
+        # Backward-compat stdout handle (for test stubs and splash). Python
+        # allows __stdout__ to be None when the original stream was unavailable.
+        out = sys.__stdout__
+        self._out = out
 
         # Only touch the real terminal when attached to an interactive TTY.
         # This keeps construction side-effect-free under tests / pipes so we
         # never leak alt-screen escape sequences into non-interactive output.
-        self._owns_terminal = bool(self._out is not None and self._out.isatty())
-        if self._owns_terminal:
+        self._owns_terminal = bool(out is not None and out.isatty())
+        if out is not None and self._owns_terminal:
             # Enter alt screen for the splash (curses.wrapper manages its own later).
             try:
-                self._out.write("\033[?1049h\033[?25l")
-                self._out.flush()
+                out.write("\033[?1049h\033[?25l")
+                out.flush()
             except Exception:
                 pass
             import atexit
@@ -117,9 +119,12 @@ class TerminalDisplay:
     def _atexit_cleanup(self):
         if not self._owns_terminal:
             return
+        out = sys.__stdout__
+        if out is None:
+            return
         try:
-            sys.__stdout__.write("\033[?25h\033[?1049l")
-            sys.__stdout__.flush()
+            out.write("\033[?25h\033[?1049l")
+            out.flush()
         except Exception:
             pass
 
@@ -452,6 +457,8 @@ class TerminalDisplay:
         self.stop()
         try:
             out = sys.__stdout__
+            if out is None:
+                return
             w, h = shutil.get_terminal_size((80, 24))
             out.write("\033[?25h\033[2J\033[H")
             out.write("\n" * (h // 2 - 2))
@@ -559,16 +566,22 @@ class TerminalDisplay:
     # ── Backward compat stubs for tests ──────────────────────
 
     def _render_header(self, state: dict[str, Any]):
+        out = self._out
+        if out is None:
+            return
         iface = state.get("interface", "wlan1")
         model = state.get("interface_model", "")
-        self._out.write(f"[{iface} [{model}]]" if model else f"[{iface}]")
+        out.write(f"[{iface} [{model}]]" if model else f"[{iface}]")
 
     def _render_tables(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]):
-        self._out.write("── Access Points ──\n")
+        out = self._out
+        if out is None:
+            return
+        out.write("── Access Points ──\n")
         for ap in aps:
-            self._out.write(f"{ap.get('bssid', '')} | {ap.get('essid', '')}\n")
+            out.write(f"{ap.get('bssid', '')} | {ap.get('essid', '')}\n")
         for s in stations:
-            self._out.write(f"{s.get('station_mac', '')}\n")
+            out.write(f"{s.get('station_mac', '')}\n")
 
     def _should_render(self, state, now):
         return True  # curses thread handles its own timing
