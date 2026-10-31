@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout.
+
 - Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides; reduce the measured mypy baseline from 79 to 78 errors across 16 source files.
 
 - Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission; reduce the measured mypy baseline from 80 to 79 errors across 16 source files.
