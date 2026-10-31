@@ -69,6 +69,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Add explicit types for Epoch's AP, station, and capture snapshots and its floating-point duration; this removes four straightforward mypy findings without changing runtime behavior.
+
 - Treat PCAPNG interface snaplen as a maximum rather than an exact capture-length target; accept valid shorter Packet and Enhanced Packet captures while rejecting lengths above snaplen.
 
 - Scope PCAPNG option length and multiplicity checks to each block's own registry; preserve unknown Packet Block options rather than applying Enhanced Packet Block drop-count rules.
