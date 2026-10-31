@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Update `SystemState.metrics.temperature` from successful ticker sensor reads while retaining the last known reading when temperature is unavailable, with synthetic regression coverage.
 - Type the optional ActionManager state and view references explicitly, preserve initialization narrowing, and skip cleanup when no manager was created; add a partial-initialization shutdown regression, eliminating all four Agent mypy findings and reducing the baseline from 54 errors across 8 files to 50 across 7.
 - Type the heterogeneous `SystemTicker` metric snapshot and await async `on_tick` callbacks while retaining synchronous callbacks; cover synchronous, asynchronous, and sync-wrapper-returned awaitables, removing all six `core/system.py` mypy findings and reducing the measured baseline from 62 errors across 9 files to 54 errors across 8 files.
 - Await the Agent's async decision cycle directly and consume awaitables returned by view shutdown hooks, with regression coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 errors across 9 files.
