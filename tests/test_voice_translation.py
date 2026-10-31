@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 import kaiagotchi.ui.voice.voice as voice_module
 from kaiagotchi.ui.voice import Voice
 
