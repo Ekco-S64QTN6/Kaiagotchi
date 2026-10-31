@@ -4,6 +4,13 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Propagate successful temperature readings into `SystemState.metrics.temperature` while retaining the last known value when the sensor is unavailable.
+- Ignore a missing View channel during monitoring-state updates rather than converting `None` or inventing a current channel.
+- Type CLI optional imports and keep the splash screen optional; headless startup continues when that component is missing or cannot be constructed.
+- Keep the web index handler compatible with both `Response` and `FileResponse`, and serialize snapshots whose optional network entry is null.
+- Pass configuration paths to Manager as `Path` objects and await awaitables returned by synchronous shutdown wrappers; add synthetic regressions for both paths.
+- Type optional Automata engine exports and Agent action-manager lifecycle state without changing their existing fallback behavior.
+- Clarify PCAP parser imports and packet-source types without changing PCAP/PCAPNG parsing semantics; preserve Section Header Block option validation and streaming-reader cleanup.
 - Update `SystemState.metrics.temperature` from successful ticker sensor reads while preserving the last known reading when temperature is unavailable, with synthetic regression coverage.
 - Type the optional ActionManager state and view references explicitly, preserve initialization narrowing, and skip cleanup when no manager was created; add a partial-initialization shutdown regression, eliminating all four Agent mypy findings and reducing the baseline from 54 errors across 8 files to 50 across 7.
 - Type the heterogeneous `SystemTicker` metric snapshot and await async `on_tick` callbacks while retaining synchronous callbacks; cover synchronous, asynchronous, and sync-wrapper-returned awaitables, removing all six `core/system.py` mypy findings and reducing the measured baseline from 62 errors across 9 files to 54 errors across 8 files.
