@@ -584,3 +584,20 @@ async def test_manager_awaits_awaitable_returned_by_sync_stop_wrapper():
     await manager.stop()
 
     assert stopped == ["stopped"]
+
+
+
+def test_cli_splash_factory_tolerates_missing_optional_implementation(monkeypatch):
+    monkeypatch.setattr(cli, "SplashScreen", None)
+
+    assert cli._create_splash_screen() is None
+
+
+def test_cli_splash_factory_tolerates_constructor_failure(monkeypatch):
+    class BrokenSplash:
+        def __init__(self):
+            raise RuntimeError("splash unavailable")
+
+    monkeypatch.setattr(cli, "SplashScreen", BrokenSplash)
+
+    assert cli._create_splash_screen() is None

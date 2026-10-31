@@ -17,36 +17,60 @@ import os
 import signal
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kaiagotchi.config.config import load_config
 from kaiagotchi.data.system_types import GlobalSystemState, SystemState
 from kaiagotchi.ui.view import View
+
+if TYPE_CHECKING:
+    from kaiagotchi.agent.agent import Agent as AgentType
+    from kaiagotchi.core.manager import Manager as ManagerType
+    from kaiagotchi.ui.splash import SplashScreen as SplashScreenType
+    from kaiagotchi.ui.terminal_display import TerminalDisplay as TerminalDisplayType
+    from kaiagotchi.ui.web.server import WebServer as WebServerType
+else:
+    AgentType = Any
+    ManagerType = Any
+    SplashScreenType = Any
+    TerminalDisplayType = Any
+    WebServerType = Any
 
 logger = logging.getLogger("kaiagotchi.cli")
 
 # Preferred local log directory (created lazily in setup_logging()).
 local_logs = Path(__file__).resolve().parent.parent / "logs"
 
-# Optional imports (Manager preferred)
-Manager = None
-Agent = None
+# Optional imports (Manager preferred). Keep typed None fallbacks so the
+# legacy CLI path remains available when optional subsystems cannot be loaded.
+Manager: type[ManagerType] | None = None
 try:
-    from kaiagotchi.core.manager import Manager  # preferred orchestrator
+    from kaiagotchi.core.manager import Manager as _Manager
 except Exception:
-    Manager = None
+    pass
+else:
+    Manager = _Manager
 
+Agent: type[AgentType] | None = None
+SplashScreen: type[SplashScreenType] | None = None
+TerminalDisplay: type[TerminalDisplayType] | None = None
+WebServer: type[WebServerType] | None = None
 try:
-    from kaiagotchi.agent.agent import Agent
-    from kaiagotchi.ui.splash import SplashScreen
-    from kaiagotchi.ui.terminal_display import TerminalDisplay
-    from kaiagotchi.ui.web.server import WebServer
-except Exception as e:
-    logger.error("Failed to import core subsystems (Agent/UI/Splash/Web): %s", e, exc_info=True)
-    Agent = None
-    SplashScreen = None
-    TerminalDisplay = None
-    WebServer = None
+    from kaiagotchi.agent.agent import Agent as _Agent
+    from kaiagotchi.ui.splash import SplashScreen as _SplashScreen
+    from kaiagotchi.ui.terminal_display import TerminalDisplay as _TerminalDisplay
+    from kaiagotchi.ui.web.server import WebServer as _WebServer
+except Exception as exc:
+    logger.error(
+        "Failed to import core subsystems (Agent/UI/Splash/Web): %s",
+        exc,
+        exc_info=True,
+    )
+else:
+    Agent = _Agent
+    SplashScreen = _SplashScreen
+    TerminalDisplay = _TerminalDisplay
+    WebServer = _WebServer
 
 # Global flag for shutdown
 _shutdown_event = asyncio.Event()
@@ -124,6 +148,18 @@ def _web_enabled(args: Any, config: dict[str, Any]) -> bool:
         return True
     web_config = config.get("web", {})
     return bool(web_config.get("enabled", True)) if isinstance(web_config, dict) else True
+
+
+def _create_splash_screen() -> Any | None:
+    """Create the optional splash screen without blocking headless startup."""
+    if SplashScreen is None:
+        logger.warning("Splash screen implementation is unavailable")
+        return None
+    try:
+        return SplashScreen()
+    except Exception as exc:
+        logger.warning("Failed to init splash screen: %s", exc)
+        return None
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -304,12 +340,7 @@ async def run_agent() -> int:
         display_monitor_task = asyncio.create_task(monitor_display_quit())
 
         # Show splash screen (after View init so it clears screen first)
-        splash = None
-        try:
-            splash = SplashScreen()
-            # Don't await here, we'll do it in parallel with startup
-        except Exception as e:
-            logger.warning(f"Failed to init splash screen: {e}")
+        splash = _create_splash_screen()
 
         # Prefer Manager if it exists (wires AI subsystems and orchestrates lifecycle)
         if Manager is not None:
@@ -363,7 +394,7 @@ async def run_agent() -> int:
                             manager_startup_observed = True
                             continue
 
-                        waiting = [shutdown_wait]
+                        waiting: list[asyncio.Task[Any]] = [shutdown_wait]
                         if not startup_barrier.done():
                             waiting.append(startup_barrier)
                         if not manager_startup_observed and not manager_task.done():
@@ -479,8 +510,13 @@ async def run_agent() -> int:
                                 fallback_exit_code = 1
                             return fallback_exit_code
 
+                        legacy_startup_tasks: list[asyncio.Task[Any]] = [
+                            startup_barrier,
+                            shutdown_wait,
+                            agent_start_task,
+                        ]
                         done, _pending = await asyncio.wait(
-                            [startup_barrier, shutdown_wait, agent_start_task],
+                            legacy_startup_tasks,
                             return_when=asyncio.FIRST_COMPLETED,
                         )
                         if shutdown_wait in done:
