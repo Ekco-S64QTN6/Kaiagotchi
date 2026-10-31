@@ -62,7 +62,7 @@ features or capture-backend changes.
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
    96-error, 18-file starting point to 65 errors across 10 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
-   `core/automata.py`, `core/utils.py`, and `ui/splash.py`.
+   `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, and `ui/terminal_display.py`.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
@@ -70,17 +70,17 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout; remove all 13 `terminal_display.py` findings and reduce the measured mypy baseline from 78 errors across 16 files to 65 errors across 10 files.
+- Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout; remove all 13 `terminal_display.py` findings and reduce the measured mypy baseline from 78 errors across 11 files to 65 errors across 10 files.
 
-- Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides; reduce the measured mypy baseline from 79 to 78 errors across 16 source files.
+- Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides; reduce the measured mypy baseline from 79 errors across 12 source files to 78 errors across 11 source files.
 
-- Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission; reduce the measured mypy baseline from 80 to 79 errors across 16 source files.
+- Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission; reduce the measured mypy baseline from 80 errors across 13 source files to 79 errors across 12 source files.
 
-- Type the `iw` and `iwconfig` interface-info result mappings explicitly so textual mode values and numeric channel values share a safe `dict[str, Any]` shape; add synthetic subprocess coverage for parsed monitor mode and channel number; reduce the measured mypy baseline from 81 to 80 errors across 16 source files.
+- Type the `iw` and `iwconfig` interface-info result mappings explicitly so textual mode values and numeric channel values share a safe `dict[str, Any]` shape; add synthetic subprocess coverage for parsed monitor mode and channel number; reduce the measured mypy baseline from 81 errors across 14 source files to 80 errors across 13 source files.
 
-- Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping; reduce the measured mypy baseline from 83 to 81 errors across 16 source files.
+- Separate the splash converter's character list, flattened ASCII buffer, and row list so each value has one stable type; add a synthetic Pillow-compatible image test for grayscale-to-ASCII output and row wrapping; reduce the measured mypy baseline from 83 errors across 15 source files to 81 errors across 14 source files.
 
-- Type the `iw dev` mixed wireless-interface records and the aggregate interface snapshot explicitly; cover wireless type/channel parsing plus READY, NET_DOWN, and NO_INTERFACES aggregation with synthetic fixtures; reduce the measured mypy baseline from 87 to 83 errors across 16 source files.
+- Type the `iw dev` mixed wireless-interface records and the aggregate interface snapshot explicitly; cover wireless type/channel parsing plus READY, NET_DOWN, and NO_INTERFACES aggregation with synthetic fixtures; reduce the measured mypy baseline from 87 errors across 16 source files to 83 errors across 15 source files.
 
 - Add explicit types to plugin status storage and Automata's debounce timer/loop snapshot; cover non-object JSON status roots with a regression that confirms the invalid file is not rewritten until an explicit update; reduce the measured mypy baseline from 90 to 87 errors across 16 source files.
 
