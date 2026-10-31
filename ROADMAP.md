@@ -37,8 +37,9 @@ features or capture-backend changes.
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
    caller cancellation until bounded process reaping and cleanup finish; failed graceful
-   or post-kill waits retain the child handle and capture files for a later retry. Synthetic
-   tests now assert the shutdown side-effect order: reap child, restore managed mode,
+   or post-kill waits retain the child handle and capture files for a later retry. Failed
+   managed-mode restoration is also retained as pending and can be retried independently
+   without repeating completed session finalization. Synthetic tests assert the shutdown order: reap child, restore managed mode,
    archive capture, remove private temp data, persist network/mood state, then emit summary.
 3. **Reward and mood contract** — synthetic tests now cover typed `AgentMood`
    values through all three supported aliases, explicit alias precedence, partial and

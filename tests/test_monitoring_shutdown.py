@@ -341,6 +341,85 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
 
 
 @pytest.mark.asyncio
+async def test_stop_retries_managed_mode_restore_without_repeating_finalization(
+    monkeypatch,
+):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    process = FakeCaptureProcess()
+    monitor._process = process
+    monitor._managed_mode_restore_pending = True
+
+    calls = []
+    restore_failed_once = True
+
+    class FakeCommandProcess:
+        def __init__(self, returncode=0, stderr=b""):
+            self.returncode = returncode
+            self.stderr = stderr
+
+        async def communicate(self):
+            return b"", self.stderr
+
+    async def fake_create_subprocess_exec(*cmd, **_kwargs):
+        nonlocal restore_failed_once
+        calls.append(cmd)
+        if (
+            cmd == ("iw", "dev", "wlan1", "set", "type", "managed")
+            and restore_failed_once
+        ):
+            restore_failed_once = False
+            return FakeCommandProcess(
+                returncode=1, stderr=b"simulated transient driver failure"
+            )
+        return FakeCommandProcess()
+
+    monkeypatch.setattr(
+        "kaiagotchi.agent.monitoring_agent.shutil.which", lambda _name: None
+    )
+    monkeypatch.setattr(
+        "kaiagotchi.agent.monitoring_agent.asyncio.create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
+
+    archive_calls = []
+    cleanup_calls = []
+    summary = AsyncMock()
+    monkeypatch.setattr(
+        monitor, "_archive_pcap_sync", lambda: archive_calls.append(True)
+    )
+    monkeypatch.setattr(
+        monitor, "_cleanup_capture_temp_dir", lambda: cleanup_calls.append(True)
+    )
+    monkeypatch.setattr(monitor, "_emit_capture_summary", summary)
+
+    await monitor.stop()
+
+    assert process.returncode == 0
+    assert monitor._process is None
+    assert monitor._managed_mode_restore_pending is True
+    assert monitor._shutdown_complete is True
+    assert len(calls) == 3
+    assert archive_calls == [True]
+    assert cleanup_calls == [True]
+    summary.assert_awaited_once_with("Monitoring stopped.")
+
+    # Retry only the failed adapter restoration; do not repeat session-end side
+    # effects once capture cleanup and persistence have reached their terminal state.
+    await monitor.stop()
+
+    assert monitor._managed_mode_restore_pending is False
+    assert len(calls) == 6
+    assert archive_calls == [True]
+    assert cleanup_calls == [True]
+    summary.assert_awaited_once_with("Monitoring stopped.")
+
+    # A fully restored and finalized instance remains idempotent.
+    await monitor.stop()
+    assert len(calls) == 6
+    summary.assert_awaited_once_with("Monitoring stopped.")
+
+
+@pytest.mark.asyncio
 async def test_stop_orders_reaping_restore_archive_and_persistence(monkeypatch):
     monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
     events = []

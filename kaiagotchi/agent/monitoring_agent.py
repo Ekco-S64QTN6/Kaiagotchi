@@ -56,6 +56,10 @@ class MonitoringAgent:
         )
 
         self._running = False
+        # Retain failed adapter recovery so a later stop() can retry it.
+        self._managed_mode_restore_pending = False
+        self._managed_mode_restore_attempted = False
+        self._shutdown_complete = False
         self._process: asyncio.subprocess.Process | None = None
         self._csv_path: Path | None = None
         self._base_path: Path | None = None
@@ -133,21 +137,37 @@ class MonitoringAgent:
         if self._running:
             _LOG.debug("[monitoring] Already running.")
             return
+        if self._managed_mode_restore_pending:
+            raise RuntimeError(
+                "Capture interface restoration is still pending; call stop() "
+                "to retry managed-mode restoration before starting a new capture"
+            )
+        self._shutdown_complete = False
+        self._managed_mode_restore_attempted = False
         self._running = True
         _LOG.info("[monitoring] Starting monitoring setup...")
 
         try:
+            # Setup may partially change the adapter before raising/cancelling.
+            self._managed_mode_restore_pending = True
             try:
                 await self._set_monitor_mode()
             except Exception as exc:
                 _LOG.exception("[monitoring] monitor mode setup failed")
                 self._running = False
                 try:
-                    await self._restore_managed_mode()
+                    restored = await self._restore_managed_mode()
                 except Exception:
+                    restored = False
                     _LOG.debug(
                         "[monitoring] Could not restore interface after setup failure",
                         exc_info=True,
+                    )
+                self._managed_mode_restore_attempted = True
+                self._managed_mode_restore_pending = restored is False
+                if self._managed_mode_restore_pending:
+                    _LOG.error(
+                        "[monitoring] Managed-mode restoration failed; stop() can retry"
                     )
                 raise RuntimeError(
                     f"Could not configure capture interface {self.interface} for monitor mode"
@@ -168,11 +188,18 @@ class MonitoringAgent:
                 # fails (for example, airodump-ng missing or process creation denied).
                 self._running = False
                 try:
-                    await self._restore_managed_mode()
+                    restored = await self._restore_managed_mode()
                 except Exception:
+                    restored = False
                     _LOG.debug(
                         "[monitoring] Could not restore interface after capture launch failure",
                         exc_info=True,
+                    )
+                self._managed_mode_restore_attempted = True
+                self._managed_mode_restore_pending = restored is False
+                if self._managed_mode_restore_pending:
+                    _LOG.error(
+                        "[monitoring] Managed-mode restoration failed; stop() can retry"
                     )
                 # _launch_airodump cleans an empty private temp directory on its
                 # own; this is a second guarded cleanup for any setup residue.
@@ -255,6 +282,27 @@ class MonitoringAgent:
             raise cleanup_error
 
     async def _stop_impl(self):
+        # Once capture cleanup/finalization is complete, retry only a failed
+        # managed-mode restore rather than duplicating session-end side effects.
+        if self._shutdown_complete:
+            if self._managed_mode_restore_pending:
+                try:
+                    restored = await self._restore_managed_mode()
+                except Exception:
+                    restored = False
+                    _LOG.exception(
+                        "[monitoring] Managed-mode restoration retry failed"
+                    )
+                self._managed_mode_restore_attempted = True
+                self._managed_mode_restore_pending = restored is False
+                if self._managed_mode_restore_pending:
+                    _LOG.error(
+                        "[monitoring] Managed-mode restoration remains pending"
+                    )
+                else:
+                    _LOG.info("[monitoring] Managed mode restored on retry")
+            return
+
         # A partial startup or an earlier shutdown error can clear _running
         # while still leaving a child process/task/temp capture directory to reap.
         if (
@@ -262,6 +310,7 @@ class MonitoringAgent:
             and self._loop_task is None
             and self._process is None
             and self._capture_tmp_dir is None
+            and not self._managed_mode_restore_pending
         ):
             return
 
@@ -346,11 +395,24 @@ class MonitoringAgent:
             )
             return
 
-        try:
-            await self._restore_managed_mode()
-            _LOG.debug("[monitoring] Restored managed mode")
-        except Exception as e:
-            _LOG.error(f"[monitoring] Error restoring managed mode: {e}")
+        if (
+            not self._managed_mode_restore_attempted
+            or self._managed_mode_restore_pending
+        ):
+            try:
+                restored = await self._restore_managed_mode()
+            except Exception:
+                restored = False
+                _LOG.exception("[monitoring] Error restoring managed mode")
+            self._managed_mode_restore_attempted = True
+            self._managed_mode_restore_pending = restored is False
+            if self._managed_mode_restore_pending:
+                _LOG.error(
+                    "[monitoring] Managed-mode restoration failed; a later "
+                    "stop() will retry after capture cleanup finishes"
+                )
+            else:
+                _LOG.debug("[monitoring] Restored managed mode")
 
         if scan_loop_stopped:
             # ARCHIVE PCAP BEFORE SAVING NETWORK HISTORY — run in executor so
@@ -388,7 +450,17 @@ class MonitoringAgent:
                 _LOG.debug(f"persistent_mood shutdown hooks failed: {e}")
 
         await self._emit_capture_summary("Monitoring stopped.")
-        _LOG.info("[monitoring] Stopped cleanly.")
+        self._shutdown_complete = (
+            scan_loop_stopped
+            and self._loop_task is None
+            and self._process is None
+            and self._capture_tmp_dir is None
+        )
+        _LOG.info(
+            "[monitoring] Stopped cleanly."
+            if self._shutdown_complete
+            else "[monitoring] Shutdown cleanup remains pending."
+        )
 
     # NEW: Public method to force PCAP archiving without full stop
     async def archive_current_pcap(self):
@@ -454,8 +526,8 @@ class MonitoringAgent:
                 f"Interface {self.interface} did not enter monitor mode"
             )
 
-    async def _restore_managed_mode(self):
-        # Best-effort cleanup, still pinned to the capture adapter.
+    async def _restore_managed_mode(self) -> bool:
+        """Attempt every managed-mode recovery command and report full success."""
         cmds = [
             ["ip", "link", "set", "dev", self.interface, "down"],
             ["iw", "dev", self.interface, "set", "type", "managed"],
@@ -464,6 +536,7 @@ class MonitoringAgent:
         if shutil.which("nmcli"):
             cmds.append(["nmcli", "device", "set", self.interface, "managed", "yes"])
 
+        success = True
         for cmd in cmds:
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -473,15 +546,23 @@ class MonitoringAgent:
                 )
                 _stdout, stderr = await proc.communicate()
                 if proc.returncode != 0:
-                    _LOG.debug(
+                    success = False
+                    _LOG.warning(
                         "[monitoring] Cleanup command %s failed: %s",
                         cmd[0],
                         stderr.decode(errors="replace").strip(),
                     )
             except FileNotFoundError:
-                _LOG.debug("[monitoring] Command not found during cleanup: %s", cmd[0])
-            except Exception as e:
-                _LOG.debug("[monitoring] %s failed during cleanup: %s", cmd[0], e)
+                success = False
+                _LOG.warning(
+                    "[monitoring] Command not found during cleanup: %s", cmd[0]
+                )
+            except Exception as exc:
+                success = False
+                _LOG.warning(
+                    "[monitoring] %s failed during cleanup: %s", cmd[0], exc
+                )
+        return success
 
     # ------------------------------------------------------------------
     async def _launch_airodump(self):
