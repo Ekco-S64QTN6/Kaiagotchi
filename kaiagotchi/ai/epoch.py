@@ -53,9 +53,9 @@ class Epoch:
         # Network state tracking
         self.current_aps = 0
         self.current_stations = 0
-        self.aps_list = []
-        self.stations_list = []
-        self.recent_captures = []
+        self.aps_list: list[dict[str, Any]] = []
+        self.stations_list: list[dict[str, Any]] = []
+        self.recent_captures: list[dict[str, Any]] = []
 
         # Emotional bonding
         self.tot_bond_factor = 0.0
@@ -64,7 +64,7 @@ class Epoch:
 
         # Timing
         self.epoch_started = time.time()
-        self.epoch_duration = 0
+        self.epoch_duration: float = 0.0
 
         # Channel histogram tracking
         self.non_overlapping_channels = {1: 0, 6: 0, 11: 0}
