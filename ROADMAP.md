@@ -60,7 +60,7 @@ features or capture-backend changes.
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
    measured baseline is 64 errors across 9 source files, with full reports attached for
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 65 errors across 10 files. Recent modules
+   96-error, 18-file starting point to 64 errors across 9 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
    `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, and `ui/terminal_display.py`.
 6. **Operator validation** — checklist documented at
