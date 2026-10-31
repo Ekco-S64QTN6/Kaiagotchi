@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Propagate available sensor temperature readings into `SystemState.metrics.temperature`, while preserving the previous known value when a sensor read is unavailable; cover both paths with deterministic ticker fixtures.
+
 - Model `SystemTicker` snapshots with a `TypedDict` and support both synchronous and awaitable callbacks; await callback results rather than dropping coroutines, handle unavailable uptime in CLI output, and cover synchronous, asynchronous, and sync-wrapper-returned awaitables with deterministic metric fixtures; reduce the measured mypy baseline from 62 errors across 9 files to 54 across 8.
 
 - Call the inherited async Agent decision cycle directly and await any awaitable returned by view shutdown hooks, including synchronous wrappers; add synthetic coverage for native async, wrapped-awaitable, and synchronous hooks; reduce the measured mypy baseline from 64 errors across 9 files to 62 across 9.
