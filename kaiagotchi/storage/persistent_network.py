@@ -11,21 +11,29 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Any
+from typing import Any, Callable
 
 from .file_io import atomically_save_data, load_data
 from .utils_time import TZ, now_cst_iso
 
+parse_pcap_comprehensive: Callable[..., Any] | None = None
 try:
-    from kaiagotchi.network.pcap_parser import parse_pcap_comprehensive  # type: ignore
+    from kaiagotchi.network.pcap_parser import (
+        parse_pcap_comprehensive as _parse_pcap_comprehensive,
+    )
 except Exception:
-    parse_pcap_comprehensive = None
+    pass
+else:
+    parse_pcap_comprehensive = _parse_pcap_comprehensive
 
-# Keep original for backward compatibility
+# Keep original for backward compatibility.
+parse_pcap: Callable[..., Any] | None = None
 try:
-    from kaiagotchi.network.pcap_parser import parse_pcap  # type: ignore
+    from kaiagotchi.network.pcap_parser import parse_pcap as _parse_pcap
 except Exception:
-    parse_pcap = None
+    pass
+else:
+    parse_pcap = _parse_pcap
 
 LOGGER = logging.getLogger(__name__)
 
@@ -837,7 +845,7 @@ class PersistentNetwork:
             handshakes_list.sort(key=lambda x: x["timestamp"], reverse=True)
 
             # JSON Report payload
-            json_report = {
+            json_report: dict[str, Any] = {
                 "summary": {
                     "total_unique_ssids_seen": len(unique_ssids),
                     "total_handshakes_captured": len(handshakes_list),
@@ -1046,8 +1054,12 @@ class PersistentNetwork:
                     entries = unique_ssids[ssid]
                     for entry in entries:
                         ssid_display = ssid if ssid != "Hidden or Unknown" else "*Hidden/Unknown*"
+                        last_seen = entry.get("last_seen")
+                        last_seen_display = (
+                            last_seen[:19] if isinstance(last_seen, str) else ""
+                        )
                         md_lines.append(
-                            f"| {ssid_display} | `{entry.get('bssid')}` | {entry.get('channel') or '-'} | {entry.get('encryption') or '-'} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {entry.get('last_seen')[:19]} |"
+                            f"| {ssid_display} | `{entry.get('bssid')}` | {entry.get('channel') or '-'} | {entry.get('encryption') or '-'} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} |"
                         )
                 md_lines.append("\n")
 
