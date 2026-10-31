@@ -2,8 +2,6 @@ import asyncio
 
 import pytest
 
-import asyncio
-
 import kaiagotchi.core.system as system_module
 from kaiagotchi.core.system import SystemTicker
 
