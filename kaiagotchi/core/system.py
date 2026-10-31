@@ -200,6 +200,8 @@ class SystemTicker:
                         metrics.memory_usage = 100.0 - (free / total * 100.0) if total > 0 else 0.0
                     if hasattr(metrics, "uptime_seconds") and metrics_data["uptime_seconds"] is not None:
                         metrics.uptime_seconds = metrics_data["uptime_seconds"]
+                    if hasattr(metrics, "temperature") and metrics_data["temperature"] is not None:
+                        metrics.temperature = metrics_data["temperature"]
                 self.system_state.metrics = metrics
             except Exception:
                 _logger.debug("SystemTicker: failed to apply metrics", exc_info=True)
