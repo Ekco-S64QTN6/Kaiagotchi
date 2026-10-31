@@ -6,13 +6,17 @@ from kaiagotchi.ui.terminal_display import TerminalDisplay
 
 
 def test_terminal_display_handles_missing_original_stdout(monkeypatch):
+    monkeypatch.setattr(TerminalDisplay, "_instance", None)
     monkeypatch.setattr(terminal_display_module.sys, "__stdout__", None)
 
     display = TerminalDisplay()
 
     assert display._out is None
     assert display._owns_terminal is False
+    # Also cover stdout disappearing after the terminal was acquired.
+    display._owns_terminal = True
     display._atexit_cleanup()
+    display._owns_terminal = False
     display.show_goodbye()
     display._render_header({"interface": "wlan1"})
     display._render_tables([], [])
