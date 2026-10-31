@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Model `SystemTicker` output with a `TypedDict` so nullable CPU/uptime values, memory maps, temperature, and timestamps keep distinct types; allow synchronous or awaitable callbacks and await async callbacks instead of dropping their coroutine; test both callback modes with deterministic metric snapshots.
+- Model `SystemTicker` output with a `TypedDict` so nullable CPU/uptime values, memory maps, temperature, and timestamps keep distinct types; allow synchronous or awaitable callbacks and await async callbacks instead of dropping their coroutine; test both callback modes with deterministic metric snapshots; remove all six `core/system.py` mypy findings and reduce the measured baseline from 64 errors across 9 files to 56 errors across 8 files.
 
 - Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback; remove the remaining voice translator finding and reduce the measured mypy baseline from 65 errors across 10 files to 64 errors across 9 files.
 
