@@ -89,6 +89,10 @@ way out.
 Shutdown also attempts to terminate and reap the `airodump-ng` capture process
 and restore the capture interface to managed mode. Interface restoration is
 best-effort when the driver or system tools report an error.
+If an adapter restoration command fails during shutdown, Kaiagotchi records that
+restoration as pending; a subsequent `stop()` retries the managed-mode commands
+without repeating completed capture archiving, persistence, or shutdown summaries.
+A new capture is refused until that restoration retry succeeds.
 If startup is cancelled at any await point, the Agent's lifecycle guard runs cleanup
 before propagating cancellation, including when cancellation occurs during the
 emotional-loop startup barrier. The Manager also owns cleanup when startup is cancelled
