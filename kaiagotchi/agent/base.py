@@ -17,11 +17,14 @@ import hashlib
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from kaiagotchi.agent.decision_engine import AgentState, DecisionEngine
 from kaiagotchi.core.events import EventEmitter
 from kaiagotchi.data.system_types import GlobalSystemState, NetworkState, SystemState
+
+if TYPE_CHECKING:
+    from kaiagotchi.network.action_manager import InterfaceActionManager
 
 agent_logger = logging.getLogger("kaiagotchi.agent.base")
 
@@ -47,7 +50,7 @@ class kaiagotchiBase:
         self.logger = agent_logger
         self.events = EventEmitter()
         self.decision_engine = DecisionEngine(config)
-        self.action_manager = None
+        self.action_manager: InterfaceActionManager | None = None
         self._running = False
         self._tasks: set[asyncio.Task] = set()
         self.interface_name: str = config.get("main", {}).get("iface", "wlan0")
