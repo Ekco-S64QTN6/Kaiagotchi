@@ -70,7 +70,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback.
+- Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback; remove the remaining voice translator finding and reduce the measured mypy baseline from 65 errors across 10 files to 64 errors across 9 files.
 
 - Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout; remove all 13 `terminal_display.py` findings and reduce the measured mypy baseline from 78 errors across 11 files to 65 errors across 10 files.
 
