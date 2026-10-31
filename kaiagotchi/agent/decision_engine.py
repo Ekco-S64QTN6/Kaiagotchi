@@ -129,10 +129,11 @@ class DecisionEngine:
             "timestamp": self._last_state_change
         }))
 
-        # Trigger UI update if view available
-        if getattr(self.view, "force_redraw", None):
+        # Trigger UI update only when a view is attached.
+        view = self.view
+        if view is not None and getattr(view, "force_redraw", None):
             try:
-                fr = self.view.force_redraw
+                fr = view.force_redraw
                 await fr() if asyncio.iscoroutinefunction(fr) else fr()
             except Exception:
                 log.debug("View redraw failed", exc_info=True)
