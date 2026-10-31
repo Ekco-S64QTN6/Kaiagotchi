@@ -24,11 +24,17 @@ from kaiagotchi.data.system_types import GlobalSystemState, SystemState
 from kaiagotchi.ui.view import View
 
 if TYPE_CHECKING:
-    import kaiagotchi.agent.agent
-    import kaiagotchi.core.manager
-    import kaiagotchi.ui.splash
-    import kaiagotchi.ui.terminal_display
-    import kaiagotchi.ui.web.server
+    from kaiagotchi.agent.agent import Agent as AgentType
+    from kaiagotchi.core.manager import Manager as ManagerType
+    from kaiagotchi.ui.splash import SplashScreen as SplashScreenType
+    from kaiagotchi.ui.terminal_display import TerminalDisplay as TerminalDisplayType
+    from kaiagotchi.ui.web.server import WebServer as WebServerType
+else:
+    AgentType = Any
+    ManagerType = Any
+    SplashScreenType = Any
+    TerminalDisplayType = Any
+    WebServerType = Any
 
 logger = logging.getLogger("kaiagotchi.cli")
 
@@ -37,7 +43,7 @@ local_logs = Path(__file__).resolve().parent.parent / "logs"
 
 # Optional imports (Manager preferred). Keep typed None fallbacks so the
 # legacy CLI path remains available when optional subsystems cannot be loaded.
-Manager: type[kaiagotchi.core.manager.Manager] | None = None
+Manager: type[ManagerType] | None = None
 try:
     from kaiagotchi.core.manager import Manager as _Manager
 except Exception:
@@ -45,10 +51,10 @@ except Exception:
 else:
     Manager = _Manager
 
-Agent: type[kaiagotchi.agent.agent.Agent] | None = None
-SplashScreen: type[kaiagotchi.ui.splash.SplashScreen] | None = None
-TerminalDisplay: type[kaiagotchi.ui.terminal_display.TerminalDisplay] | None = None
-WebServer: type[kaiagotchi.ui.web.server.WebServer] | None = None
+Agent: type[AgentType] | None = None
+SplashScreen: type[SplashScreenType] | None = None
+TerminalDisplay: type[TerminalDisplayType] | None = None
+WebServer: type[WebServerType] | None = None
 try:
     from kaiagotchi.agent.agent import Agent as _Agent
     from kaiagotchi.ui.splash import SplashScreen as _SplashScreen
