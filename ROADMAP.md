@@ -58,9 +58,9 @@ features or capture-backend changes.
 5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
    Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
    uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 80 errors across 16 source files, with full reports attached for
+   measured baseline is 79 errors across 16 source files, with full reports attached for
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 80 errors across 16 files. Recent modules
+   96-error, 18-file starting point to 79 errors across 16 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
    `core/automata.py`, `core/utils.py`, and `ui/splash.py`.
 6. **Operator validation** — checklist documented at
@@ -69,6 +69,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Guard the optional `DecisionEngine.view` before invoking its redraw hook, retaining sync and async redraw support; test transitions with no view attached and both redraw styles, including state-change event emission; reduce the measured mypy baseline from 80 to 79 errors across 16 source files.
 
 - Type the `iw` and `iwconfig` interface-info result mappings explicitly so textual mode values and numeric channel values share a safe `dict[str, Any]` shape; add synthetic subprocess coverage for parsed monitor mode and channel number; reduce the measured mypy baseline from 81 to 80 errors across 16 source files.
 
