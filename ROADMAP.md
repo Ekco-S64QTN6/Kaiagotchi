@@ -62,7 +62,7 @@ features or capture-backend changes.
    systematic triage. Explicit type-focused cleanup has reduced mypy from the
    96-error, 18-file starting point to 56 errors across 8 files. Recent modules
    include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
-   `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, `ui/terminal_display.py`, and `ui/voice/voice.py`.
+   `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`, `agent/decision_engine.py`, `ui/terminal_display.py`, `ui/voice/voice.py`, and `core/system.py`.
 6. **Operator validation** — checklist documented at
    `docs/operator-hardware-smoke-test.md` for `airodump-ng`, `iw`, monitor-mode
    support, privileges, clean shutdown, and safe recovery. A maintainer must still
