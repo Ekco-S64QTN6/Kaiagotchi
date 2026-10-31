@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Give the voice translator one explicit `Callable[[str], str]` contract for both gettext catalogues and the identity fallback; add tests for translated custom/default text and catalogue-unavailable fallback.
+
 - Narrow `sys.__stdout__` at each terminal-display use: startup captures a non-optional local stream, cleanup/goodbye return safely when it is absent, and compatibility render stubs no-op without a stream; add a regression for missing and disappearing stdout; remove all 13 `terminal_display.py` findings and reduce the measured mypy baseline from 78 errors across 11 files to 65 errors across 10 files.
 
 - Declare the core utility loader's nested default configuration as `dict[str, Any]` so partial TOML overrides retain the documented mapping shape; add a regression that checks each nested section preserves unspecified defaults while applying explicit overrides; reduce the measured mypy baseline from 79 errors across 12 source files to 78 errors across 11 source files.
