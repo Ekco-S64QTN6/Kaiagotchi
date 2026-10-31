@@ -1,40 +1,61 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from kaiagotchi.ui.view import View  # noqa: F401
+    from kaiagotchi.agent.agent import Agent as AgentType
+    from kaiagotchi.core.system import SystemTicker as SystemTickerType
+    from kaiagotchi.data.system_types import (
+        GlobalSystemState as GlobalSystemStateType,
+        SystemState as SystemStateType,
+    )
+    from kaiagotchi.ui.view import View as ViewType
 
 try:
     from kaiagotchi.config.config import load_config
 except Exception:
-    def load_config(path: str | None = None) -> dict[str, Any]:
+    def load_config(system_path: Path | None = None) -> dict[Any, Any]:
         return {}
 
+Agent: type[AgentType] | None = None
 try:
-    from kaiagotchi.agent.agent import Agent
+    from kaiagotchi.agent.agent import Agent as _Agent
 except Exception:
-    Agent = None
+    pass
+else:
+    Agent = _Agent
 
+ViewClass: type[ViewType] | None = None
 try:
-    from kaiagotchi.ui.view import View as ViewClass
+    from kaiagotchi.ui.view import View as _View
 except Exception:
-    ViewClass = None
+    pass
+else:
+    ViewClass = _View
 
+SystemTicker: type[SystemTickerType] | None = None
 try:
-    from kaiagotchi.core.system import SystemTicker
+    from kaiagotchi.core.system import SystemTicker as _SystemTicker
 except Exception:
-    SystemTicker = None
+    pass
+else:
+    SystemTicker = _SystemTicker
 
+GlobalSystemStateClass: type[GlobalSystemStateType] | None = None
+SystemStateClass: type[SystemStateType] | None = None
 try:
-    import kaiagotchi.data.system_types as st
-    GlobalSystemStateClass = getattr(st, "GlobalSystemState", None)
-    SystemStateClass = getattr(st, "SystemState", None)
+    from kaiagotchi.data.system_types import GlobalSystemState as _GlobalSystemState
+    from kaiagotchi.data.system_types import SystemState as _SystemState
 except Exception:
-    GlobalSystemStateClass = SystemStateClass = None
+    pass
+else:
+    GlobalSystemStateClass = _GlobalSystemState
+    SystemStateClass = _SystemState
 
 logger = logging.getLogger("kaiagotchi.core.manager")
 
@@ -59,10 +80,10 @@ class Manager:
     ):
         self.config = config or {}
         self.view = view
-        self.agent = None
+        self.agent: AgentType | None = None
         self.system_state = system_state
         self._state_lock = state_lock or asyncio.Lock()
-        self._ticker = None
+        self._ticker: SystemTickerType | None = None
         self._run_event: asyncio.Event | None = None
         self._bootstrap_done = False
         self._started = False
@@ -75,7 +96,7 @@ class Manager:
         if not self.config:
             config_path = os.environ.get("KAIA_CONFIG", "/etc/kaiagotchi/config.toml")
             try:
-                self.config = load_config(config_path)
+                self.config = load_config(Path(config_path))
                 logger.info("Manager: loaded config from %s", config_path)
             except Exception:
                 logger.warning("Manager: failed to load config; using defaults")
@@ -86,7 +107,7 @@ class Manager:
         )
 
         # ---------- SINGLE SHARED VIEW ----------
-        if self.view is None and ViewClass:
+        if self.view is None and ViewClass is not None:
             try:
                 self.view = ViewClass(self.config)
                 logger.info("Manager: View initialized (primary display)")
@@ -95,8 +116,10 @@ class Manager:
                 self.view = None
 
         # ---------- SHARED SYSTEM STATE ----------
-        if self.system_state is None and SystemStateClass:
+        if self.system_state is None and SystemStateClass is not None:
             try:
+                if GlobalSystemStateClass is None:
+                    raise RuntimeError("GlobalSystemState implementation is unavailable")
                 self.system_state = SystemStateClass.minimal(
                     current_system_state=GlobalSystemStateClass.BOOTING,
                     config_hash="manager_boot",
@@ -176,17 +199,19 @@ class Manager:
                     logger.exception("Manager: view.start() failed")
 
             # Lightweight metrics ticker (spawns its own background task).
-            if SystemTicker and self.system_state:
+            if SystemTicker is not None and self.system_state:
                 try:
-                    self._ticker = SystemTicker(system_state=self.system_state, interval=2.0)
-                    await self._ticker.start()
+                    ticker = SystemTicker(system_state=self.system_state, interval=2.0)
+                    self._ticker = ticker
+                    await ticker.start()
                     logger.info("Manager: SystemTicker started")
                 except asyncio.CancelledError:
                     raise
                 except Exception:
                     logger.exception("Manager: ticker start failed")
 
-            if self.agent is None:
+            agent = self.agent
+            if agent is None:
                 raise RuntimeError("Manager has no Agent; bootstrap did not complete")
 
             self._run_event = asyncio.Event()
@@ -197,7 +222,7 @@ class Manager:
             # until shutdown, so start it last. Do not swallow failures here:
             # callers must know if the core service stopped unexpectedly.
             try:
-                await self.agent.start()
+                await agent.start()
                 logger.info("Manager: Agent finished")
             except asyncio.CancelledError:
                 raise
@@ -245,7 +270,9 @@ class Manager:
                         if asyncio.iscoroutinefunction(fn):
                             await fn()
                         else:
-                            await asyncio.get_running_loop().run_in_executor(None, fn)
+                            result = await asyncio.get_running_loop().run_in_executor(None, fn)
+                            if inspect.isawaitable(result):
+                                await result
                         return
                     except Exception:
                         logger.debug("Manager: %s() failed", name, exc_info=True)
