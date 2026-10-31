@@ -70,6 +70,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Propagate available sensor temperature readings into `SystemState.metrics.temperature` while preserving the last known value when a sensor read is unavailable; cover both paths with deterministic ticker fixtures.
+
 - Type the base Agent action manager as optional and narrow the constructed manager during setup; cleanup now tolerates a missing manager after partial initialization. Explicitly type the optional view on `InterfaceActionManager`, cover the uninitialized cleanup path, remove all four Agent mypy findings, and reduce the measured baseline from 54 errors across 8 files to 50 across 7.
 
 - Model `SystemTicker` snapshots with a `TypedDict` and support both synchronous and awaitable callbacks; await callback results rather than dropping coroutines, handle unavailable uptime in CLI output, and cover synchronous, asynchronous, and sync-wrapper-returned awaitables with deterministic metric fixtures; reduce the measured mypy baseline from 62 errors across 9 files to 54 across 8.
