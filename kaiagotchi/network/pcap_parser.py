@@ -1,10 +1,10 @@
 # kaiagotchi/network/pcap_parser.py
 import logging
-from collections.abc import Iterable
 import os
 import struct
 import sys
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -171,7 +171,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
             if (
                 option_code
-                in single_occurrence_options_by_block.get(option_block_type, set())
+                in single_occurrence_options_by_block.get(block_type_value, set())
                 and option_code in seen_option_codes
             ):
                 return f"option code {option_code} may appear only once in this block"
