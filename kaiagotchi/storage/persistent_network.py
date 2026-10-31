@@ -9,9 +9,10 @@ import time
 from copy import deepcopy
 from datetime import datetime
 from functools import wraps
+from collections.abc import Callable
 from pathlib import Path
 from threading import Lock, RLock
-from typing import Any, Callable
+from typing import Any
 
 from .file_io import atomically_save_data, load_data
 from .utils_time import TZ, now_cst_iso
