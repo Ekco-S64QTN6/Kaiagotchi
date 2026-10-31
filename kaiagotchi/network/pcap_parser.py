@@ -1,5 +1,6 @@
 # kaiagotchi/network/pcap_parser.py
 import logging
+from collections.abc import Iterable
 import os
 import struct
 import sys
@@ -8,16 +9,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from scapy.all import (
-    EAPOL,
-    Dot11,
-    Dot11Beacon,
-    Dot11Elt,
-    Dot11ProbeResp,
-    PcapReader,
-    rdpcap,
-)
-from scapy.layers.eap import EAPOL_KEY
+from scapy.all import PcapReader, rdpcap
+from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp
+from scapy.layers.eap import EAPOL, EAPOL_KEY
+from scapy.packet import Packet
 
 # Configure logging for the module
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -98,7 +93,10 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
         return None
 
     def option_error(
-        options_start: int, options_end: int, block_type_value: int | None
+        options_start: int,
+        options_end: int,
+        block_type_value: int | None,
+        byte_order: str,
     ) -> str | None:
         """Validate option framing and known fixed-size/type-dependent values."""
         fixed_lengths_by_block = {
@@ -136,6 +134,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             6: {2, 4, 5, 6},  # Enhanced Packet Block; option 8 may repeat.
         }
         custom_option_codes = {2988, 2989, 19372, 19373}
+        option_block_type = block_type_value if block_type_value is not None else -1
         seen_option_codes: set[int] = set()
         interface_speed_values: dict[int, int] = {}
         option_offset = options_start
@@ -147,7 +146,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
             option_header = capture_file.read(4)
             if len(option_header) != 4:
                 return f"truncated option header at offset {option_offset}"
-            option_code, option_length = struct.unpack(endian + "HH", option_header)
+            option_code, option_length = struct.unpack(byte_order + "HH", option_header)
 
             if option_code == 0:
                 if option_length != 0:
@@ -172,7 +171,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
             if (
                 option_code
-                in single_occurrence_options_by_block.get(block_type_value, set())
+                in single_occurrence_options_by_block.get(option_block_type, set())
                 and option_code in seen_option_codes
             ):
                 return f"option code {option_code} may appear only once in this block"
@@ -184,7 +183,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     f"at least 4, got {option_length}"
                 )
 
-            fixed_lengths = fixed_lengths_by_block.get(block_type_value, {})
+            fixed_lengths = fixed_lengths_by_block.get(option_block_type, {})
             expected_length = fixed_lengths.get(option_code)
             if expected_length is not None and option_length != expected_length:
                 return (
@@ -197,7 +196,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                 flags_bytes = capture_file.read(4)
                 if len(flags_bytes) != 4:
                     return f"truncated packet flags option at offset {option_offset}"
-                flags = struct.unpack(endian + "I", flags_bytes)[0]
+                flags = struct.unpack(byte_order + "I", flags_bytes)[0]
                 direction = flags & 0b11
                 if direction == 0b11:
                     return (
@@ -218,7 +217,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                     )
 
             minimum_length = minimum_lengths_by_block.get(
-                block_type_value, {}
+                option_block_type, {}
             ).get(option_code)
             if minimum_length is not None and option_length < minimum_length:
                 return (
@@ -264,7 +263,7 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                 if len(speed_value) != 8:
                     return f"truncated interface speed option at offset {option_offset}"
                 interface_speed_values[option_code] = struct.unpack(
-                    endian + "Q", speed_value
+                    byte_order + "Q", speed_value
                 )[0]
 
             option_offset = option_end
@@ -588,11 +587,11 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
                         if padding_problem is not None:
                             return reject(padding_problem)
 
-                        minimum_length = minimum_record_lengths.get(record_type)
-                        if minimum_length is not None:
-                            if record_length < minimum_length:
+                        minimum_record_length = minimum_record_lengths.get(record_type)
+                        if minimum_record_length is not None:
+                            if record_length < minimum_record_length:
                                 return reject(
-                                    f"name resolution record type {record_type} must have value length at least {minimum_length}, got {record_length}"
+                                    f"name resolution record type {record_type} must have value length at least {minimum_record_length}, got {record_length}"
                                 )
                             capture_file.seek(record_value_end - 1)
                             if capture_file.read(1) != bytes([0]):
@@ -675,8 +674,10 @@ def _validate_pcapng_block_framing(path: Path, file_size: int) -> bool:
 
                 if options_start is not None:
                     options_end = block_end - 4
+                    if endian is None:
+                        return reject("block options have no valid byte order")
                     invalid_options = option_error(
-                        options_start, options_end, block_type_value
+                        options_start, options_end, block_type_value, endian
                     )
                     if invalid_options is not None:
                         return reject(
@@ -916,6 +917,7 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
     total_beacons = 0
 
     reader: PcapReader | None = None
+    packets: Iterable[Packet]
     try:
         if use_streaming and os.path.getsize(filepath) > 50 * 1024 * 1024:  # 50MB
             parser_logger.info("Using streaming mode for large file")
@@ -1153,6 +1155,7 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
     bssid_client_map: dict[str, str] = {}
 
     reader: PcapReader | None = None
+    packets: Iterable[Packet]
     try:
         if use_streaming and os.path.getsize(filepath) > 50 * 1024 * 1024:  # 50MB
             parser_logger.info("Using streaming mode for large file")
