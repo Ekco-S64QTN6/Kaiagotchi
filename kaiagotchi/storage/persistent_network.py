@@ -6,10 +6,10 @@ import re
 import shutil
 import stat
 import time
+from collections.abc import Callable
 from copy import deepcopy
 from datetime import datetime
 from functools import wraps
-from collections.abc import Callable
 from pathlib import Path
 from threading import Lock, RLock
 from typing import Any
