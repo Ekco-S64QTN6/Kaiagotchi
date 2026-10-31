@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -537,3 +538,49 @@ async def test_manager_defers_repeated_cancellation_until_startup_cleanup_finish
         await asyncio.wait_for(start_task, timeout=2.0)
 
     assert set(cleanup_finished) == {"agent", "view"}
+
+
+
+@pytest.mark.asyncio
+async def test_manager_loads_config_with_path_argument(monkeypatch):
+    received_paths = []
+
+    def fake_load_config(path=None):
+        received_paths.append(path)
+        return {"log": {"level": "INFO"}, "loaded_from_path": True}
+
+    class FakeAgent:
+        def __init__(self, **_kwargs):
+            pass
+
+    config_path = "/tmp/kaiagotchi-manager-test.toml"
+    monkeypatch.setenv("KAIA_CONFIG", config_path)
+    monkeypatch.setattr(manager_module, "load_config", fake_load_config)
+    monkeypatch.setattr(manager_module, "Agent", FakeAgent)
+
+    manager = Manager(view=object(), system_state={})
+    await manager.bootstrap()
+
+    assert received_paths == [Path(config_path)]
+    assert manager.config["loaded_from_path"] is True
+    assert isinstance(manager.agent, FakeAgent)
+
+
+@pytest.mark.asyncio
+async def test_manager_awaits_awaitable_returned_by_sync_stop_wrapper():
+    stopped = []
+
+    async def async_stop():
+        await asyncio.sleep(0)
+        stopped.append("stopped")
+
+    class WrappedStopAgent:
+        def stop(self):
+            return async_stop()
+
+    manager = Manager(config={}, system_state={})
+    manager.agent = WrappedStopAgent()
+
+    await manager.stop()
+
+    assert stopped == ["stopped"]
