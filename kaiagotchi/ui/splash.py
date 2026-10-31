@@ -59,11 +59,14 @@ class SplashScreen:
 
             pixels = img.getdata()
             chars = ["@", "#", "S", "%", "?", "*", "+", ";", ":", ",", "."]
-            new_pixels = [chars[pixel // 25] for pixel in pixels]
-            new_pixels = ''.join(new_pixels)
+            ascii_chars = [chars[pixel // 25] for pixel in pixels]
+            ascii_pixels = "".join(ascii_chars)
 
-            ascii_image = [new_pixels[index:index + width] for index in range(0, len(new_pixels), width)]
-            return "\n".join(ascii_image)
+            ascii_rows = [
+                ascii_pixels[index:index + width]
+                for index in range(0, len(ascii_pixels), width)
+            ]
+            return "\n".join(ascii_rows)
         except Exception as e:
             _LOG.error(f"Failed to load splash image: {e}")
             return self._fallback_ascii()
