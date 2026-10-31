@@ -278,7 +278,7 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
         A dictionary containing the application configuration.
     """
     # CORRECTED: log section is now top-level to satisfy validate_config
-    default_config = {
+    default_config: dict[str, Any] = {
         'main': {
             'base_dir': DEFAULT_BASE_DIR,
             'state_filename': DEFAULT_STATE_FILENAME,

@@ -4,6 +4,7 @@ from pathlib import Path
 
 import tomlkit
 
+import kaiagotchi.core.utils as core_utils
 from kaiagotchi.config.manager import load_config, mask_sensitive_config, save_config
 from kaiagotchi.core.utils import (
     StatusFile,
@@ -87,6 +88,41 @@ def test_status_file_ignores_non_object_json_root(tmp_path):
 
     status.set("state", "ready")
     assert json.loads(path.read_text(encoding="utf-8")) == {"state": "ready"}
+
+
+def test_core_utils_load_config_merges_partial_nested_sections(tmp_path, monkeypatch):
+    config_path = tmp_path / "core-config.toml"
+    config_path.write_text("# synthetic config\n", encoding="utf-8")
+    state_dir = tmp_path / "state"
+    user_config = {
+        "main": {"base_dir": str(state_dir)},
+        "log": {"level": "DEBUG"},
+        "ui": {"enabled": True},
+    }
+    validated = {}
+
+    monkeypatch.setattr(core_utils.tomlkit, "load", lambda _stream: user_config)
+    monkeypatch.setattr(
+        core_utils,
+        "validate_config",
+        lambda config: validated.update(config),
+    )
+
+    loaded = core_utils.load_config(str(config_path))
+
+    assert loaded["main"] == {
+        "base_dir": str(state_dir),
+        "state_filename": core_utils.DEFAULT_STATE_FILENAME,
+        "language": "en_US",
+    }
+    assert loaded["log"] == {
+        "path": "/var/log/kaiagotchi/kaiagotchi.log",
+        "level": "DEBUG",
+    }
+    assert loaded["ui"]["enabled"] is True
+    assert loaded["ui"]["bind_host"] == "0.0.0.0"
+    assert loaded["ui"]["bind_port"] == 8080
+    assert validated == loaded
 
 
 def test_core_utils_save_config_supports_relative_filename(tmp_path, monkeypatch):
