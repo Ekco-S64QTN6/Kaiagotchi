@@ -363,7 +363,10 @@ async def test_stop_retries_managed_mode_restore_without_repeating_finalization(
     async def fake_create_subprocess_exec(*cmd, **_kwargs):
         nonlocal restore_failed_once
         calls.append(cmd)
-        if cmd == ("iw", "dev", "wlan1", "set", "type", "managed") and restore_failed_once:
+        if (
+            cmd == ("iw", "dev", "wlan1", "set", "type", "managed")
+            and restore_failed_once
+        ):
             restore_failed_once = False
             return FakeCommandProcess(
                 returncode=1, stderr=b"simulated transient driver failure"
