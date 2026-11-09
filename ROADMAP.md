@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep terminal shutdown output consistent with TTY ownership: `show_goodbye()` no longer writes ANSI screen-control sequences to redirected/non-interactive stdout; add a regression test for pipe output.
+
 - Make the curses scoreboard read BSSID and capture totals through locked public persistence accessors rather than traversing the live private network dictionary; retain a detached-snapshot compatibility path and cover malformed persisted entries with synthetic regressions.
 
 - Normalize Scapy's 802.11/EAPOL imports to their owning modules, pass a non-optional byte order into PCAPNG option validation, separate optional record lengths, and type eager/streaming packet sources as `Iterable[Packet]`; retain Section Header Block singleton-option validation and existing reader cleanup, reducing the verified mypy baseline from 21 errors across 2 files to 8 across 1.
