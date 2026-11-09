@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make JSON state replacement crash-durable: write and fsync the temporary file before atomic replace, then fsync the parent directory; preserve privacy/metadata and clean up serialization failures.
+
 - Preserve valid zero rewards from Epoch/RewardEngine and only fall back when the source is unavailable, malformed, non-finite, or its epoch did not advance; cover source precedence with synthetic tests.
 
 - Keep the terminal dashboard panes non-overlapping at the supported minimum terminal sizes, and include all observed Wi-Fi channel identifiers in the spectrum view (with a bounded summary when more than twelve channels are present).

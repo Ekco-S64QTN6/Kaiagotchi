@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Flush and fsync JSON state before atomic replacement, then fsync the containing directory; clean up serialization failures without leaving temporary state files and preserve existing permissions/ownership where permitted.
 - Preserve an explicit zero reward from Epoch or RewardEngine; use fallback reward sources only when the higher-priority source is unavailable, invalid, or did not advance its epoch. Reject non-finite reward values.
 - Keep the terminal dashboard's tables and chatter pane within the terminal bounds, and display observed Wi-Fi channel identifiers beyond the old 1–12-only spectrum chart.
 - #142: Shut down through the normal cleanup path when the curses thread fails, instead of leaving monitoring running without its primary interface.
