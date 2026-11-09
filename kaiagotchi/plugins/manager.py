@@ -1,7 +1,11 @@
 # kaiagotchi/plugins/manager.py
+import hashlib
 import importlib
+import importlib.util
 import logging
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from .base import PLUGIN_API_VERSION, Plugin
@@ -12,20 +16,28 @@ _LOG = logging.getLogger("kaiagotchi.plugins.manager")
 class PluginManager:
     """Manages the lifecycle of Kaiagotchi plugins.
 
-    A plugin is a subpackage of :mod:`kaiagotchi.plugins` (a directory with an
-    ``__init__.py`` exposing a :class:`~kaiagotchi.plugins.base.Plugin`
-    subclass). Discovered plugins are loaded unless their config sets
+    A bundled plugin is a subpackage of :mod:`kaiagotchi.plugins`; callers may
+    also provide an external plugin root containing package directories. Each
+    package has an ``__init__.py`` exposing a :class:`~kaiagotchi.plugins.base.Plugin`
+    subclass. Discovered plugins are loaded unless their config sets
     ``enabled = false``.
     """
 
     def __init__(self, plugin_dir: str | Path | None = None):
         # Resolve relative to this package so discovery works regardless of CWD.
-        self.plugin_dir = Path(plugin_dir) if plugin_dir else Path(__file__).resolve().parent
+        self.plugin_dir = (
+            Path(plugin_dir).expanduser().resolve()
+            if plugin_dir
+            else Path(__file__).resolve().parent
+        )
+        self._uses_builtin_plugin_package = (
+            self.plugin_dir == Path(__file__).resolve().parent
+        )
         self.plugins: dict[str, Plugin] = {}
         self._unloading = False
 
     def discover_and_load(self, config: dict[str, Any] | None = None):
-        """Discover and load plugin subpackages from the plugin directory."""
+        """Discover and load bundled or external plugin packages from the configured root."""
         config = config or {}
 
         if not self.plugin_dir.is_dir():
@@ -41,7 +53,7 @@ class PluginManager:
                 _LOG.debug("Plugin %s disabled via config; skipping", name)
                 continue
             try:
-                module = importlib.import_module(f"kaiagotchi.plugins.{name}")
+                module = self._import_plugin_module(name, item_path)
                 for attr_name in dir(module):
                     attr = getattr(module, attr_name)
                     if isinstance(attr, type) and issubclass(attr, Plugin) and attr is not Plugin:
@@ -51,6 +63,45 @@ class PluginManager:
                         break
             except Exception as e:
                 _LOG.error("Failed to load plugin %s: %s", name, e, exc_info=True)
+
+    def _import_plugin_module(self, name: str, package_path: Path) -> ModuleType:
+        """Import a bundled or externally configured plugin package.
+
+        The bundled package uses its normal import path. A custom plugin root
+        receives a stable private namespace so its packages (and relative
+        imports) come from that root instead of accidentally resolving to a
+        same-named package under :mod:`kaiagotchi.plugins`.
+        """
+        if self._uses_builtin_plugin_package:
+            return importlib.import_module(f"kaiagotchi.plugins.{name}")
+
+        root = self.plugin_dir
+        namespace_suffix = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:16]
+        namespace_name = f"_kaiagotchi_external_plugins_{namespace_suffix}"
+        if namespace_name not in sys.modules:
+            namespace = ModuleType(namespace_name)
+            namespace.__path__ = [str(root)]  # type: ignore[attr-defined]
+            namespace.__package__ = namespace_name
+            sys.modules[namespace_name] = namespace
+
+        module_name = f"{namespace_name}.{name}"
+        init_file = package_path / "__init__.py"
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            init_file,
+            submodule_search_locations=[str(package_path)],
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not create an import spec for plugin {name!r}")
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(module_name, None)
+            raise
+        return module
 
     def register_plugin(self, plugin: Plugin) -> bool:
         """Load and register a plugin, rejecting instances whose startup fails."""

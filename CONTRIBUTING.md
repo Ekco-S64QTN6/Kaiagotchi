@@ -35,6 +35,8 @@ errors across 18 files; those final two findings are cleared by the current TUI 
 cleanup.
 
 Epoch observation tests must include string-valued channel IDs from Scapy and malformed optional peer/AP fields; zero/non-finite bond scaling must not abort monitoring.
+Plugin-discovery regressions should import a real temporary package from an external plugin root, including a relative helper module; do not mock away the import mechanism being tested.
+
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
 tokens, or BSSID-specific data. The Web HUD tests cover mandatory token configuration for non-loopback binds and
 verify that login protects both the HTTP telemetry endpoint and WebSocket while
