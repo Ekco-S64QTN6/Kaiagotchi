@@ -595,6 +595,7 @@ class WebServer:
 
         # Bound session growth and expire old browser sessions on each request.
         self._prune_expired_sessions()
+        now = time.time()
         if len(self._sessions) >= 128:
             oldest = min(self._sessions.items(), key=lambda item: item[1])[0]
             self._sessions.pop(oldest, None)
