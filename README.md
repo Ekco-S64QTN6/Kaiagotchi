@@ -290,6 +290,11 @@ only minimal synthetic PCAP and PCAPNG headers; normal CI tests remain determini
 and do not require Atheris. Keep real capture files, credentials, and private network
 identifiers out of fuzz corpora committed to the repository.
 
+For 802.11 data frames, handshake and station attribution follows the ToDS/FromDS
+address roles: ToDS uses Address 1 as the BSSID; FromDS uses Address 2. Three-address
+frames without either DS bit use Address 3. Four-address WDS frames are not assigned
+to an AP because their address fields do not identify a unique BSSID.
+
 Streaming parsing uses Scapy's `PcapReader` only for large captures. If iteration
 hits a malformed/truncated record, both parser entry points log the failure and
 return an empty result instead of leaking a reader exception; reader-close

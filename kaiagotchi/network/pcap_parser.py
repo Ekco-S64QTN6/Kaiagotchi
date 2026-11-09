@@ -798,6 +798,40 @@ def extract_channel(packet) -> str:
     return ""
 
 
+def _dot11_bssid_client(packet: Packet) -> tuple[str | None, str | None]:
+    """Resolve the BSSID and peer from an 802.11 data frame's DS direction.
+
+    Address 3 is not the BSSID for infrastructure data frames: ToDS frames
+    carry it in Address 1, while FromDS frames carry it in Address 2. Four-
+    address WDS frames do not identify a unique BSSID and are skipped rather
+    than misattributed to their Address 3 destination.
+    """
+    if not packet.haslayer(Dot11):
+        return None, None
+
+    dot11 = packet[Dot11]
+    frame_control = int(dot11.FCfield or 0)
+    to_ds = bool(frame_control & 0x01)
+    from_ds = bool(frame_control & 0x02)
+
+    if to_ds and from_ds:
+        # WDS uses all four address fields; none is unambiguously the BSSID.
+        return None, None
+    if to_ds:
+        bssid, client = dot11.addr1, dot11.addr2
+    elif from_ds:
+        bssid, client = dot11.addr2, dot11.addr1
+    else:
+        # Management/IBSS-style three-address data has its BSSID in Address 3.
+        bssid, client = dot11.addr3, dot11.addr2
+
+    if not isinstance(bssid, str) or not bssid or bssid.lower() == "ff:ff:ff:ff:ff:ff":
+        return None, None
+    if not isinstance(client, str) or not client or client.lower() == "ff:ff:ff:ff:ff:ff":
+        client = None
+    return bssid, client
+
+
 def extract_encryption(packet) -> str:
     """
     Extract encryption type from 802.11 packets.
@@ -945,8 +979,6 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                 if packet.haslayer(Dot11):
                     dot11 = packet[Dot11]
                     bssid = dot11.addr3
-                    transmitter = dot11.addr2
-                    receiver = dot11.addr1
 
                     # Process beacon frames (all access points)
                     if packet.haslayer(Dot11Beacon):
@@ -997,43 +1029,50 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                                 bssids[bssid]['last_seen'] = i
                                 bssids[bssid]['packets'] += 1
 
-                    # Track stations (clients) from data frames
+                    # Resolve station/AP roles from the DS direction, not Address 3.
+                    # For ToDS frames Address 2 is the station; for FromDS
+                    # frames Address 1 is the station and Address 2 is the AP.
                     if dot11.type == 2:  # Data frames
-                        if transmitter and transmitter != "ff:ff:ff:ff:ff:ff" and not transmitter.startswith("01:00:5e"):
-                            # This is likely a station
-                            if transmitter not in stations:
-                                stations[transmitter] = {
-                                    'station_mac': transmitter,
-                                    'associated_bssid': bssid,
+                        data_bssid, station_mac = _dot11_bssid_client(packet)
+                        if (
+                            data_bssid
+                            and station_mac
+                            and station_mac != "ff:ff:ff:ff:ff:ff"
+                            and not station_mac.startswith(("01:00:5e", "33:33"))
+                        ):
+                            if station_mac not in stations:
+                                stations[station_mac] = {
+                                    'station_mac': station_mac,
+                                    'associated_bssid': data_bssid,
                                     'first_seen': i,
                                     'last_seen': i,
                                     'packets': 1
                                 }
                             else:
-                                stations[transmitter]['last_seen'] = i
-                                stations[transmitter]['packets'] += 1
+                                stations[station_mac]['last_seen'] = i
+                                stations[station_mac]['packets'] += 1
 
-                    # Check for EAPOL packets (WPA handshakes) - your existing handshake logic
-                    if packet.haslayer(EAPOL) and bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                        client_mac = receiver if receiver != bssid else transmitter
+                    # Determine the handshake owner from ToDS/FromDS address roles.
+                    if packet.haslayer(EAPOL):
+                        handshake_bssid, _ = _dot11_bssid_client(packet)
+                        if handshake_bssid:
+                            if handshake_bssid not in handshake_packets:
+                                handshake_packets[handshake_bssid] = []
+                            handshake_packets[handshake_bssid].append((i, packet))
 
-                        if bssid not in handshake_packets:
-                            handshake_packets[bssid] = []
-                        handshake_packets[bssid].append((i, packet))
-
-                        # Extract SSID for this BSSID if not already known
-                        if bssid not in bssids:
-                            ssid = extract_ssid(packet)
-                            bssids[bssid] = {
-                                'bssid': bssid,
-                                'essid': ssid,
-                                'channel': '',
-                                'encryption': '',
-                                'first_seen': i,
-                                'last_seen': i,
-                                'beacons': 0,
-                                'packets': 1
-                            }
+                            # Extract SSID for this BSSID if not already known.
+                            if handshake_bssid not in bssids:
+                                ssid = extract_ssid(packet)
+                                bssids[handshake_bssid] = {
+                                    'bssid': handshake_bssid,
+                                    'essid': ssid,
+                                    'channel': '',
+                                    'encryption': '',
+                                    'first_seen': i,
+                                    'last_seen': i,
+                                    'beacons': 0,
+                                    'packets': 1
+                                }
 
             except Exception as e:
                 parser_logger.warning(f"Error processing packet {i}: {e}. Skipping.", exc_info=False)
@@ -1177,22 +1216,21 @@ def parse_pcap(filepath: str, use_streaming: bool = False) -> list[CaptureData]:
                 if i % 5000 == 0 and i > 0:
                     parser_logger.info(f"Processed {i} packets...")
 
-                # Check for EAPOL packets (WPA handshakes)
+                # Check for EAPOL packets (WPA handshakes).
                 if packet.haslayer(EAPOL) and packet.haslayer(Dot11):
-                    bssid = packet[Dot11].addr3
-                    client_mac = packet[Dot11].addr1  # Typically client MAC
+                    bssid, client_mac = _dot11_bssid_client(packet)
 
-                    if bssid and bssid != "ff:ff:ff:ff:ff:ff":
-                        # Store handshake packet index
+                    if bssid:
+                        # Store handshake packet index.
                         if bssid not in handshake_packets:
                             handshake_packets[bssid] = []
                         handshake_packets[bssid].append((i, packet))
 
-                        # Map client MAC to BSSID
-                        if bssid not in bssid_client_map and client_mac != bssid:
+                        # Map the peer to its BSSID regardless of EAPOL direction.
+                        if client_mac and client_mac != bssid and bssid not in bssid_client_map:
                             bssid_client_map[bssid] = client_mac
 
-                        # Extract and store SSID if available
+                        # Extract and store SSID if available.
                         if bssid not in bssid_ssid_map:
                             ssid = extract_ssid(packet)
                             if ssid != "Hidden or Unknown":
