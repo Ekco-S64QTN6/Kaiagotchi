@@ -91,6 +91,7 @@ python -c 'import secrets; print(secrets.token_urlsafe(32))'
 
 The browser presents a login form; successful login creates a 12-hour HttpOnly,
 SameSite=Strict session cookie used by both the HTTP telemetry API and WebSocket.
+Existing WebSocket connections are closed when that session expires or is revoked by logout.
 The token is never placed in a URL. The built-in server does not provide TLS:
 use a trusted private LAN or VPN, and do not send credentials over an untrusted
 network. Keep any config file containing the token readable only by its owner.
