@@ -522,6 +522,8 @@ def iface_channels(iface_name: str) -> list[int]:
     from kaiagotchi.network.utils import iface_channels as query_iface_channels
 
     return query_iface_channels(iface_name)
+
+
 def get_configured_interface(config: dict) -> str:
     """
     Safely retrieve configured network interface from agent config.
