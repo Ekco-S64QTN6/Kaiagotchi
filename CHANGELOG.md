@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Serialize shared `PersistentMood` mutations and disk saves across the asyncio/epoch worker threads; write detached state snapshots outside the state lock and keep the mood-state file owner-only (`0600`).
 - Return detached, lock-protected Epoch snapshots from `data()`, `wait_for_epoch_data()`, and `get_summary()`; copy caller-owned network state on update so external mutation cannot rewrite an in-flight reward snapshot.
 - Require token authentication for non-loopback Web HUD binds; protect dashboard, HTTP telemetry, and WebSocket through 12-hour HttpOnly/SameSite sessions, with config/environment setup and clear HTTP transport warnings.
 - Add optional, bounded Atheris fuzzing for both PCAP parser entry points using synthetic classic-PCAP/PCAPNG seed headers; update development instructions and correct README's stale claim that Mypy is advisory.
