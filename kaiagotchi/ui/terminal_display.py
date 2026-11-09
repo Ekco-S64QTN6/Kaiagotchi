@@ -133,6 +133,14 @@ class TerminalDisplay:
             curses.wrapper(self._curses_main)
         except Exception:
             _LOG.exception("Curses thread crashed")
+            # The CLI watches should_quit to coordinate normal agent cleanup.
+            # A dead curses thread is a failed primary interface, not a reason
+            # to leave the monitoring process running invisibly.
+            self._stop_event.set()
+        finally:
+            # Do not leave start() believing a thread is still alive after
+            # curses.wrapper has returned or failed.
+            self._started = False
 
     def _curses_main(self, stdscr):
         curses.curs_set(0)
