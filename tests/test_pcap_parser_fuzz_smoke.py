@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from kaiagotchi.network.pcap_parser import (
+    parse_pcap,
+    parse_pcap_comprehensive,
+)
 from scripts.fuzz_pcap_parser import (
     MAX_INPUT_BYTES,
     SYNTHETIC_SEEDS,
@@ -75,3 +79,16 @@ def test_fuzz_callback_ignores_inputs_over_the_hard_size_limit(tmp_path):
 
     assert calls == []
     assert list(tmp_path.iterdir()) == []
+
+
+def test_synthetic_seed_headers_are_handled_by_both_real_parser_entry_points(tmp_path):
+    for filename, seed in SYNTHETIC_SEEDS.items():
+        capture = tmp_path / filename
+        capture.write_bytes(seed)
+
+        assert parse_pcap(str(capture)) == []
+        result = parse_pcap_comprehensive(str(capture))
+        assert result.total_packets == 0
+        assert result.bssids == {}
+        assert result.stations == {}
+        assert result.handshakes == []
