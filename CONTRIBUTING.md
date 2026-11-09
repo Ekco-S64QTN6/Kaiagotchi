@@ -46,7 +46,7 @@ python scripts/fuzz_pcap_parser.py /tmp/kaiagotchi-pcap-corpus -max_len=1048576 
 It seeds the corpus with minimal synthetic PCAP/PCAPNG headers and exercises both
 parser entry points. Fuzzing is an opt-in developer activity and is not a normal CI
 requirement. Hardware smoke tests should be explicitly marked and must not be required
-for the normal unit-test suite. The manual [operator hardware checklist](docs/operator-hardware-smoke-test.md)
+for the normal unit-test suite. The persistent mood store is shared by the monitoring loop and the Epoch worker; its regression tests must keep state mutations short under the state lock and filesystem writes serialized from detached snapshots. The manual [operator hardware checklist](docs/operator-hardware-smoke-test.md)
 is intentionally not a CI test because hosted CI has no physical adapter. Only capture
 from networks you own or have explicit permission to test.
 
