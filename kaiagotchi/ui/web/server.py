@@ -615,6 +615,11 @@ class WebServer:
 
     async def _handle_logout(self, request: web.Request) -> web.StreamResponse:
         """Revoke the current browser session and clear its cookie."""
+        if self._auth_enabled and not _is_same_origin_request(
+            request, self._allowed_origin_hosts()
+        ):
+            raise web.HTTPForbidden(text="Cross-origin logout is not allowed")
+
         session = request.cookies.get(self._auth_cookie_name, "")
         self._sessions.pop(session, None)
 
