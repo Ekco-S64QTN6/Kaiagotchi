@@ -143,3 +143,24 @@
 
 ### Next action
 - Review this adapter/test diff, open a PR for issue #155, fix any exact-head CI failures, and merge only after Python 3.11–3.13 tests, compileall, Ruff, Mypy, and wheel/assets all pass. Then re-check issue #155 and post-merge `main` CI; continue with #156 as a separate batch.
+
+
+## Run 2026-11-09 17:45 CDT — channel capability discovery
+
+**Latest merged main at start:** 7def0ae48da9b0008019187563a21d37c109f578
+**Completed prior batch:** PR #158 merged at 7def0ae; issue #155 closed as completed. Exact-head CI run 42721551057 passed all five jobs.
+**Phase 0 at start:** issue #156 remained open; no open PRs; stale branch #142 only.
+
+### In progress
+- Branch fix/interface-channel-capability-query-2026-11-09: issue #156.
+- kaiagotchi/network/utils.iface_channels() now resolves the selected interface's Wiphy through iw dev <interface> info, reads its reported frequency/channel entries through iw phy phy<N> info, removes entries explicitly marked disabled, and returns a sorted unique channel list.
+- DFS and no-IR annotations remain included because those channels still matter for passive monitoring; no capability query failure falls back to a guessed static channel list.
+- kaiagotchi/core/utils.iface_channels() now delegates to the shared network helper, removing the duplicate implementation.
+- New synthetic tests cover Wiphy lookup, 2.4/5/6 GHz channel numbers, disabled channels, missing Wiphy, missing interface/PHY results, unavailable/timeout iw, invalid interface names, and legacy wrapper delegation.
+- CHANGELOG, ROADMAP, CONTRIBUTING updated; progress handoff retained.
+
+### Known compatibility limitation
+- The legacy API returns channel numbers only, not band-qualified pairs. Identical numbers across 2.4 and 6 GHz therefore collapse to one value. A future typed API should expose (band, channel) or frequency if callers need unambiguous multi-band selection.
+
+### Next action
+- Review the implementation and tests, open the PR for #156, repair any exact-head CI failures, and merge only once all five required jobs pass. Then verify the post-merge main workflow, close #156, and re-run Phase 0 counters.
