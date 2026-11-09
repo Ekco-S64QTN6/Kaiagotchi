@@ -76,3 +76,41 @@ def test_atomic_save_supports_relative_paths(tmp_path, monkeypatch):
 
     assert file_io.atomically_save_data("state.json", {"relative": True})
     assert json.loads(target.read_text(encoding="utf-8")) == {"relative": True}
+
+
+def test_atomic_save_does_not_replace_state_when_file_fsync_fails(tmp_path, monkeypatch):
+    target = tmp_path / "state.json"
+    target.write_text('{"keep": true}', encoding="utf-8")
+
+    def fail_file_fsync(fd: int) -> None:
+        if stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError("simulated file fsync failure")
+        os.fsync(fd)
+
+    monkeypatch.setattr(file_io.os, "fsync", fail_file_fsync)
+
+    assert file_io.atomically_save_data(str(target), {"new": True}) is False
+
+    assert json.loads(target.read_text(encoding="utf-8")) == {"keep": True}
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["state.json"]
+
+
+def test_atomic_save_reports_directory_fsync_failure_after_replace(tmp_path, monkeypatch, caplog):
+    target = tmp_path / "state.json"
+    target.write_text('{"old": true}', encoding="utf-8")
+    real_fsync = os.fsync
+
+    def fail_directory_fsync(fd: int) -> None:
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("simulated directory fsync failure")
+        real_fsync(fd)
+
+    monkeypatch.setattr(file_io.os, "fsync", fail_directory_fsync)
+
+    assert file_io.atomically_save_data(str(target), {"new": True}) is False
+
+    # The rename already happened; False means crash durability could not be
+    # confirmed, not that the previous contents were restored.
+    assert json.loads(target.read_text(encoding="utf-8")) == {"new": True}
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["state.json"]
+    assert "was replaced, but durability could not be confirmed" in caplog.text
