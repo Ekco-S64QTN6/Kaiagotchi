@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make an unexpected curses-thread failure request the CLI's normal shutdown path and always clear the thread-started flag when the wrapper exits; add synthetic regressions for initialization failure and normal thread return.
+
 - Correct the terminal scoreboard's “Unique SSIDs Seen” metric to count distinct, observed network names (including persisted ESSID history) rather than BSSID records; exclude hidden/unknown placeholders and cover repeated names in synthetic fixtures.
 
 - Keep terminal shutdown output consistent with TTY ownership: `show_goodbye()` no longer writes ANSI screen-control sequences to redirected/non-interactive stdout; add a regression test for pipe output.
