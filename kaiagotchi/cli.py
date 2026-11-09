@@ -133,7 +133,7 @@ def parse_arguments():
     parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
     parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
     parser.add_argument("--port", type=int, default=None, help="Port for Web UI (default: 8080)")
-    parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (default: 127.0.0.1; use 0.0.0.0 for LAN access)")
+    parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (non-loopback binds require web.auth_token or KAIA_WEB_AUTH_TOKEN)")
     # helper flags (handled below in __main__)
     parser.add_argument("--smoke-ui", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--diag-ui", action="store_true", help=argparse.SUPPRESS)
