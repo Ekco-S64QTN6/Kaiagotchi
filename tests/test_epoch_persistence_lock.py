@@ -86,3 +86,19 @@ def test_get_summary_reads_a_coherent_scalar_snapshot():
     summary = epoch.get_summary()
     assert summary["epoch"] == 1
     assert summary["last_reward"] == 0.25
+
+
+def test_update_network_state_detaches_caller_owned_inputs():
+    epoch = Epoch({})
+    aps = [{"bssid": "AA:BB:CC:DD:EE:FF", "clients": [{"mac": "11:22:33:44:55:66"}]}]
+    stations = [{"station_mac": "11:22:33:44:55:66"}]
+    captures = [{"type": "handshake", "metadata": {"packet_indices": [1, 2]}}]
+
+    epoch.update_network_state(aps, stations, captures)
+    aps[0]["clients"][0]["mac"] = "mutated"
+    stations[0]["station_mac"] = "mutated"
+    captures[0]["metadata"]["packet_indices"].append(3)
+
+    assert epoch.aps_list[0]["clients"][0]["mac"] == "11:22:33:44:55:66"
+    assert epoch.stations_list[0]["station_mac"] == "11:22:33:44:55:66"
+    assert epoch.recent_captures[0]["metadata"]["packet_indices"] == [1, 2]
