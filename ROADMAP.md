@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Preserve InterfaceMonitor fields when combining ifconfig, ip-address, wireless, and system-stat records; use deterministic later-source precedence only for conflicting fields on the same interface.
+
 - Consolidate legacy iface_channels() helpers around the selected interface's Wiphy capabilities from iw; filter disabled channels and use an explicit empty result instead of a fabricated list when capability data is unavailable.
 
 - Make the legacy `core.utils.extract_from_pcap()` adapter use the supported PCAP/PCAPNG parser; keep the old dictionary keys, distinguish complete handshakes from partial/PMKID captures, and fail closed to a no-capture result.
