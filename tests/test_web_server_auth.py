@@ -6,6 +6,7 @@ import pytest
 from aiohttp import CookieJar, web
 from aiohttp.client_exceptions import WSServerHandshakeError
 from aiohttp.test_utils import TestClient, TestServer
+from tomlkit import parse
 
 from kaiagotchi.ui.web.server import WebServer
 
@@ -161,3 +162,16 @@ async def test_login_rejects_a_foreign_origin():
 
     with pytest.raises(web.HTTPForbidden, match="Cross-origin login"):
         await server._handle_login(request)
+
+
+
+def test_web_server_reads_auth_settings_from_the_real_toml_mapping_type():
+    config = parse(
+        f'[web]\nhost = "192.168.1.25"\nauth_token = "{TOKEN}"\nport = 8080'
+    )
+
+    server = WebServer(config)
+
+    assert server._host == "192.168.1.25"
+    assert server._auth_token == TOKEN
+    assert server._auth_enabled is True
