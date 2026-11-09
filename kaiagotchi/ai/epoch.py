@@ -14,6 +14,7 @@ ARCHITECTURE FIX: Removed duplicate RewardEngine and PersistentMood creation
 """
 
 import logging
+import math
 import threading
 import time
 from copy import deepcopy
@@ -145,37 +146,100 @@ class Epoch:
                 self.any_activity = True
 
     # --------------------------------------------------------------
+    @staticmethod
+    def _channel_index(value: Any) -> int | None:
+        """Return a zero-based histogram index for an integer channel value."""
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            numeric_channel = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if not math.isfinite(numeric_channel) or not numeric_channel.is_integer():
+            return None
+        channel = int(numeric_channel)
+        return channel - 1 if 1 <= channel <= NumChannels else None
+
+    @staticmethod
+    def _finite_encounters(peer: Any) -> float:
+        """Read an encounter count without allowing malformed peer values to break a tick."""
+        try:
+            value = getattr(peer, "encounters", 0)
+        except Exception:
+            return 0.0
+        if value is None or isinstance(value, bool):
+            return 0.0
+        try:
+            encounters = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return 0.0
+        return encounters if math.isfinite(encounters) else 0.0
+
     def observe(self, aps: list, peers: list) -> None:
-        """Update observation histograms from AP + peer lists."""
+        """Update observation histograms from AP + peer lists.
+
+        Channel IDs arrive as strings from Scapy's packet parser as well as
+        integers from normalized network state. Malformed optional records and
+        invalid encounter scaling must not abort the monitoring observation.
+        """
         if not isinstance(aps, list) or not isinstance(peers, list):
             _LOG.error("observe() requires list inputs for aps and peers")
             return
 
+        personality = self.config.get("personality", {})
+        if not isinstance(personality, dict):
+            personality = {}
+        raw_scale = personality.get("bond_encounters_factor", 1.0)
+        invalid_scale = False
+        try:
+            if isinstance(raw_scale, bool):
+                raise ValueError("boolean bond scale is invalid")
+            bond_unit_scale = float(raw_scale)
+        except (TypeError, ValueError, OverflowError):
+            bond_unit_scale = 1.0
+            invalid_scale = True
+        if invalid_scale or not math.isfinite(bond_unit_scale) or bond_unit_scale <= 0:
+            _LOG.warning(
+                "Invalid bond_encounters_factor %r; using 1.0 for this observation",
+                raw_scale,
+            )
+            bond_unit_scale = 1.0
+
+        valid_aps = [ap for ap in aps if isinstance(ap, dict)]
+        valid_peers = [peer for peer in peers if peer is not None]
+
         with self._lock:
-            num_aps = len(aps)
+            num_aps = len(valid_aps)
             self.blind_for = self.blind_for + 1 if num_aps == 0 else 0
 
-            bond_unit_scale = float(self.config.get("personality", {}).get("bond_encounters_factor", 1.0))
-            self.num_peers = len(peers)
+            self.num_peers = len(valid_peers)
             num_peers = self.num_peers + 1e-10
 
-            self.tot_bond_factor = sum(getattr(p, "encounters", 0) for p in peers) / bond_unit_scale
+            total_encounters = sum(self._finite_encounters(peer) for peer in valid_peers)
+            self.tot_bond_factor = total_encounters / bond_unit_scale
             self.avg_bond_factor = self.tot_bond_factor / num_peers
 
             aps_per_chan = [0.0] * NumChannels
             sta_per_chan = [0.0] * NumChannels
             peers_per_chan = [0.0] * NumChannels
 
-            for ap in aps:
-                ch = ap.get("channel", 0)
-                if 1 <= ch <= NumChannels:
-                    aps_per_chan[ch - 1] += 1.0
-                    sta_per_chan[ch - 1] += len(ap.get("clients", []))
+            for ap in valid_aps:
+                channel_index = self._channel_index(ap.get("channel", 0))
+                if channel_index is None:
+                    continue
+                aps_per_chan[channel_index] += 1.0
+                clients = ap.get("clients", [])
+                if isinstance(clients, (list, tuple, set, dict)):
+                    sta_per_chan[channel_index] += len(clients)
 
-            for peer in peers:
-                ch = getattr(peer, "last_channel", 0)
-                if 1 <= ch <= NumChannels:
-                    peers_per_chan[ch - 1] += 1.0
+            for peer in valid_peers:
+                try:
+                    raw_channel = getattr(peer, "last_channel", 0)
+                except Exception:
+                    continue
+                channel_index = self._channel_index(raw_channel)
+                if channel_index is not None:
+                    peers_per_chan[channel_index] += 1.0
 
             aps_norm = [a / (num_aps + 1e-10) for a in aps_per_chan]
             sta_norm = [s / (sum(sta_per_chan) + 1e-10) for s in sta_per_chan]
