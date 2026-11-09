@@ -39,6 +39,8 @@ Plugin-discovery regressions should import a real temporary package from an exte
 
 Legacy capture helper tests must exercise missing, empty, malformed, valid-empty PCAPNG, and a valid synthetic 802.11/EAPOL PCAP; never assert a positive handshake without parser-derived complete-handshake evidence.
 
+Wireless channel capability tests must use synthetic iw dev / iw phy outputs, cover 2.4/5/6 GHz and disabled frequencies, and verify unavailable interfaces/commands return an empty list without a hardware dependency.
+
 Web HUD auth regressions must cover already-established WebSockets as well as HTTP: same-origin logout revokes active sockets, foreign-origin logout is rejected, expiry closes idle sockets, and expired clients cannot request a fresh state snapshot.
 
 Documented hardware requirements must match implemented operations: the current monitor/capture path is passive and does not require packet injection. The convenience root launcher deliberately forwards only named app selectors, not arbitrary environment variables.
