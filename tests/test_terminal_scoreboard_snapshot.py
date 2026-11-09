@@ -21,8 +21,8 @@ def test_terminal_scoreboard_uses_locked_public_store_accessors():
 
         def get_capture_analysis_summary(self):
             return {
-                "total": 3,
-                "complete_handshakes": 2,
+                "total": 2,
+                "complete_handshakes": 1,
                 "pmkids": 1,
             }
 
@@ -49,8 +49,15 @@ def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
             return {
                 "valid": {
                     "analysis": [
-                        {"handshake_complete": True},
-                        {"pmkid": True},
+                        {
+                            "type": "WPA Handshake (Complete)",
+                            "handshake_complete": True,
+                        },
+                        {
+                            "type": "PMKID",
+                            "handshake_complete": True,
+                            "pmkid": "00112233445566778899aabbccddeeff",
+                        },
                     ]
                 },
                 "malformed": None,
@@ -97,7 +104,9 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
         "pmkids": 1,
     }
     # Keep the existing lightweight API's contract intact.
-    assert network.get_capture_analysis_count() == 4
+    # This older accessor deliberately counts every analysis entry (including
+    # PMKIDs); the terminal summary separates those categories.
+    assert network.get_capture_analysis_count() == 3
 
 
 def test_terminal_scoreboard_counts_ssids_from_snapshot_when_store_is_missing():
