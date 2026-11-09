@@ -455,6 +455,10 @@ class TerminalDisplay:
 
     def show_goodbye(self):
         self.stop()
+        # Match initialization and atexit cleanup: never emit terminal control
+        # sequences when this process did not acquire an interactive TTY.
+        if not self._owns_terminal:
+            return
         try:
             out = sys.__stdout__
             if out is None:
