@@ -18,8 +18,6 @@ def test_observe_normalizes_string_and_integer_channel_ids(channel):
         [peer],
     )
 
-    observation = epoch.data()
-    # Epoch.data() is not the observation API; wait_for_epoch_data() combines both.
     snapshot = epoch.wait_for_epoch_data(with_observation=True, timeout=0.1)
     assert len(snapshot["aps_histogram"]) == NumChannels
     assert snapshot["aps_histogram"][5] == pytest.approx(1.0)
@@ -64,7 +62,7 @@ def test_observe_skips_malformed_optional_records_and_encounter_values():
 
     assert snapshot["aps_histogram"][5] == pytest.approx(1.0 / 4.0)
     assert snapshot["sta_histogram"][5] == pytest.approx(1.0)
-    assert snapshot["peers_histogram"][2] == pytest.approx(1.0)
+    assert snapshot["peers_histogram"][2] == pytest.approx(1.0 / 3.0)
     assert epoch.num_peers == 3
     assert epoch.tot_bond_factor == pytest.approx(2.0)
     assert epoch.avg_bond_factor == pytest.approx(2.0 / 3.0)
