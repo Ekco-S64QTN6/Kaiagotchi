@@ -92,3 +92,32 @@ async def test_box_header_format():
     # Check for "Access Points" surrounded by dashes
     # e.g. ┌────────── Access Points ──────────┐
     assert "─ Access Points ─" in content or "─Access Points─" in content or "── Access Points ──" in content
+
+def test_show_goodbye_does_not_write_terminal_controls_without_a_tty(monkeypatch):
+    class NonTTYOut:
+        def __init__(self):
+            self.writes = []
+
+        def isatty(self):
+            return False
+
+        def write(self, value):
+            self.writes.append(value)
+
+        def flush(self):
+            pass
+
+    previous = TerminalDisplay._instance
+    output = NonTTYOut()
+    monkeypatch.setattr(TerminalDisplay, "_instance", None)
+    monkeypatch.setattr(terminal_display_module.sys, "__stdout__", output)
+    try:
+        display = TerminalDisplay()
+        assert display._owns_terminal is False
+        monkeypatch.setattr(display, "stop", lambda: None)
+
+        display.show_goodbye()
+
+        assert output.writes == []
+    finally:
+        TerminalDisplay._instance = previous
