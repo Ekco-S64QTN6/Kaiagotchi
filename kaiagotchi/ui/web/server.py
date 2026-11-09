@@ -28,7 +28,7 @@ import secrets
 import socket
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -107,19 +107,18 @@ def _bind_host_is_loopback(host: str) -> bool:
 
 def _log_listener_started(host: str, port: int, authenticated: bool = False) -> None:
     """Log the bind address and explain the trust boundary for LAN listeners."""
-    normalized_host = host.strip().lower()
-    if normalized_host in {"", "0.0.0.0", "::", "[::]"}:
+    if not _bind_host_is_loopback(host):
         if authenticated:
             _LOG.warning(
-                "Cyber-Deck HUD is bound to all network interfaces (%s:%d) with "
-                "token authentication. HTTP is not encrypted; use a TLS reverse "
-                "proxy or a trusted private network.",
+                "Cyber-Deck HUD is bound to a non-loopback address (%s:%d) with "
+                "token authentication. HTTP is not encrypted; use a trusted "
+                "private network or VPN.",
                 host or "*",
                 port,
             )
         else:
             _LOG.warning(
-                "Cyber-Deck HUD is bound to all network interfaces (%s:%d) without "
+                "Cyber-Deck HUD is bound to a non-loopback address (%s:%d) without "
                 "authentication; expose it only on a trusted network.",
                 host or "*",
                 port,
@@ -315,7 +314,7 @@ class WebServer:
     ):
         self._config = config or {}
         web_cfg = self._config.get("web", {})
-        if not isinstance(web_cfg, dict):
+        if not isinstance(web_cfg, Mapping):
             web_cfg = {}
         # The dashboard exposes live SSIDs, station MACs, and runtime telemetry.
         # Non-loopback listeners must have a long token before the socket is opened.
