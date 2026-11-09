@@ -16,6 +16,7 @@ ARCHITECTURE FIX: Removed duplicate RewardEngine and PersistentMood creation
 import logging
 import threading
 import time
+from copy import deepcopy
 from typing import Any
 
 from kaiagotchi.ai.reward import RewardEngine
@@ -105,27 +106,37 @@ class Epoch:
 
     # --------------------------------------------------------------
     def wait_for_epoch_data(self, with_observation: bool = True, timeout: float | None = None) -> dict[str, Any]:
-        """Wait for epoch data to be ready and return it."""
+        """Wait for epoch data and return a detached snapshot.
+
+        Observation and reward data are copied together under the shared state
+        lock so readers never combine fields from different epoch transitions.
+        The returned value is caller-owned; mutating it cannot alter tracker state.
+        """
         self._epoch_data_ready.wait(timeout)
-        self._epoch_data_ready.clear()
-        return (
-            self._epoch_data
-            if not with_observation
-            else {**self._observation, **self._epoch_data}
-        )
+        with self._lock:
+            self._epoch_data_ready.clear()
+            epoch_data = deepcopy(self._epoch_data)
+            if not with_observation:
+                return epoch_data
+            observation = deepcopy(self._observation)
+        return {**observation, **epoch_data}
 
     def data(self) -> dict[str, Any]:
-        """Get current epoch data."""
-        return self._epoch_data
+        """Return a detached copy of the latest committed epoch reward snapshot."""
+        with self._lock:
+            return deepcopy(self._epoch_data)
 
     # --------------------------------------------------------------
     def update_network_state(self, aps_list: list[dict[str, Any]], stations_list: list[dict[str, Any]],
                            recent_captures: list[dict[str, Any]]) -> None:
-        """Update epoch with current network state from monitoring agent."""
+        """Update from detached network state so callers retain ownership of inputs."""
+        aps_snapshot = deepcopy(aps_list or [])
+        stations_snapshot = deepcopy(stations_list or [])
+        captures_snapshot = deepcopy(recent_captures or [])
         with self._lock:
-            self.aps_list = aps_list or []
-            self.stations_list = stations_list or []
-            self.recent_captures = recent_captures or []
+            self.aps_list = aps_snapshot
+            self.stations_list = stations_snapshot
+            self.recent_captures = captures_snapshot
             self.current_aps = len(self.aps_list)
             self.current_stations = len(self.stations_list)
 
@@ -373,27 +384,28 @@ class Epoch:
 
     # --------------------------------------------------------------
     def get_summary(self) -> dict[str, Any]:
-        """Get comprehensive epoch summary for debugging and UI."""
-        return {
-            "epoch": self.epoch,
-            "current_mood": self._last_mood,
-            "last_reward": self._last_reward,
-            "network_activity": {
-                "aps": self.current_aps,
-                "stations": self.current_stations,
-                "handshakes": self.num_shakes,
-            },
-            "emotional_state": {
-                "inactive_epochs": self.inactive_for,
-                "active_epochs": self.active_for,
-                "sad_epochs": self.sad_for,
-                "bored_epochs": self.bored_for,
-            },
-            "timing": {
-                "epoch_duration": self.epoch_duration,
-                "uptime": time.time() - self.epoch_started,
+        """Get a consistent epoch summary for debugging and UI."""
+        with self._lock:
+            return {
+                "epoch": self.epoch,
+                "current_mood": self._last_mood,
+                "last_reward": self._last_reward,
+                "network_activity": {
+                    "aps": self.current_aps,
+                    "stations": self.current_stations,
+                    "handshakes": self.num_shakes,
+                },
+                "emotional_state": {
+                    "inactive_epochs": self.inactive_for,
+                    "active_epochs": self.active_for,
+                    "sad_epochs": self.sad_for,
+                    "bored_epochs": self.bored_for,
+                },
+                "timing": {
+                    "epoch_duration": self.epoch_duration,
+                    "uptime": time.time() - self.epoch_started,
+                },
             }
-        }
 
 
 # Public alias — the class is exported as EpochTracker throughout the package.
