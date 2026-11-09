@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Bind each authenticated Web HUD WebSocket to its browser session; revoke connected sockets on logout and close idle sockets at expiry as well as rejecting later client requests/broadcasts.
+
 - Align the README and requirements notes with the current passive-only capture path: monitor mode is sufficient, the privileged launcher does not forward arbitrary environment variables, and the combined extras example includes `fuzz`.
 
 - Honor custom `PluginManager(plugin_dir=...)` roots with isolated package namespaces and relative imports; replace the mocked discovery test with a real external package fixture.
