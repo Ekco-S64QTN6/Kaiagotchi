@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep PMKID-only analysis records out of the terminal's “Total Handshakes” and “Complete WPA” counts while retaining a separate PMKID total; preserve the general analyzed-capture count API and cover complete, partial, and PMKID-only fixtures.
+
 - Correct the terminal scoreboard's “Unique SSIDs Seen” metric to count distinct, observed network names (including persisted ESSID history) rather than BSSID records; exclude hidden/unknown placeholders and cover repeated names in synthetic fixtures.
 
 - Keep terminal shutdown output consistent with TTY ownership: `show_goodbye()` no longer writes ANSI screen-control sequences to redirected/non-interactive stdout; add a regression test for pipe output.
