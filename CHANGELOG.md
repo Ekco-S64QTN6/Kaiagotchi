@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Enforce Web HUD session lifetime on existing WebSockets: close sockets associated with a logged-out or expired session, deny subsequent state requests, and check session validity during telemetry broadcasts.
 - Correct hardware prerequisites to require monitor mode only (the current capture workflow is passive), document how the sudo wrapper handles auth-token environment variables, and include the optional `fuzz` extra in the all-extras install example.
 - Import external plugin packages from the configured `PluginManager(plugin_dir=...)` root, including their relative imports, instead of resolving every discovered name under the bundled package.
 - Normalize string/integer Wi-Fi channel IDs in Epoch observations; ignore malformed AP/peer values and guard the bond encounter scale against zero, non-finite, and non-numeric configuration.
