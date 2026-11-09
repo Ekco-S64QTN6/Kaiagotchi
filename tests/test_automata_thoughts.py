@@ -69,7 +69,6 @@ def test_voice_recognizes_automata_mood_for_thoughts(monkeypatch):
     )
 
 
-
 def test_automata_optional_engine_exports_retain_the_real_classes():
     from kaiagotchi.ai.epoch import Epoch
     from kaiagotchi.ai.reward import RewardEngine
@@ -77,7 +76,6 @@ def test_automata_optional_engine_exports_retain_the_real_classes():
 
     assert automata_module.Epoch is Epoch
     assert automata_module.RewardEngine is RewardEngine
-
 
 
 def _automata_for_reward_tick(monkeypatch, *, epoch=None, reward=None):
