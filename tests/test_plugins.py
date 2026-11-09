@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from kaiagotchi.plugins.base import PLUGIN_API_VERSION, Plugin
@@ -39,38 +37,28 @@ def test_plugin_lifecycle():
     manager.dispatch_state_update({})
     assert plugin.state_called
 
-def test_plugin_discovery(tmp_path, monkeypatch):
-    # Create a dummy plugin in a temporary directory
-    plugin_dir = tmp_path / "plugins"
-    plugin_dir.mkdir()
-
-    (plugin_dir / "__init__.py").touch()
-
+def test_plugin_discovery_imports_from_external_directory_with_relative_imports(tmp_path):
+    plugin_dir = tmp_path / "external_plugins"
     dummy_plugin_dir = plugin_dir / "dummy"
-    dummy_plugin_dir.mkdir()
+    dummy_plugin_dir.mkdir(parents=True)
     (dummy_plugin_dir / "__init__.py").write_text(
         "from kaiagotchi.plugins.base import Plugin\n"
+        "from .helper import EXTERNAL_MARKER\n"
         "class DummyPlugin(Plugin):\n"
-        "    def on_load(self): pass\n"
-        "    def on_unload(self): pass\n"
+        "    def on_load(self):\n"
+        "        self.loaded_from = EXTERNAL_MARKER\n"
+    )
+    (dummy_plugin_dir / "helper.py").write_text(
+        'EXTERNAL_MARKER = "loaded-from-external-plugin-root"\n'
     )
 
-    # Mock sys.path to include the parent of plugin_dir so importlib can find 'plugins.dummy'
-    # But wait, the manager expects 'kaiagotchi.plugins.dummy'.
-    # We need to mock the import logic or structure the temp dir to match package structure.
-
-    # Easier approach: Mock importlib.import_module
-    mock_module = MagicMock()
-    mock_class = type("DummyPlugin", (Plugin,), {"on_load": lambda s: None, "on_unload": lambda s: None})
-    mock_module.DummyPlugin = mock_class
-
-    import importlib
-    monkeypatch.setattr(importlib, "import_module", lambda name: mock_module)
-
-    manager = PluginManager(plugin_dir=str(plugin_dir))
+    manager = PluginManager(plugin_dir=plugin_dir)
     manager.discover_and_load()
 
     assert "dummy" in manager.plugins
+    plugin = manager.plugins["dummy"]
+    assert plugin.loaded_from == "loaded-from-external-plugin-root"
+    assert plugin.__class__.__module__.startswith("_kaiagotchi_external_plugins_")
 
 def test_duplicate_registration_unloads_replaced_instance():
     manager = PluginManager()
