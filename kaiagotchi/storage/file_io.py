@@ -15,10 +15,13 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
     Prevents corruption and permission flips between runs as root/non-root.
 
     Steps:
-    - Write to a temp file in the same directory.
-    - Replace target atomically with os.replace().
-    - Reapply prior file's ownership/permissions if it existed.
-    - If new file, set owner to current user and mode 600.
+    - Write the complete JSON document to a temporary file in the target directory.
+    - Flush and fsync the file contents before it can replace the current state.
+    - Apply the prior file's ownership/permissions (or private 0600 defaults).
+    - Replace the target atomically, then fsync the parent directory entry.
+    
+    File and directory synchronization improve crash durability; atomic replace
+    alone guarantees visibility, not persistence across sudden power loss.
     """
     if fmt.lower() != "json":
         file_io_logger.error(f"Unsupported format '{fmt}' for atomic save.")
@@ -26,16 +29,15 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
 
     file_io_logger.debug(f"Attempting atomic save to: {filepath}")
 
-    # Ensure the parent directory exists
-    dir_path = os.path.dirname(filepath)
-    if dir_path and not os.path.exists(dir_path):
-        try:
-            os.makedirs(dir_path, exist_ok=True)
-        except OSError as e:
-            file_io_logger.error(f"Could not create directory {dir_path}: {e}")
-            return False
+    # Use the current directory for relative paths such as "state.json".
+    dir_path = os.path.dirname(filepath) or "."
+    try:
+        os.makedirs(dir_path, exist_ok=True)
+    except OSError as exc:
+        file_io_logger.error("Could not create directory %s: %s", dir_path, exc)
+        return False
 
-    # Preserve existing file metadata if present
+    # Preserve existing file metadata if present. New files remain private.
     existing_mode = 0o600
     existing_uid = os.getuid()
     existing_gid = os.getgid()
@@ -46,42 +48,86 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
             existing_mode = stat.S_IMODE(st.st_mode)
             existing_uid = st.st_uid
             existing_gid = st.st_gid
-        except Exception as e:
-            file_io_logger.debug(f"Could not stat existing file {filepath}: {e}")
+        except OSError as exc:
+            file_io_logger.debug("Could not stat existing file %s: %s", filepath, exc)
 
-    temp_file_name = None
+    temp_file_name: str | None = None
+    replaced = False
     try:
-        # Write to a temporary file first
+        # Keep the temporary file on the target filesystem so os.replace()
+        # remains atomic. Capture its name before serialization can fail.
         with tempfile.NamedTemporaryFile(
             mode="w", delete=False, dir=dir_path, encoding="utf-8"
         ) as tmp_fp:
-            json.dump(data, tmp_fp, indent=4)
             temp_file_name = tmp_fp.name
+            json.dump(data, tmp_fp, indent=4)
+            tmp_fp.flush()
 
-        # Atomically replace original
+            # Set metadata before publishing the new inode. chown may clear
+            # set-id bits, so permissions are applied afterwards.
+            try:
+                os.fchown(tmp_fp.fileno(), existing_uid, existing_gid)
+            except PermissionError:
+                # An unprivileged process cannot take ownership of a prior
+                # root-owned file; retain the temporary file's current owner.
+                pass
+            except OSError as exc:
+                file_io_logger.debug(
+                    "fchown(%s, %d, %d) failed: %s",
+                    temp_file_name,
+                    existing_uid,
+                    existing_gid,
+                    exc,
+                )
+
+            try:
+                os.fchmod(tmp_fp.fileno(), existing_mode)
+            except OSError as exc:
+                # NamedTemporaryFile starts at 0600, so failures are private.
+                file_io_logger.debug(
+                    "fchmod(%s, %s) failed: %s",
+                    temp_file_name,
+                    oct(existing_mode),
+                    exc,
+                )
+
+            # The file's contents and metadata must reach stable storage before
+            # a directory entry can point at this inode.
+            os.fsync(tmp_fp.fileno())
+
         os.replace(temp_file_name, filepath)
+        replaced = True
+        temp_file_name = None
 
-        # Reapply ownership + permissions
+        # Persist the rename itself. Opening the directory also works for
+        # relative target paths because dir_path is normalized above.
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(dir_path, directory_flags)
         try:
-            os.chmod(filepath, existing_mode)
-        except Exception as e:
-            file_io_logger.debug(f"chmod({filepath}, {oct(existing_mode)}) failed: {e}")
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
 
-        try:
-            os.chown(filepath, existing_uid, existing_gid)
-        except PermissionError:
-            # Non-root user can’t chown root-owned files
-            pass
-        except Exception as e:
-            file_io_logger.debug(f"chown({filepath}, {existing_uid}, {existing_gid}) failed: {e}")
-
-        file_io_logger.info(f"Successfully saved data to {filepath} atomically.")
+        file_io_logger.info("Successfully saved data to %s atomically and durably.", filepath)
         return True
 
-    except Exception as e:
-        file_io_logger.error(f"Error during atomic save to {filepath}: {e}", exc_info=True)
+    except Exception as exc:
+        if replaced:
+            file_io_logger.error(
+                "State file %s was replaced, but durability could not be confirmed: %s",
+                filepath,
+                exc,
+                exc_info=True,
+            )
+        else:
+            file_io_logger.error(
+                "Error during atomic save to %s: %s", filepath, exc, exc_info=True
+            )
         if temp_file_name and os.path.exists(temp_file_name):
-            os.remove(temp_file_name)
+            try:
+                os.remove(temp_file_name)
+            except OSError:
+                file_io_logger.warning("Could not remove temporary state file %s", temp_file_name)
         return False
 
 
