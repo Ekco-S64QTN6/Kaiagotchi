@@ -43,10 +43,10 @@ features or capture-backend changes.
    archive capture, remove private temp data, persist network/mood state, then emit summary.
 3. **Reward and mood contract** — synthetic tests now cover typed `AgentMood`
    values through all three supported aliases, explicit alias precedence, partial and
-   malformed snapshots preserving delta baselines, and malformed discovery inputs.
-   README documents accepted snapshot fields, precedence, authoritative zeros,
-   discovery deduplication, and baseline preservation when optional counters/channels
-   are absent.
+   malformed snapshots preserving delta baselines, malformed discovery inputs, and
+   authoritative zero rewards across Epoch/RewardEngine fallback selection. A valid
+   finite zero is preserved; fallback occurs only when a higher-priority source is
+   unavailable, invalid, or did not advance its epoch.
 4. **Plugin lifecycle** — host API version 1 is now explicit and inherited by legacy
    subclasses; the manager rejects unsupported declarations before loading or replacing
    a plugin. Event and state dispatch now iterate stable snapshots, so registration or
@@ -72,6 +72,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Preserve valid zero rewards from Epoch/RewardEngine and only fall back when the source is unavailable, malformed, non-finite, or its epoch did not advance; cover source precedence with synthetic tests.
 
 - Keep the terminal dashboard panes non-overlapping at the supported minimum terminal sizes, and include all observed Wi-Fi channel identifiers in the spectrum view (with a bounded summary when more than twelve channels are present).
 
