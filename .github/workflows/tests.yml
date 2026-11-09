@@ -141,9 +141,9 @@ jobs:
               echo "- Result: blocking failure; see the uploaded full report."
               echo ""
               echo "First 30 report lines:"
-              echo ' ```text'
+              echo '```text'
               head -n 30 mypy-report.txt
-              echo ' ```'
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
