@@ -19,8 +19,7 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
     - Flush and fsync the file contents before it can replace the current state.
     - Apply the prior file's ownership/permissions (or private 0600 defaults).
     - Replace the target atomically, then fsync the parent directory entry.
-    
-    File and directory synchronization improve crash durability; atomic replace
+\n    File and directory synchronization improve crash durability; atomic replace
     alone guarantees visibility, not persistence across sudden power loss.
     """
     if fmt.lower() != "json":
