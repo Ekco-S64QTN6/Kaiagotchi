@@ -570,13 +570,44 @@ def get_configured_interface(config: dict) -> str:
         raise
 
 def extract_from_pcap(pcap_file: str) -> dict[str, Any]:
+    """Return the first real capture parsed from a PCAP/PCAPNG file.
+
+    This legacy dictionary-shaped adapter preserves the original bssid,
+    essid, and handshake keys while sourcing them from the supported
+    kaiagotchi.network.pcap_parser.parse_pcap implementation.
+    handshake is true only for a complete WPA handshake; a PMKID or
+    partial handshake is identified separately by capture_type and pmkid.
+    When no capture is found (including missing, empty, or malformed files),
+    identity fields are None and handshake is false.
+
+    Only the first capture is returned for compatibility. Call parse_pcap
+    directly when every capture in a file is required.
     """
-    Extract handshake information from pcap file.
-    Placeholder implementation.
-    """
-    utils_logger.warning(f"extract_from_pcap is a placeholder for {pcap_file}")
+    # Import lazily to keep core utilities independent of the network parser
+    # during normal configuration/storage imports.
+    from kaiagotchi.network.pcap_parser import parse_pcap
+
+    captures = parse_pcap(pcap_file)
+    if not captures:
+        return {
+            "bssid": None,
+            "essid": None,
+            "handshake": False,
+            "handshake_complete": False,
+            "capture_type": None,
+            "client_mac": None,
+            "pmkid": None,
+            "capture_count": 0,
+        }
+
+    capture = captures[0]
     return {
-        'bssid': '00:00:00:00:00:00',
-        'essid': 'unknown',
-        'handshake': True
+        "bssid": capture.bssid,
+        "essid": capture.ssid,
+        "handshake": capture.handshake_complete,
+        "handshake_complete": capture.handshake_complete,
+        "capture_type": capture.type,
+        "client_mac": capture.client_mac,
+        "pmkid": capture.pmkid,
+        "capture_count": len(captures),
     }

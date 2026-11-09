@@ -123,3 +123,23 @@
 
 ### Recommended first action
 - Open/verify the WebSocket session-revocation PR, repair any exact-head CI failure, and merge only after all required jobs pass. Then verify post-merge main CI and continue the source review with issues #155 and #156 in the backlog.
+
+
+## Run 2026-11-09 17:30 CDT — fabricated PCAP extraction fix
+
+**Latest merged main at start:** `7066525126b36b880335e2587f933b50b89491e6`
+**Prior batch:** PR #157 merged after exact-head workflow 42718222363 passed all five required jobs. Post-merge main workflow 42721091354 also passed all five jobs.
+**Phase 0 at start:** 2 open issues (#155 and #156), 0 open PRs, only the known stale #142 branch plus main.
+
+### In progress
+- Branch `fix/extract-pcap-real-results-2026-11-09`: issue #155. `core.utils.extract_from_pcap()` now lazily delegates to `network.pcap_parser.parse_pcap()`, preserves its old dictionary keys, returns actual fields from the first parsed capture, distinguishes complete vs partial/PMKID data, and returns null identity / `handshake=False` / count 0 when there are no valid captures.
+- New `tests/test_core_utils_pcap.py`: missing file, empty file, malformed input, truncated classic header, valid synthetic 802.11/EAPOL PCAP, and valid empty PCAPNG.
+- `CHANGELOG.md`, `ROADMAP.md`, and `CONTRIBUTING.md` updated with implementation and test-contract notes.
+- Local commands are not available through the connected GitHub-only interface; exact-head hosted CI is the merge gate. No local test run is claimed.
+
+### Backlog
+- #156 — duplicate hard-coded `iface_channels()` placeholders still need capability-aware behavior or a documented deprecation path.
+- Stale branch `fix/tui-thread-failure-shutdown-2026-11-09` remains; its changes are already present via #142. The available GitHub operations have no ref-delete call.
+
+### Next action
+- Review this adapter/test diff, open a PR for issue #155, fix any exact-head CI failures, and merge only after Python 3.11–3.13 tests, compileall, Ruff, Mypy, and wheel/assets all pass. Then re-check issue #155 and post-merge `main` CI; continue with #156 as a separate batch.

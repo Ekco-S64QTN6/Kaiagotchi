@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make the legacy `core.utils.extract_from_pcap()` adapter use the supported PCAP/PCAPNG parser; keep the old dictionary keys, distinguish complete handshakes from partial/PMKID captures, and fail closed to a no-capture result.
+
 - Bind each authenticated Web HUD WebSocket to its browser session; require same-origin logout, revoke connected sockets on logout, and close idle sockets at expiry as well as rejecting later client requests/broadcasts.
 
 - Align the README and requirements notes with the current passive-only capture path: monitor mode is sufficient, the privileged launcher does not forward arbitrary environment variables, and the combined extras example includes `fuzz`.
