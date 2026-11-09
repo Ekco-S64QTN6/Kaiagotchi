@@ -164,3 +164,20 @@
 
 ### Next action
 - Review the implementation and tests, open the PR for #156, repair any exact-head CI failures, and merge only once all five required jobs pass. Then verify the post-merge main workflow, close #156, and re-run Phase 0 counters.
+
+
+## Run 2026-11-09 17:55 CDT — InterfaceMonitor source merge
+
+**Latest merged main at start:** 1714895946f0cea77bd7fb6aa87dc5763b6f0bae
+**Phase 0 at start:** 0 open issues, 0 open PRs. Issue #155 and #156 are closed as completed. The only non-main branch is the stale #142 branch whose commits are already merged.
+**Post-#159 main CI:** run 42722618670 passed all five required jobs.
+
+### In progress
+- Issue #160 — preserve InterfaceMonitor fields when merging ifconfig and ip snapshots.
+- Branch fix/interface-monitor-source-merge-2026-11-09: changed _merge_interface_data() to merge interfaces, wireless_interfaces, and system_stats by key and merge nested fields. Later sources replace only conflicting individual fields; unrelated fields and distinct interfaces are retained.
+- Tests added for same-interface source merging across all three maps, explicit later-source precedence on MTU, overall READY state, interface count, and different interfaces arriving from separate sources.
+- CHANGELOG, ROADMAP, CONTRIBUTING, and method documentation updated.
+- Local test execution is unavailable through this GitHub-only session; exact-head Actions remains the merge gate.
+
+### Next action
+- Hostile-review this merge behavior, open a PR for #160, pass all five exact-head CI jobs, then merge and close #160 only after verification. Re-check main CI and Phase 0 afterward.
