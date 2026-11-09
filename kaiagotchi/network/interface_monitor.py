@@ -196,9 +196,30 @@ class InterfaceMonitor:
             "system_stats": {}
         }
 
-        # Merge all data sources
+        # Merge keyed interface records by name. A later source may add or
+        # override individual fields, but must not erase unrelated fields
+        # collected by an earlier source (for example, ip addr must not replace
+        # the richer ifconfig record for the same interface).
+        keyed_mappings = {"interfaces", "wireless_interfaces", "system_stats"}
         for source in data_sources:
-            merged.update(source)
+            for key, value in source.items():
+                if key not in keyed_mappings or not isinstance(value, dict):
+                    merged[key] = value
+                    continue
+
+                destination = merged[key]
+                if not isinstance(destination, dict):
+                    destination = {}
+                    merged[key] = destination
+
+                for name, details in value.items():
+                    current = destination.get(name)
+                    if isinstance(current, dict) and isinstance(details, dict):
+                        current.update(details)
+                    elif isinstance(details, dict):
+                        destination[name] = details.copy()
+                    else:
+                        destination[name] = details
 
         # Calculate overall status
         up_interfaces = [
