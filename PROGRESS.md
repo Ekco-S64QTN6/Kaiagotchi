@@ -110,7 +110,7 @@
 - #156 — Replace the duplicate hard-coded `iface_channels()` placeholders with capability-aware behavior or a documented deprecation path; labeled `bug`.
 
 ### In progress
-- Branch `fix/websocket-session-revocation-2026-11-09`: associate each active WebSocket with its authorizing session, enforce session validity for incoming actions and periodic broadcasts, and close sockets immediately on logout/expiry. Synthetic integration tests cover logout revocation, idle expiry, and expired state requests.
+- Branch `fix/websocket-session-revocation-2026-11-09`: associate each active WebSocket with its authorizing session, enforce session validity for incoming actions and periodic broadcasts, close sockets immediately on logout/expiry, and reject cross-origin logout. Synthetic integration tests cover logout revocation, idle expiry, and expired state requests.
 - `README.md`, `CHANGELOG.md`, `ROADMAP.md`, and `CONTRIBUTING.md` updated to describe and test the session revocation contract.
 - #154 is merged at `3fd015b040b38e7da7b7ba599ff92834ac0c3bc4`; post-merge main CI run 42716073379 passed all five jobs.
 
