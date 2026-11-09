@@ -16,9 +16,10 @@ _LOG = logging.getLogger("kaiagotchi.plugins.manager")
 class PluginManager:
     """Manages the lifecycle of Kaiagotchi plugins.
 
-    A plugin is a subpackage of :mod:`kaiagotchi.plugins` (a directory with an
-    ``__init__.py`` exposing a :class:`~kaiagotchi.plugins.base.Plugin`
-    subclass). Discovered plugins are loaded unless their config sets
+    A bundled plugin is a subpackage of :mod:`kaiagotchi.plugins`; callers may
+    also provide an external plugin root containing package directories. Each
+    package has an ``__init__.py`` exposing a :class:`~kaiagotchi.plugins.base.Plugin`
+    subclass. Discovered plugins are loaded unless their config sets
     ``enabled = false``.
     """
 
@@ -36,7 +37,7 @@ class PluginManager:
         self._unloading = False
 
     def discover_and_load(self, config: dict[str, Any] | None = None):
-        """Discover and load plugin subpackages from the plugin directory."""
+        """Discover and load bundled or external plugin packages from the configured root."""
         config = config or {}
 
         if not self.plugin_dir.is_dir():
