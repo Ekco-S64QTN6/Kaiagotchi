@@ -116,8 +116,11 @@ handshakes = "/var/lib/kaiagotchi/handshakes"
 # -----------------------------------------------------------------------------
 [web]
 enabled = true
-# Localhost by default: set host = "0.0.0.0" explicitly to allow LAN access.
+# Localhost by default. Non-loopback binds require a long random auth token.
 host = "127.0.0.1"
+# Generate with: python -c 'import secrets; print(secrets.token_urlsafe(32))'
+# Prefer KAIA_WEB_AUTH_TOKEN in the service environment over storing it here.
+auth_token = ""
 port = 8080
 update_hz = 10.0
 
