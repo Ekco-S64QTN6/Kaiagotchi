@@ -41,6 +41,8 @@ Legacy capture helper tests must exercise missing, empty, malformed, valid-empty
 
 Wireless channel capability tests must use synthetic iw dev / iw phy outputs, cover 2.4/5/6 GHz and disabled frequencies, and verify unavailable interfaces/commands return an empty list without a hardware dependency.
 
+InterfaceMonitor merge tests must combine synthetic source records that describe the same interface; later sources may override conflicting fields but must not erase unrelated fields, and interfaces first seen in different sources must all remain in the merged snapshot.
+
 Web HUD auth regressions must cover already-established WebSockets as well as HTTP: same-origin logout revokes active sockets, foreign-origin logout is rejected, expiry closes idle sockets, and expired clients cannot request a fresh state snapshot.
 
 Documented hardware requirements must match implemented operations: the current monitor/capture path is passive and does not require packet injection. The convenience root launcher deliberately forwards only named app selectors, not arbitrary environment variables.
