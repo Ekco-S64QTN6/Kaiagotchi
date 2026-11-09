@@ -1199,6 +1199,30 @@ class PersistentNetwork:
         return deepcopy(self._data.get("pcaps", {}))
 
     @_state_locked
+    def get_unique_ssid_count(self) -> int:
+        """Count distinct observed SSIDs, including names retained in ESSID history."""
+        hidden_names = {"<hidden>", "hidden or unknown"}
+        unique_ssids: set[str] = set()
+        bssids = self._data.get("bssids", {})
+        if not isinstance(bssids, dict):
+            return 0
+
+        for record in bssids.values():
+            if not isinstance(record, dict):
+                continue
+            candidates = [record.get("essid")]
+            history = record.get("essid_history")
+            if isinstance(history, (list, tuple)):
+                candidates.extend(history)
+            for candidate in candidates:
+                if not isinstance(candidate, str):
+                    continue
+                ssid = candidate.strip()
+                if ssid and ssid.casefold() not in hidden_names:
+                    unique_ssids.add(ssid)
+        return len(unique_ssids)
+
+    @_state_locked
     def get_capture_analysis_summary(self) -> dict[str, int]:
         """Return terminal scoreboard totals from one consistent locked snapshot."""
         total = complete_handshakes = pmkids = 0
