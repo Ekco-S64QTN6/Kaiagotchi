@@ -1199,6 +1199,39 @@ class PersistentNetwork:
         return deepcopy(self._data.get("pcaps", {}))
 
     @_state_locked
+    def get_capture_analysis_summary(self) -> dict[str, int]:
+        """Return terminal scoreboard totals from one consistent locked snapshot."""
+        total = complete_handshakes = pmkids = 0
+        pcaps = self._data.get("pcaps", {})
+        if not isinstance(pcaps, dict):
+            return {
+                "total": total,
+                "complete_handshakes": complete_handshakes,
+                "pmkids": pmkids,
+            }
+
+        for record in pcaps.values():
+            if not isinstance(record, dict):
+                continue
+            analysis = record.get("analysis") or []
+            if not isinstance(analysis, (list, tuple)):
+                continue
+            for capture in analysis:
+                if not isinstance(capture, dict):
+                    continue
+                total += 1
+                if capture.get("handshake_complete"):
+                    complete_handshakes += 1
+                if capture.get("pmkid"):
+                    pmkids += 1
+
+        return {
+            "total": total,
+            "complete_handshakes": complete_handshakes,
+            "pmkids": pmkids,
+        }
+
+    @_state_locked
     def get_capture_analysis_count(self) -> int:
         """Count analyzed captures without copying the complete PCAP archive."""
         return sum(
