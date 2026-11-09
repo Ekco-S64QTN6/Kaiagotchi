@@ -55,13 +55,13 @@ features or capture-backend changes.
    Registration and re-entrant `unload_all()` from hooks are rejected/guarded. Synthetic
    tests now cover inherited/explicit v1 declarations and reject booleans, strings, None,
    integral floats, zero, negative, and unsupported future integer versions before hooks.
-5. **Quality gates** — compileall and Ruff now gate CI. PR #79 cleared all 17 initial
-   Ruff diagnostics (14 marked fixable); the Python 3.11 job records exit code/counts and
-   uploads the report, so new Ruff findings fail CI. Mypy remains advisory; its latest
-   measured baseline is 8 errors across 1 source file, with full reports attached for
-   systematic triage. Explicit type-focused cleanup has reduced mypy from the
-   96-error, 18-file starting point to 8 errors across 1 file. Recent modules
-   include `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
+5. **Quality gates** — compileall, Ruff, and Mypy gate CI. PR #79 cleared all 17
+   initial Ruff diagnostics (14 marked fixable); any new Ruff finding fails the
+   Python 3.11 quality job. Mypy was promoted to a blocking check after the measured
+   baseline reached zero errors: the immediate pre-promotion baseline was 2 errors
+   across 1 source file, down from the original 96 errors across 18 files. Both full
+   static-analysis reports remain attached to CI for diagnosis. Type-focused cleanup
+   has covered `mesh/wifi.py`, `network/interface_monitor.py`, `ai/epoch.py`,
    `core/automata.py`, `core/utils.py`, `ui/splash.py`, `network/action_manager.py`,
    `agent/decision_engine.py`, `ui/terminal_display.py`, `ui/voice/voice.py`,
    `core/system.py`, `core/manager.py`, `cli.py`, `agent/monitoring_agent.py`,
@@ -72,6 +72,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Clear the final two Mypy findings in `ui/terminal_display.py` (optional channel narrowing and iterable typing) and promote Mypy from advisory to blocking CI; retain the full report artifact and add a regression for a missing spectrum channel.
 
 - Make JSON state replacement crash-durable: write and fsync the temporary file before atomic replace, then fsync the parent directory; preserve privacy/metadata and clean up serialization failures.
 
