@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Honor custom `PluginManager(plugin_dir=...)` roots with isolated package namespaces and relative imports; replace the mocked discovery test with a real external package fixture.
+
 - Normalize Scapy's string channel identifiers for Epoch histograms, skip malformed optional AP/peer fields, and fall back safely when `bond_encounters_factor` is zero, negative, boolean, non-finite, or non-numeric.
 
 - Protect shared `PersistentMood` state with a re-entrant state lock and serialize snapshot writes with a separate save lock; detach getter state and keep the persisted mood file private (`0600`).
