@@ -1243,11 +1243,17 @@ class PersistentNetwork:
             for capture in analysis:
                 if not isinstance(capture, dict):
                     continue
+                capture_type = capture.get("type")
+                is_pmkid = bool(capture.get("pmkid")) or (
+                    isinstance(capture_type, str)
+                    and "PMKID" in capture_type.upper()
+                )
+                if is_pmkid:
+                    pmkids += 1
+                    continue
                 total += 1
                 if capture.get("handshake_complete"):
                     complete_handshakes += 1
-                if capture.get("pmkid"):
-                    pmkids += 1
 
         return {
             "total": total,

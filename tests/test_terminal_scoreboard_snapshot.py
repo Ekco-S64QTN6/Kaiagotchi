@@ -21,14 +21,14 @@ def test_terminal_scoreboard_uses_locked_public_store_accessors():
 
         def get_capture_analysis_summary(self):
             return {
-                "total": 3,
-                "complete_handshakes": 2,
+                "total": 2,
+                "complete_handshakes": 1,
                 "pmkids": 1,
             }
 
     display = _display_with_store(Store())
 
-    assert display._get_scoreboard({"_aps": []}) == (2, 3, 2, 1)
+    assert display._get_scoreboard({"_aps": []}) == (2, 2, 1, 1)
 
 
 def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
@@ -49,8 +49,15 @@ def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
             return {
                 "valid": {
                     "analysis": [
-                        {"handshake_complete": True},
-                        {"pmkid": True},
+                        {
+                            "type": "WPA Handshake (Complete)",
+                            "handshake_complete": True,
+                        },
+                        {
+                            "type": "PMKID",
+                            "handshake_complete": True,
+                            "pmkid": "00112233445566778899aabbccddeeff",
+                        },
                     ]
                 },
                 "malformed": None,
@@ -59,7 +66,7 @@ def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
 
     display = _display_with_store(Store())
 
-    assert display._get_scoreboard({"_aps": []}) == (3, 2, 1, 1)
+    assert display._get_scoreboard({"_aps": []}) == (3, 1, 1, 1)
 
 
 def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
@@ -77,13 +84,24 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
         network._data["pcaps"] = {
             "first.pcap": {
                 "analysis": [
-                    {"handshake_complete": True},
-                    {"pmkid": True},
+                    {
+                        "type": "WPA Handshake (Complete)",
+                        "handshake_complete": True,
+                    },
+                    {
+                        "type": "PMKID",
+                        "handshake_complete": True,
+                        "pmkid": "00112233445566778899aabbccddeeff",
+                    },
                 ]
             },
             "second.pcap": {
                 "analysis": [
-                    {"handshake_complete": False, "pmkid": False},
+                    {
+                        "type": "WPA Handshake (Partial)",
+                        "handshake_complete": False,
+                        "pmkid": None,
+                    },
                     "not-a-capture-record",
                 ]
             },
@@ -92,11 +110,13 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
 
     assert network.get_unique_ssid_count() == 3
     assert network.get_capture_analysis_summary() == {
-        "total": 3,
+        "total": 2,
         "complete_handshakes": 1,
         "pmkids": 1,
     }
     # Keep the existing lightweight API's contract intact.
+    # This older accessor deliberately counts every stored analysis entry,
+    # including PMKIDs and any malformed raw entries.
     assert network.get_capture_analysis_count() == 4
 
 

@@ -501,6 +501,14 @@ class TerminalDisplay:
                     unique_ssids.add(ssid)
         return len(unique_ssids)
 
+    @staticmethod
+    def _is_pmkid_capture(capture: dict[str, Any]) -> bool:
+        """Distinguish PMKID-only analysis entries from WPA handshake captures."""
+        capture_type = capture.get("type")
+        return bool(capture.get("pmkid")) or (
+            isinstance(capture_type, str) and "PMKID" in capture_type.upper()
+        )
+
     def _get_scoreboard(self, snap):
         """Read scoreboard totals through PersistentNetwork's locked public API."""
         ssids = hs = comp = pmk = 0
@@ -540,11 +548,12 @@ class TerminalDisplay:
                             for capture in analysis:
                                 if not isinstance(capture, dict):
                                     continue
+                                if self._is_pmkid_capture(capture):
+                                    pmk += 1
+                                    continue
                                 hs += 1
                                 if capture.get("handshake_complete"):
                                     comp += 1
-                                if capture.get("pmkid"):
-                                    pmk += 1
         except Exception:
             _LOG.debug("Could not read persistent scoreboard snapshot", exc_info=True)
         if ssids == 0:
