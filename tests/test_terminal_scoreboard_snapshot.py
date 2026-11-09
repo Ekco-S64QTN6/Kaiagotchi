@@ -99,6 +99,7 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
     # Keep the existing lightweight API's contract intact.
     assert network.get_capture_analysis_count() == 4
 
+
 def test_terminal_scoreboard_counts_ssids_from_snapshot_when_store_is_missing():
     display = _display_with_store(None)
     snapshot = {
