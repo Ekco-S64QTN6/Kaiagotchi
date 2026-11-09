@@ -15,8 +15,8 @@ ARCHITECTURE FIX: Removed duplicate RewardEngine and PersistentMood creation
 
 import logging
 import threading
-from copy import deepcopy
 import time
+from copy import deepcopy
 from typing import Any
 
 from kaiagotchi.ai.reward import RewardEngine
