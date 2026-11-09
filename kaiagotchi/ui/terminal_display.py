@@ -398,10 +398,11 @@ class TerminalDisplay:
         # the adjacent channel.
         column_width = max(1, (W - 4) // 3)
         maximum = max(ch_map.values(), default=1)
-        entries: list[tuple[str, int | None]] = [
-            (f"Ch {channel:>3} [{('█' * (max(1, int(round(count / maximum * 3))) if count else 0)) + ('░' * (3 - (max(1, int(round(count / maximum * 3))) if count else 0)))}] {count}", count)
-            for channel, count in channels
-        ]
+        entries: list[tuple[str, int | None]] = []
+        for channel, count in channels:
+            filled = max(1, int(round(count / maximum * 3))) if count else 0
+            bar = ("█" * filled) + ("░" * (3 - filled))
+            entries.append((f"Ch {channel:>3} [{bar}] {count}", count))
         if overflow is not None:
             hidden_channels, hidden_aps = overflow
             entries.append((f"+{hidden_channels} ch / {hidden_aps} AP", None))
