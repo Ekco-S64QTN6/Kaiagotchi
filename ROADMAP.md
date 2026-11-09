@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Normalize Scapy's string channel identifiers for Epoch histograms, skip malformed optional AP/peer fields, and fall back safely when `bond_encounters_factor` is zero, negative, boolean, non-finite, or non-numeric.
+
 - Protect shared `PersistentMood` state with a re-entrant state lock and serialize snapshot writes with a separate save lock; detach getter state and keep the persisted mood file private (`0600`).
 
 - Detach Epoch snapshots and input network records; read public reward/observation data under the epoch lock so Automata and other consumers cannot mutate live state or observe dictionaries mid-transition.
