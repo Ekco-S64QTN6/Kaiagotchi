@@ -16,8 +16,8 @@ def test_terminal_scoreboard_uses_locked_public_store_accessors():
         def _data(self):
             raise AssertionError("Terminal UI must not inspect live private storage")
 
-        def list_known_bssids(self):
-            return ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"]
+        def get_unique_ssid_count(self):
+            return 2
 
         def get_capture_analysis_summary(self):
             return {
@@ -38,7 +38,12 @@ def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
             raise AssertionError("Terminal UI must not inspect live private storage")
 
         def get_all_bssids(self):
-            return {"one": {}, "two": {}}
+            return {
+                "one": {"essid": "Home", "essid_history": ["Old Home", "Home"]},
+                "two": {"essid": "Home", "essid_history": ["Home"]},
+                "three": {"essid": "Guest", "essid_history": ["Guest"]},
+                "hidden": {"essid": "<Hidden>", "essid_history": ["Hidden or Unknown"]},
+            }
 
         def get_pcap_records(self):
             return {
@@ -54,7 +59,7 @@ def test_terminal_scoreboard_legacy_fallback_uses_detached_public_snapshots():
 
     display = _display_with_store(Store())
 
-    assert display._get_scoreboard({"_aps": []}) == (2, 2, 1, 1)
+    assert display._get_scoreboard({"_aps": []}) == (3, 2, 1, 1)
 
 
 def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
@@ -63,7 +68,12 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
     assert not network._sync_thread.is_alive()
 
     with network._state_lock:
-        network._data["bssids"] = {"one": {}, "two": {}}
+        network._data["bssids"] = {
+            "one": {"essid": "Home", "essid_history": ["Home", "Old Home"]},
+            "two": {"essid": "Home", "essid_history": ["Home"]},
+            "three": {"essid": "Guest", "essid_history": ["Guest"]},
+            "hidden": {"essid": "<Hidden>", "essid_history": ["Hidden or Unknown"]},
+        }
         network._data["pcaps"] = {
             "first.pcap": {
                 "analysis": [
@@ -80,7 +90,7 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
             "malformed.pcap": None,
         }
 
-    assert network.list_known_bssids() == ["one", "two"]
+    assert network.get_unique_ssid_count() == 3
     assert network.get_capture_analysis_summary() == {
         "total": 3,
         "complete_handshakes": 1,
@@ -88,3 +98,18 @@ def test_persistent_network_capture_summary_counts_consistent_records(tmp_path):
     }
     # Keep the existing lightweight API's contract intact.
     assert network.get_capture_analysis_count() == 4
+
+
+def test_terminal_scoreboard_counts_ssids_from_snapshot_when_store_is_missing():
+    display = _display_with_store(None)
+    snapshot = {
+        "_aps": [
+            {"essid": "Home"},
+            {"essid": "Home"},
+            {"essid": "Guest"},
+            {"essid": "<Hidden>"},
+            {"essid": "Hidden or Unknown"},
+        ]
+    }
+
+    assert display._get_scoreboard(snapshot) == (2, 0, 0, 0)

@@ -474,21 +474,48 @@ class TerminalDisplay:
 
     # ── Internal helpers ──────────────────────────────────────
 
+    @staticmethod
+    def _count_unique_ssids(records: Any) -> int:
+        """Count distinct observed SSID names from AP records or history snapshots."""
+        if isinstance(records, dict):
+            values = records.values()
+        elif isinstance(records, (list, tuple)):
+            values = records
+        else:
+            return 0
+
+        hidden_names = {"<hidden>", "hidden or unknown"}
+        unique_ssids: set[str] = set()
+        for record in values:
+            if not isinstance(record, dict):
+                continue
+            candidates = [record.get("essid")]
+            history = record.get("essid_history")
+            if isinstance(history, (list, tuple)):
+                candidates.extend(history)
+            for candidate in candidates:
+                if not isinstance(candidate, str):
+                    continue
+                ssid = candidate.strip()
+                if ssid and ssid.casefold() not in hidden_names:
+                    unique_ssids.add(ssid)
+        return len(unique_ssids)
+
     def _get_scoreboard(self, snap):
         """Read scoreboard totals through PersistentNetwork's locked public API."""
         ssids = hs = comp = pmk = 0
         try:
             pn = getattr(self._agent, "persistent_network", None)
             if pn is not None:
-                list_bssids = getattr(pn, "list_known_bssids", None)
-                if callable(list_bssids):
-                    ssids = len(list_bssids())
+                get_ssid_count = getattr(pn, "get_unique_ssid_count", None)
+                if callable(get_ssid_count):
+                    ssids = int(get_ssid_count())
                 else:
-                    # Compatibility with older stores that expose only the
-                    # detached public history accessor.
+                    # Compatibility with older stores: count names from their
+                    # detached public history snapshots, not BSSID identities.
                     get_bssids = getattr(pn, "get_all_bssids", None)
                     if callable(get_bssids):
-                        ssids = len(get_bssids())
+                        ssids = self._count_unique_ssids(get_bssids())
 
                 get_summary = getattr(pn, "get_capture_analysis_summary", None)
                 if callable(get_summary):
@@ -520,7 +547,9 @@ class TerminalDisplay:
                                     pmk += 1
         except Exception:
             _LOG.debug("Could not read persistent scoreboard snapshot", exc_info=True)
-        return ssids or len(snap.get("_aps", [])), hs, comp, pmk
+        if ssids == 0:
+            ssids = self._count_unique_ssids(snap.get("_aps", []))
+        return ssids, hs, comp, pmk
 
     def _get_face(self, state: dict[str, Any]) -> str:
         mood = state.get("agent_mood") or state.get("mood")
