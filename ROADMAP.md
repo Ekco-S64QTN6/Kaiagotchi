@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep the terminal dashboard panes non-overlapping at the supported minimum terminal sizes, and include all observed Wi-Fi channel identifiers in the spectrum view (with a bounded summary when more than twelve channels are present).
+
 - Make an unexpected curses-thread failure request the CLI's normal shutdown path and always clear the thread-started flag when the wrapper exits; add synthetic regressions for initialization failure and normal thread return.
 
 - Keep PMKID-only analysis records out of the terminal's “Total Handshakes” and “Complete WPA” counts while retaining a separate PMKID total; preserve the general analyzed-capture count API and cover complete, partial, and PMKID-only fixtures.
