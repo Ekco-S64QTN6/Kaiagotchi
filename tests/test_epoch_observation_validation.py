@@ -76,3 +76,24 @@ def test_observe_rejects_non_list_inputs_without_overwriting_prior_histogram():
     epoch.observe(None, [])
 
     assert epoch._observation["aps_histogram"] == before
+
+
+
+def test_observe_skips_peer_properties_that_raise():
+    class BrokenPeer:
+        @property
+        def encounters(self):
+            raise RuntimeError("encounters unavailable")
+
+        @property
+        def last_channel(self):
+            raise RuntimeError("channel unavailable")
+
+    epoch = Epoch({"personality": {"bond_encounters_factor": "invalid"}})
+
+    epoch.observe([], [BrokenPeer()])
+
+    assert epoch.num_peers == 1
+    assert epoch.tot_bond_factor == 0.0
+    assert epoch.avg_bond_factor == 0.0
+    assert sum(epoch._observation["peers_histogram"]) == 0.0
