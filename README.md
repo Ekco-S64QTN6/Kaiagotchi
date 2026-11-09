@@ -334,6 +334,12 @@ class MyPlugin(Plugin):
 All hooks are optional. Disable a discovered plugin with
 `[plugins.my_plugin] enabled = false` in your config.
 
+The default `PluginManager` discovers packages under `kaiagotchi.plugins`.
+Python integrations can pass a separate plugin root to `PluginManager(plugin_dir=...)`;
+each child directory must be a Python package with an `__init__.py`. External
+packages are imported under an isolated namespace, so relative imports inside a
+plugin resolve from the configured directory rather than a same-named bundled module.
+
 ### Plugin API versioning
 
 The host currently supports API version `1`, exported as
