@@ -360,7 +360,13 @@ ruff check .     # lint
 mypy kaiagotchi  # blocking type-check (also enforced in CI)
 ```
 
-Install `.[dev,fuzz]` to run the optional coverage-guided PCAP parser fuzzer:
+To install the optional Atheris parser fuzzer:
+
+```bash
+pip install -e ".[dev,fuzz]"
+```
+
+Run the optional coverage-guided PCAP parser fuzzer:
 
 ```bash
 python scripts/fuzz_pcap_parser.py /tmp/kaiagotchi-pcap-corpus -max_len=1048576 -atheris_runs=10000
