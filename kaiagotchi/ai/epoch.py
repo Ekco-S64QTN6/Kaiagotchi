@@ -129,11 +129,14 @@ class Epoch:
     # --------------------------------------------------------------
     def update_network_state(self, aps_list: list[dict[str, Any]], stations_list: list[dict[str, Any]],
                            recent_captures: list[dict[str, Any]]) -> None:
-        """Update epoch with current network state from monitoring agent."""
+        """Update from detached network state so callers retain ownership of inputs."""
+        aps_snapshot = deepcopy(aps_list or [])
+        stations_snapshot = deepcopy(stations_list or [])
+        captures_snapshot = deepcopy(recent_captures or [])
         with self._lock:
-            self.aps_list = aps_list or []
-            self.stations_list = stations_list or []
-            self.recent_captures = recent_captures or []
+            self.aps_list = aps_snapshot
+            self.stations_list = stations_snapshot
+            self.recent_captures = captures_snapshot
             self.current_aps = len(self.aps_list)
             self.current_stations = len(self.stations_list)
 
