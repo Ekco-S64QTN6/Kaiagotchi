@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
-from aiohttp import CookieJar
+from aiohttp import CookieJar, web
 from aiohttp.client_exceptions import WSServerHandshakeError
 from aiohttp.test_utils import TestClient, TestServer
 
@@ -22,8 +24,9 @@ def test_non_loopback_bind_requires_a_token(host):
         WebServer({"web": {"host": host}})
 
 
-def test_non_loopback_bind_accepts_long_configured_token():
-    server = WebServer({"web": {"host": "0.0.0.0", "auth_token": TOKEN}})
+@pytest.mark.parametrize("host", ["192.168.1.25", "10.0.0.12", "0.0.0.0", "::"])
+def test_non_loopback_bind_accepts_long_configured_token(host):
+    server = WebServer({"web": {"host": host, "auth_token": TOKEN}})
     assert server._auth_enabled is True
     assert server._auth_token == TOKEN
 
@@ -148,19 +151,13 @@ async def test_auth_disabled_on_loopback_preserves_existing_http_and_websocket_f
 @pytest.mark.asyncio
 async def test_login_rejects_a_foreign_origin():
     server = WebServer({"web": {"host": "0.0.0.0", "auth_token": TOKEN}})
-    request = type(
-        "LoginRequest",
-        (),
-        {
-            "method": "POST",
-            "headers": {"Origin": "https://evil.example"},
-            "scheme": "http",
-            "host": "127.0.0.1:8080",
-            "path": "/login",
-        },
-    )()
-
-    from aiohttp import web
+    request = SimpleNamespace(
+        method="POST",
+        headers={"Origin": "https://evil.example"},
+        scheme="http",
+        host="127.0.0.1:8080",
+        path="/login",
+    )
 
     with pytest.raises(web.HTTPForbidden, match="Cross-origin login"):
         await server._handle_login(request)
