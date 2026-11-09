@@ -163,7 +163,10 @@ class Epoch:
     @staticmethod
     def _finite_encounters(peer: Any) -> float:
         """Read an encounter count without allowing malformed peer values to break a tick."""
-        value = getattr(peer, "encounters", 0)
+        try:
+            value = getattr(peer, "encounters", 0)
+        except Exception:
+            return 0.0
         if value is None or isinstance(value, bool):
             return 0.0
         try:
@@ -187,13 +190,15 @@ class Epoch:
         if not isinstance(personality, dict):
             personality = {}
         raw_scale = personality.get("bond_encounters_factor", 1.0)
+        invalid_scale = False
         try:
             if isinstance(raw_scale, bool):
                 raise ValueError("boolean bond scale is invalid")
             bond_unit_scale = float(raw_scale)
         except (TypeError, ValueError, OverflowError):
             bond_unit_scale = 1.0
-        if not math.isfinite(bond_unit_scale) or bond_unit_scale <= 0:
+            invalid_scale = True
+        if invalid_scale or not math.isfinite(bond_unit_scale) or bond_unit_scale <= 0:
             _LOG.warning(
                 "Invalid bond_encounters_factor %r; using 1.0 for this observation",
                 raw_scale,
@@ -228,7 +233,11 @@ class Epoch:
                     sta_per_chan[channel_index] += len(clients)
 
             for peer in valid_peers:
-                channel_index = self._channel_index(getattr(peer, "last_channel", 0))
+                try:
+                    raw_channel = getattr(peer, "last_channel", 0)
+                except Exception:
+                    continue
+                channel_index = self._channel_index(raw_channel)
                 if channel_index is not None:
                     peers_per_chan[channel_index] += 1.0
 
