@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Normalize the trailing iproute2 veth peer-index annotation when collecting IP addresses so virtual-interface addresses merge under the actual local interface name rather than creating duplicate records.
+
 - Preserve InterfaceMonitor fields when combining ifconfig, ip-address, wireless, and system-stat records; use deterministic later-source precedence only for conflicting fields on the same interface.
 
 - Consolidate legacy iface_channels() helpers around the selected interface's Wiphy capabilities from iw; filter disabled channels and use an explicit empty result instead of a fabricated list when capability data is unavailable.
