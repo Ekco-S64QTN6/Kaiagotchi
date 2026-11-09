@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Correct the terminal scoreboard's “Unique SSIDs Seen” metric to count distinct, observed network names (including persisted ESSID history) rather than BSSID records; exclude hidden/unknown placeholders and cover repeated names in synthetic fixtures.
+
 - Keep terminal shutdown output consistent with TTY ownership: `show_goodbye()` no longer writes ANSI screen-control sequences to redirected/non-interactive stdout; add a regression test for pipe output.
 
 - Make the curses scoreboard read BSSID and capture totals through locked public persistence accessors rather than traversing the live private network dictionary; retain a detached-snapshot compatibility path and cover malformed persisted entries with synthetic regressions.
