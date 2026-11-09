@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Protect shared `PersistentMood` state with a re-entrant state lock and serialize snapshot writes with a separate save lock; detach getter state and keep the persisted mood file private (`0600`).
+
 - Detach Epoch snapshots and input network records; read public reward/observation data under the epoch lock so Automata and other consumers cannot mutate live state or observe dictionaries mid-transition.
 
 - Require a high-entropy token before any non-loopback Cyber-Deck bind; protect index, HTTP telemetry, and WebSocket with short-lived HttpOnly/SameSite browser sessions, while preserving unauthenticated loopback defaults.
