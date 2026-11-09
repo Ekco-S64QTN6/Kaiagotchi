@@ -163,3 +163,56 @@ def test_merge_interface_data_keeps_interfaces_found_by_different_sources():
     assert merged["interface_count"] == 2
     assert set(merged["interfaces"]) == {"wlan0", "wlan1"}
     assert merged["overall_status"] == "READY"
+
+
+def test_get_ip_addr_data_normalizes_veth_peer_suffix_and_accumulates_addresses(monkeypatch):
+    output = """2: veth0@if7    inet 192.0.2.10/24 scope global veth0
+2: veth0@if7    inet 198.51.100.4/24 scope global secondary veth0
+3: wlan0        inet 192.0.2.20/24 scope global wlan0
+"""
+    monkeypatch.setattr(
+        interface_monitor_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=output),
+    )
+
+    data = make_monitor()._get_ip_addr_data()
+
+    assert set(data["interfaces"]) == {"veth0", "wlan0"}
+    assert data["interfaces"]["veth0"]["ip_addresses"] == [
+        {"address": "192.0.2.10", "prefixlen": "24"},
+        {"address": "198.51.100.4", "prefixlen": "24"},
+    ]
+    assert data["interfaces"]["wlan0"]["ip_addresses"] == [
+        {"address": "192.0.2.20", "prefixlen": "24"}
+    ]
+
+
+def test_ip_addr_veth_record_merges_with_local_interface_name(monkeypatch):
+    output = "2: veth0@if7 inet 192.0.2.10/24 scope global veth0\n"
+    monkeypatch.setattr(
+        interface_monitor_module.subprocess,
+        "run",
+        lambda *_args, **_kwargs: SimpleNamespace(returncode=0, stdout=output),
+    )
+    ip_data = make_monitor()._get_ip_addr_data()
+
+    merged = make_monitor()._merge_interface_data(
+        {
+            "interfaces": {
+                "veth0": {
+                    "status": "UP",
+                    "ipv4_address": "192.0.2.10",
+                    "mac_address": "02:00:00:00:00:10",
+                }
+            }
+        },
+        ip_data,
+    )
+
+    assert set(merged["interfaces"]) == {"veth0"}
+    assert merged["interfaces"]["veth0"]["status"] == "UP"
+    assert merged["interfaces"]["veth0"]["mac_address"] == "02:00:00:00:00:10"
+    assert merged["interfaces"]["veth0"]["ip_addresses"] == [
+        {"address": "192.0.2.10", "prefixlen": "24"}
+    ]
