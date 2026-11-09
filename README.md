@@ -207,6 +207,16 @@ temporary partial snapshot cannot make unchanged totals look like new activity
 when the full snapshot returns. An explicit valid zero remains authoritative.
 Unexpected evaluation errors are logged and return the last computed reward.
 
+### Automata reward-source precedence
+
+The emotional loop uses an advancing Epoch snapshot first, then the direct
+RewardEngine, then a small AP-discovery fallback when neither configured source
+produces a valid finite number. A valid reward of `0.0` is authoritative and
+is not replaced by another source. The Epoch counter must advance before its
+cached snapshot is consumed, preventing an uninitialized or failed Epoch from
+reusing stale reward data. Boolean, non-numeric, NaN, and infinite values are
+treated as invalid source results and allow the next fallback to run.
+
 ### Reward handshake count precedence
 
 For each agent, the reward engine checks `handshakes`, `handshakes_secured`,
