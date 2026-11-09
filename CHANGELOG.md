@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Clear the final two terminal-display Mypy findings and make Mypy a blocking CI gate alongside Ruff; preserve the full static-analysis report artifacts.
 - Flush and fsync JSON state before atomic replacement, then fsync the containing directory; clean up serialization failures without leaving temporary state files and preserve existing permissions/ownership where permitted.
 - Preserve an explicit zero reward from Epoch or RewardEngine; use fallback reward sources only when the higher-priority source is unavailable, invalid, or did not advance its epoch. Reject non-finite reward values.
 - Keep the terminal dashboard's tables and chatter pane within the terminal bounds, and display observed Wi-Fi channel identifiers beyond the old 1–12-only spectrum chart.
