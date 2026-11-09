@@ -11,6 +11,8 @@ Use Python 3.11 or newer and install the project with its development extras:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
+# Optional coverage-guided parser fuzzing:
+python -m pip install -e ".[dev,fuzz]"
 ```
 
 ## Checks
@@ -33,10 +35,18 @@ errors across 18 files; those final two findings are cleared by the current TUI 
 cleanup.
 
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
-or BSSID-specific data. Hardware smoke tests should be explicitly marked and must
-not be required for the normal unit-test suite. The manual [operator hardware checklist](docs/operator-hardware-smoke-test.md)
-is intentionally not a CI test because hosted CI has no physical adapter. Only
-capture from networks you own or have explicit permission to test.
+or BSSID-specific data. The optional Atheris harness can be run with:
+
+```bash
+python scripts/fuzz_pcap_parser.py /tmp/kaiagotchi-pcap-corpus -max_len=1048576 -atheris_runs=10000
+```
+
+It seeds the corpus with minimal synthetic PCAP/PCAPNG headers and exercises both
+parser entry points. Fuzzing is an opt-in developer activity and is not a normal CI
+requirement. Hardware smoke tests should be explicitly marked and must not be required
+for the normal unit-test suite. The manual [operator hardware checklist](docs/operator-hardware-smoke-test.md)
+is intentionally not a CI test because hosted CI has no physical adapter. Only capture
+from networks you own or have explicit permission to test.
 
 ## Pull requests
 

@@ -32,7 +32,10 @@ features or capture-backend changes.
    prefixes and interface-speed consistency), validates the PEN field in standardized
    Custom Blocks, checks zero-filled alignment padding for all padded metadata/packet
    data, and checks Simple Packet Block payload size against interface snaplen.
-   Never use real captures or credentials.
+   The optional Atheris target in `scripts/fuzz_pcap_parser.py` drives both public
+   parser entry points with synthetic PCAP/PCAPNG seeds and a 1 MiB input cap;
+   normal CI does not require the fuzzing dependency. Never use real captures
+   or credentials.
 2. **Async shutdown** — the Agent's cleanup guard covers startup awaits and Manager now
    cleans up already-started View/ticker/Agent components when startup is cancelled, even
    under repeated cancellation. MonitoringAgent defers cancellation through repeated
@@ -72,6 +75,8 @@ features or capture-backend changes.
    execute it on a dedicated physical adapter; CI cannot verify RF hardware.
 
 ## Recently completed
+
+- Add an optional Atheris harness that fuzzes both PCAP parser entry points with synthetic PCAP/PCAPNG seeds and a hard 1 MiB per-input cap; correct README's stale Mypy advisory note and document how to run the opt-in fuzzer.
 
 - Clear the final two Mypy findings in `ui/terminal_display.py` (optional channel narrowing and iterable typing) and promote Mypy from advisory to blocking CI; retain the full report artifact and add a regression for a missing spectrum channel.
 

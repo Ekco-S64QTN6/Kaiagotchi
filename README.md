@@ -284,6 +284,12 @@ partial data can be extracted.
 Captures may contain sensitive identifiers and traffic, so only inspect files you
 are authorized to handle.
 
+The optional Atheris target in `scripts/fuzz_pcap_parser.py` feeds bounded, mutated
+bytes to both `parse_pcap()` and `parse_pcap_comprehensive()`. Its seed corpus contains
+only minimal synthetic PCAP and PCAPNG headers; normal CI tests remain deterministic
+and do not require Atheris. Keep real capture files, credentials, and private network
+identifiers out of fuzz corpora committed to the repository.
+
 Streaming parsing uses Scapy's `PcapReader` only for large captures. If iteration
 hits a malformed/truncated record, both parser entry points log the failure and
 return an empty result instead of leaking a reader exception; reader-close
@@ -351,8 +357,25 @@ pip install -e ".[dev]"
 
 pytest           # run the test suite
 ruff check .     # lint
-mypy kaiagotchi  # type-check (advisory)
+mypy kaiagotchi  # blocking type-check (also enforced in CI)
 ```
+
+To install the optional Atheris parser fuzzer:
+
+```bash
+pip install -e ".[dev,fuzz]"
+```
+
+Run the optional coverage-guided PCAP parser fuzzer:
+
+```bash
+python scripts/fuzz_pcap_parser.py /tmp/kaiagotchi-pcap-corpus -max_len=1048576 -atheris_runs=10000
+```
+
+The fuzzer starts from synthetic PCAP and PCAPNG headers, caps each input at 1 MiB,
+and exercises both parser entry points. It is optional and is not required by the
+normal test suite. Never seed it with captures or credentials you are not authorized
+to handle.
 
 Runnable, non-automated demos live in [`scripts/demos/`](scripts/demos).
 

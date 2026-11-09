@@ -57,6 +57,9 @@ splash = [
 net = [
     "requests>=2.32.3",  # Used by core/utils.py::download_file() (no current callers)
 ]
+fuzz = [
+    "atheris>=2.3.0",   # Optional coverage-guided PCAP/PCAPNG parser fuzzing
+]
 
 [project.urls]
 Homepage = "https://github.com/Ekco-S64QTN6/Kaiagotchi"
@@ -123,8 +126,7 @@ python_version = "3.11"
 warn_unused_configs = true
 check_untyped_defs = true
 ignore_missing_imports = true
-# The codebase predates full annotation; type-checking is advisory, not strict.
-# Tighten these incrementally as modules are annotated.
+# CI enforces a zero-error package check; tighten annotation strictness separately.
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 
