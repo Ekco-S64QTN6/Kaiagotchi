@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import math
 import random
 import time
 from typing import TYPE_CHECKING, Any
@@ -280,62 +281,101 @@ class Automata:
                 _LOG.info("🌊 Mood drift triggered: %s → %s", self._current_mood.name, drift_mood.name)
                 await self._apply_mood(drift_mood)
 
+    @staticmethod
+    def _coerce_reward(value: Any) -> float | None:
+        """Return a finite reward, preserving zero as a valid result."""
+        if value is None or isinstance(value, bool):
+            return None
+        try:
+            reward = float(value)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        return reward if math.isfinite(reward) else None
+
     # -----------------------------------------------------
     async def tick(self, state: dict[str, Any]) -> AgentMood:
-        """Async tick: evaluate reward and update mood."""
+        """Async tick: evaluate reward and update mood.
+
+        A finite reward of zero is authoritative. Fallback sources are consulted
+        only when a higher-priority source is unavailable or returns invalid data.
+        """
         try:
-            # Debounce mood checks
             current_time = time.time()
             if current_time - self._last_mood_check < self._mood_check_interval:
                 return self._current_mood
 
-            reward_val = 0.0
+            reward_val: float | None = None
 
-            # Priority 1: Use Epoch system if available (primary reward source)
-            if self._epoch and hasattr(self._epoch, 'next'):
+            # Priority 1: Epoch owns the primary reward snapshot when it advances.
+            epoch = self._epoch
+            epoch_next = getattr(epoch, "next", None)
+            if callable(epoch_next):
                 try:
+                    epoch_before = getattr(epoch, "epoch", None)
                     loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, self._epoch.next)
-                    epoch_data = self._epoch.data()
-                    reward_val = float(epoch_data.get("reward", 0.0))
-                    _LOG.debug("Automata.tick: using epoch reward %.4f", reward_val)
-                except Exception as e:
-                    _LOG.warning("Epoch reward failed, falling back: %s", e)
-                    reward_val = 0.0
+                    await loop.run_in_executor(None, epoch_next)
+                    epoch_after = getattr(epoch, "epoch", None)
 
-            # Priority 2: Use RewardEngine directly if Epoch failed or unavailable
-            if reward_val == 0.0 and self._reward and hasattr(self._reward, 'evaluate'):
-                try:
-                    reward_val = self._reward.evaluate(state)
-                    _LOG.debug("Automata.tick: using direct reward evaluation %.4f", reward_val)
-                except Exception as e:
-                    _LOG.warning("Direct reward evaluation failed: %s", e)
-                    reward_val = 0.0
+                    # The real Epoch leaves its counter unchanged when its
+                    # required shared dependencies are not initialized. Do not
+                    # consume an old reward snapshot as if it were a new result.
+                    advanced = epoch_before is None or epoch_after != epoch_before
+                    epoch_data_fn = getattr(epoch, "data", None)
+                    epoch_data = epoch_data_fn() if advanced and callable(epoch_data_fn) else None
+                    if isinstance(epoch_data, dict) and "reward" in epoch_data:
+                        reward_val = self._coerce_reward(epoch_data.get("reward"))
+                        if reward_val is not None:
+                            _LOG.debug("Automata.tick: using epoch reward %.4f", reward_val)
+                        else:
+                            _LOG.warning("Epoch reward snapshot contained an invalid value")
+                    elif not advanced:
+                        _LOG.debug("Epoch did not advance; trying the next reward source")
+                except Exception as exc:
+                    _LOG.warning("Epoch reward failed, falling back: %s", exc)
 
-            # Priority 3: Fallback to simple AP-based reward
-            if reward_val == 0.0:
+            # Priority 2: use RewardEngine only when Epoch did not provide a
+            # valid reward. An explicit 0.0 must not trigger another source.
+            if reward_val is None:
+                evaluate = getattr(self._reward, "evaluate", None)
+                if callable(evaluate):
+                    try:
+                        candidate = evaluate(state)
+                        reward_val = self._coerce_reward(candidate)
+                        if reward_val is not None:
+                            _LOG.debug(
+                                "Automata.tick: using direct reward evaluation %.4f",
+                                reward_val,
+                            )
+                        else:
+                            _LOG.warning("RewardEngine returned an invalid reward")
+                    except Exception as exc:
+                        _LOG.warning("Direct reward evaluation failed: %s", exc)
+
+            # Priority 3: a small discovery-only reward is used only when no
+            # configured reward source returned a finite numeric value.
+            if reward_val is None:
                 try:
-                    net = state.get("network", {}) or {}
-                    aps = len(net.get("access_points", {}) or {})
-                    # Small positive reward for just seeing networks
-                    reward_val = min(aps * 0.01, 0.1)  # Cap at 0.1 for discovery-only
+                    network = state.get("network", {})
+                    net = network if isinstance(network, dict) else {}
+                    access_points = net.get("access_points", {})
+                    aps = len(access_points) if isinstance(access_points, (dict, list, tuple, set)) else 0
+                    reward_val = min(aps * 0.01, 0.1)
                     _LOG.debug("Automata.tick: using fallback AP reward %.4f", reward_val)
-                except Exception as e:
-                    _LOG.debug("Fallback reward failed: %s", e)
+                except Exception as exc:
+                    _LOG.debug("Fallback AP reward failed: %s", exc)
                     reward_val = 0.0
 
             _LOG.debug("Automata.tick: final reward %.4f", reward_val)
             self.process_reward(reward_val)
             await self._maybe_drift()
 
-            # Randomly generate a thought
-            if random.random() < 0.1:  # 10% chance per tick
+            if random.random() < 0.1:
                 await self.generate_thought()
 
             return self._current_mood
 
-        except Exception as e:
-            _LOG.error("Automata.tick failed: %s", e, exc_info=True)
+        except Exception as exc:
+            _LOG.error("Automata.tick failed: %s", exc, exc_info=True)
             return self._current_mood
 
     # -----------------------------------------------------
