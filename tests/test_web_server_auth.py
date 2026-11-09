@@ -103,7 +103,7 @@ async def test_lan_auth_protects_index_api_and_websocket_and_supports_browser_lo
         cookie = client.session.cookie_jar.filter_cookies(client.make_url("/"))[
             "kaiagotchi_hud_session"
         ]
-        assert cookie["httponly"] is True
+        assert "HttpOnly" in cookie.OutputString()
         assert cookie["samesite"] == "Strict"
 
         index = await client.get("/")
@@ -160,8 +160,10 @@ async def test_login_rejects_a_foreign_origin():
         path="/login",
     )
 
-    with pytest.raises(web.HTTPForbidden, match="Cross-origin login"):
+    with pytest.raises(web.HTTPForbidden) as error:
         await server._handle_login(request)
+
+    assert error.value.text == "Cross-origin login is not allowed"
 
 def test_web_server_reads_auth_settings_from_the_real_toml_mapping_type():
     config = parse(
