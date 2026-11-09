@@ -186,7 +186,7 @@ class InterfaceMonitor:
             return {"system_stats": {}}
 
     def _merge_interface_data(self, *data_sources: dict[str, Any]) -> dict[str, Any]:
-        """Merge data from multiple sources into unified interface state."""
+        """Merge keyed records by name; later sources win only on field conflicts."""
         merged: dict[str, Any] = {
             "overall_status": "UNKNOWN",
             "interface_count": 0,
