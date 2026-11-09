@@ -28,7 +28,9 @@ async Python core, a headless terminal UI, and an optional browser HUD.
 ## Requirements
 
 **Hardware**
-- A dedicated wireless adapter that supports **monitor mode** and packet injection. Keep your normal internet adapter in managed mode; Kaiagotchi defaults to using a separate capture dongle on `wlan1`.
+- A dedicated wireless adapter that supports **monitor mode**. Keep your normal internet adapter in managed mode; Kaiagotchi defaults to using a separate capture dongle on `wlan1`.
+
+Kaiagotchi currently performs passive capture only. It does not transmit packet-injection or deauthentication frames, so packet-injection capability is not required.
 
 **Software**
 - Linux (uses `curses`, `/proc`, and Linux wireless tooling)
@@ -92,6 +94,14 @@ SameSite=Strict session cookie used by both the HTTP telemetry API and WebSocket
 The token is never placed in a URL. The built-in server does not provide TLS:
 use a trusted private LAN or VPN, and do not send credentials over an untrusted
 network. Keep any config file containing the token readable only by its owner.
+
+The convenience `run_kaiagotchi.sh` launcher deliberately forwards only
+`KAIAGOTCHI_INTERFACE` and `KAIA_CONFIG` across its privilege boundary; it
+does not pass arbitrary environment variables to the privileged process. When
+using that launcher, configure the token in a root-readable `[web].auth_token`
+setting. Use `KAIA_WEB_AUTH_TOKEN` only when it is already present in the
+privileged CLI process environment (for example, a service-manager environment
+or a root shell).
 
 Use `--tui` to force the terminal-only interface even when the configuration
 enables the optional browser HUD. `--no-web` also disables the browser HUD.
