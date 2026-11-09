@@ -305,6 +305,10 @@ class WebServer:
         server.start()  # launches in a daemon thread
         ...
         server.stop()
+
+    Non-loopback binds require a long `web.auth_token` or `KAIA_WEB_AUTH_TOKEN`.
+    The built-in HTTP server does not encrypt traffic; use only on a trusted
+    private network or over a VPN.
     """
 
     def __init__(
