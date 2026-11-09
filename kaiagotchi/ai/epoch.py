@@ -188,6 +188,8 @@ class Epoch:
             personality = {}
         raw_scale = personality.get("bond_encounters_factor", 1.0)
         try:
+            if isinstance(raw_scale, bool):
+                raise ValueError("boolean bond scale is invalid")
             bond_unit_scale = float(raw_scale)
         except (TypeError, ValueError, OverflowError):
             bond_unit_scale = 1.0
