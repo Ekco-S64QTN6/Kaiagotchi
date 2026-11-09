@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import curses
-
 import kaiagotchi.ui.terminal_display as terminal_display_module
 from kaiagotchi.ui.terminal_display import TerminalDisplay
 
