@@ -518,23 +518,11 @@ def md5(filename: str) -> str | None:
 
 # --- NEW FUNCTION FOR PYLANCE FIX ---
 def iface_channels(iface_name: str) -> list[int]:
-    """
-    Returns a list of supported 802.11 channels for a given interface.
+    """Compatibility wrapper for the capability-aware network utility."""
+    from kaiagotchi.network.utils import iface_channels as query_iface_channels
 
-    This function is required by the auto_tune plugin's channel management
-    fallback logic when agent channels are unavailable.
+    return query_iface_channels(iface_name)
 
-    Args:
-        iface_name: The network interface name (e.g., 'wlan0mon').
-
-    Returns:
-        A list of supported channel numbers (e.g., [1, 2, ..., 14]).
-    """
-    # In a full project, this would use 'iw list' or 'nl80211' to query the system.
-    # Placeholder returns standard 2.4GHz channels 1-14 to satisfy the function contract.
-    utils_logger.warning(f"iface_channels called for {iface_name}. Using placeholder channels 1-14.")
-    return list(range(1, 15))
-# --- END NEW FUNCTION ---
 
 def get_configured_interface(config: dict) -> str:
     """

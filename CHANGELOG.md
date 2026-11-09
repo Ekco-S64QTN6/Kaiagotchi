@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Replace duplicate hard-coded interface-channel lists with one iw Wiphy capability query; exclude disabled frequencies, retain passive-monitoring channels, and return no guessed fallback when hardware/query information is unavailable.
 - Replace the legacy `extract_from_pcap()` fabricated-success placeholder with a compatibility adapter over `parse_pcap()`, returning actual first-capture metadata and an explicit no-capture result for missing, empty, malformed, or valid-empty captures.
 - Enforce Web HUD session lifetime on existing WebSockets: close sockets associated with a logged-out or expired session, deny subsequent state requests, require same-origin logout, and check session validity during telemetry broadcasts.
 - Correct hardware prerequisites to require monitor mode only (the current capture workflow is passive), document how the sudo wrapper handles auth-token environment variables, and include the optional `fuzz` extra in the all-extras install example.
