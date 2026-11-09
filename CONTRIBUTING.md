@@ -35,7 +35,9 @@ errors across 18 files; those final two findings are cleared by the current TUI 
 cleanup.
 
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
-or BSSID-specific data. The optional Atheris harness can be run with:
+tokens, or BSSID-specific data. The Web HUD tests cover mandatory token configuration
+for non-loopback binds and verify that login protects both the HTTP telemetry endpoint
+and WebSocket while leaving the default loopback mode unchanged. The optional Atheris harness can be run with:
 
 ```bash
 python scripts/fuzz_pcap_parser.py /tmp/kaiagotchi-pcap-corpus -max_len=1048576 -atheris_runs=10000

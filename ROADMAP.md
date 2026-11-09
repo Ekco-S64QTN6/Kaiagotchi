@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Require a high-entropy token before any non-loopback Cyber-Deck bind; protect index, HTTP telemetry, and WebSocket with short-lived HttpOnly/SameSite browser sessions, while preserving unauthenticated loopback defaults.
+
 - Add an optional Atheris harness that fuzzes both PCAP parser entry points with synthetic PCAP/PCAPNG seeds and a hard 1 MiB per-input cap; correct README's stale Mypy advisory note and document how to run the opt-in fuzzer.
 
 - Clear the final two Mypy findings in `ui/terminal_display.py` (optional channel narrowing and iterable typing) and promote Mypy from advisory to blocking CI; retain the full report artifact and add a regression for a missing spectrum channel.

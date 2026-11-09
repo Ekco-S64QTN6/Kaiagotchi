@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Require token authentication for non-loopback Web HUD binds; protect dashboard, HTTP telemetry, and WebSocket through 12-hour HttpOnly/SameSite sessions, with config/environment setup and clear HTTP transport warnings.
 - Add optional, bounded Atheris fuzzing for both PCAP parser entry points using synthetic classic-PCAP/PCAPNG seed headers; update development instructions and correct README's stale claim that Mypy is advisory.
 - Clear the final two terminal-display Mypy findings and make Mypy a blocking CI gate alongside Ruff; preserve the full static-analysis report artifacts.
 - Flush and fsync JSON state before atomic replacement, then fsync the containing directory; clean up serialization failures without leaving temporary state files and preserve existing permissions/ownership where permitted.
