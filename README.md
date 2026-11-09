@@ -75,10 +75,23 @@ sudo kaiagotchi --debug
 sudo python -m kaiagotchi.cli --debug
 ```
 
-By default a cyber-deck web HUD also serves on `http://127.0.0.1:8080`
-(animated avatar and live telemetry). Add `--no-web` for terminal-only, or
-`--host 0.0.0.0` to reach it from the LAN (unauthenticated — see the warning
-it logs).
+By default the Cyber-Deck web HUD serves on
+`http://127.0.0.1:8080` (animated avatar and live telemetry). Add `--no-web`
+for terminal-only mode.
+
+A non-loopback bind (for example, `--host 0.0.0.0`) is refused unless a token
+is configured in `[web].auth_token` or the `KAIA_WEB_AUTH_TOKEN` environment
+variable. Generate a high-entropy token with:
+
+```bash
+python -c 'import secrets; print(secrets.token_urlsafe(32))'
+```
+
+The browser presents a login form; successful login creates a 12-hour HttpOnly,
+SameSite=Strict session cookie used by both the HTTP telemetry API and WebSocket.
+The token is never placed in a URL. The built-in server does not provide TLS:
+use a trusted private LAN or VPN, and do not send credentials over an untrusted
+network. Keep any config file containing the token readable only by its owner.
 
 Use `--tui` to force the terminal-only interface even when the configuration
 enables the optional browser HUD. `--no-web` also disables the browser HUD.
@@ -131,7 +144,7 @@ Key sections:
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces
 - `[bettercap] handshakes` — where captures are written
-- `[web]` — the browser HUD: `enabled`, `host` (loopback by default), `port`, `update_hz`
+- `[web]` — the browser HUD: `enabled`, `host` (loopback by default), `port`, `update_hz`, and `auth_token` (required for non-loopback binds; `KAIA_WEB_AUTH_TOKEN` takes precedence)
 
 Point Kaiagotchi at a different file with `--config` or the `KAIA_CONFIG`
 environment variable.
