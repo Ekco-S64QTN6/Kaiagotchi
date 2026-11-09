@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Add an optional Atheris harness that fuzzes both PCAP parser entry points with synthetic PCAP/PCAPNG seeds and a hard 1 MiB per-input cap; correct README's stale Mypy advisory note and document how to run the opt-in fuzzer.
+
 - Clear the final two Mypy findings in `ui/terminal_display.py` (optional channel narrowing and iterable typing) and promote Mypy from advisory to blocking CI; retain the full report artifact and add a regression for a missing spectrum channel.
 
 - Make JSON state replacement crash-durable: write and fsync the temporary file before atomic replace, then fsync the parent directory; preserve privacy/metadata and clean up serialization failures.
