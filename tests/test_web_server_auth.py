@@ -239,6 +239,25 @@ async def test_login_rejects_a_foreign_origin():
 
     assert error.value.text == "Cross-origin login is not allowed"
 
+
+@pytest.mark.asyncio
+async def test_logout_rejects_a_foreign_origin_without_revoking_session():
+    server = WebServer({"web": {"host": "0.0.0.0", "auth_token": TOKEN}})
+    session = "test-session"
+    server._sessions[session] = time.time() + 60
+    request = SimpleNamespace(
+        headers={"Origin": "https://evil.example"},
+        scheme="http",
+        host="127.0.0.1:8080",
+        cookies={server._auth_cookie_name: session},
+    )
+
+    with pytest.raises(web.HTTPForbidden) as error:
+        await server._handle_logout(request)
+
+    assert error.value.text == "Cross-origin logout is not allowed"
+    assert session in server._sessions
+
 def test_web_server_reads_auth_settings_from_the_real_toml_mapping_type():
     config = parse(
         f'[web]\nhost = "192.168.1.25"\nauth_token = "{TOKEN}"\nport = 8080'
