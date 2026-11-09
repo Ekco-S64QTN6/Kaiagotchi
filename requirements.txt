@@ -6,4 +6,3 @@
 #
 # System prerequisites (not pip-installable):
 #   sudo pacman -S aircrack-ng    # includes airodump-ng
-#   # hcxpcapngtool: https://github.com/ZerBea/hcxdumptool
