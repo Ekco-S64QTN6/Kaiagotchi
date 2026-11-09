@@ -107,12 +107,30 @@ def _bind_host_is_loopback(host: str) -> bool:
 
 def _log_listener_started(host: str, port: int, authenticated: bool = False) -> None:
     """Log the bind address and explain the trust boundary for LAN listeners."""
+    normalized_host = host.strip().lower()
     if not _bind_host_is_loopback(host):
+        wildcard_bind = normalized_host in {"", "0.0.0.0", "::", "[::]"}
         if authenticated:
+            if wildcard_bind:
+                _LOG.warning(
+                    "Cyber-Deck HUD is bound to all network interfaces (%s:%d) "
+                    "with token authentication. HTTP is not encrypted; use a "
+                    "TLS reverse proxy or a trusted private network.",
+                    host or "*",
+                    port,
+                )
+            else:
+                _LOG.warning(
+                    "Cyber-Deck HUD is bound to a non-loopback address (%s:%d) "
+                    "with token authentication. HTTP is not encrypted; use a "
+                    "trusted private network or VPN.",
+                    host,
+                    port,
+                )
+        elif wildcard_bind:
             _LOG.warning(
-                "Cyber-Deck HUD is bound to a non-loopback address (%s:%d) with "
-                "token authentication. HTTP is not encrypted; use a trusted "
-                "private network or VPN.",
+                "Cyber-Deck HUD is bound to all network interfaces (%s:%d). "
+                "The telemetry UI has no authentication; expose it only on a trusted network.",
                 host or "*",
                 port,
             )
@@ -120,7 +138,7 @@ def _log_listener_started(host: str, port: int, authenticated: bool = False) -> 
             _LOG.warning(
                 "Cyber-Deck HUD is bound to a non-loopback address (%s:%d) without "
                 "authentication; expose it only on a trusted network.",
-                host or "*",
+                host,
                 port,
             )
         return
@@ -563,7 +581,7 @@ class WebServer:
 
         session = secrets.token_urlsafe(32)
         self._sessions[session] = now + self._session_ttl
-        response = web.HTTPFound("/")
+        response = web.Response(status=302, headers={"Location": "/"})
         response.set_cookie(
             self._auth_cookie_name,
             session,
@@ -579,7 +597,7 @@ class WebServer:
         """Revoke the current browser session and clear its cookie."""
         session = request.cookies.get(self._auth_cookie_name, "")
         self._sessions.pop(session, None)
-        response = web.HTTPFound("/login")
+        response = web.Response(status=302, headers={"Location": "/login"})
         response.del_cookie(self._auth_cookie_name, path="/")
         return response
 
