@@ -28,7 +28,7 @@ import secrets
 import socket
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -439,7 +439,7 @@ class WebServer:
     async def _auth_middleware(
         self,
         request: web.Request,
-        handler: Callable[[web.Request], Any],
+        handler: Callable[[web.Request], Awaitable[web.StreamResponse]],
     ) -> web.StreamResponse:
         """Require a live browser session for the dashboard and telemetry routes."""
         if not self._auth_enabled or request.path == "/login" or request.path.startswith("/static/"):
@@ -524,7 +524,7 @@ class WebServer:
             },
         )
 
-    async def _handle_login(self, request: web.Request) -> web.Response:
+    async def _handle_login(self, request: web.Request) -> web.StreamResponse:
         """Authenticate the configured token and issue a short-lived HttpOnly session."""
         if not self._auth_enabled:
             raise web.HTTPNotFound()
@@ -571,7 +571,7 @@ class WebServer:
         )
         return response
 
-    async def _handle_logout(self, request: web.Request) -> web.Response:
+    async def _handle_logout(self, request: web.Request) -> web.StreamResponse:
         """Revoke the current browser session and clear its cookie."""
         session = request.cookies.get(self._auth_cookie_name, "")
         self._sessions.pop(session, None)
@@ -583,7 +583,10 @@ class WebServer:
         """Serve index.html after the auth middleware has checked the browser session."""
         index_file = _STATIC_DIR / "index.html"
         if index_file.is_file():
-            return web.FileResponse(index_file)
+            response = web.FileResponse(index_file)
+            if self._auth_enabled:
+                response.headers["Cache-Control"] = "no-store"
+            return response
         return web.Response(
             text="<h1>Kaiagotchi Cyber-Deck HUD</h1><p>index.html not found in static directory.</p>",
             content_type="text/html",
