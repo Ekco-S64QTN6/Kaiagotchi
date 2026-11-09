@@ -121,3 +121,38 @@ def test_show_goodbye_does_not_write_terminal_controls_without_a_tty(monkeypatch
         assert output.writes == []
     finally:
         TerminalDisplay._instance = previous
+
+def test_curses_thread_failure_requests_application_shutdown(monkeypatch, caplog):
+    import threading
+
+    display = object.__new__(TerminalDisplay)
+    display._stop_event = threading.Event()
+    display._started = True
+
+    def fail_wrapper(_main):
+        raise RuntimeError("simulated curses initialization failure")
+
+    monkeypatch.setattr(terminal_display_module.curses, "wrapper", fail_wrapper)
+
+    with caplog.at_level("ERROR", logger="kaiagotchi.ui.terminal_display"):
+        display._run_curses()
+
+    assert display._started is False
+    assert display.should_quit is True
+    assert "Curses thread crashed" in caplog.text
+
+
+def test_curses_thread_return_clears_started_flag(monkeypatch):
+    import threading
+
+    display = object.__new__(TerminalDisplay)
+    display._stop_event = threading.Event()
+    display._started = True
+    monkeypatch.setattr(
+        terminal_display_module.curses, "wrapper", lambda _main: None
+    )
+
+    display._run_curses()
+
+    assert display._started is False
+    assert display.should_quit is False
