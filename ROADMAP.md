@@ -73,6 +73,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make the curses scoreboard read BSSID and capture totals through locked public persistence accessors rather than traversing the live private network dictionary; retain a detached-snapshot compatibility path and cover malformed persisted entries with synthetic regressions.
+
 - Normalize Scapy's 802.11/EAPOL imports to their owning modules, pass a non-optional byte order into PCAPNG option validation, separate optional record lengths, and type eager/streaming packet sources as `Iterable[Packet]`; retain Section Header Block singleton-option validation and existing reader cleanup, reducing the verified mypy baseline from 21 errors across 2 files to 8 across 1.
 - Type the web index route as aiohttp's shared `StreamResponse` base and narrow the optional network snapshot once; add coverage for `FileResponse` and an explicit null network snapshot.
 - Make CLI optional subsystem imports explicitly nullable without evaluating optional class types at runtime; headless startup now handles a missing or broken splash implementation through a tested factory, and the CLI mypy findings are cleared.

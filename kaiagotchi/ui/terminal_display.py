@@ -471,21 +471,51 @@ class TerminalDisplay:
     # ── Internal helpers ──────────────────────────────────────
 
     def _get_scoreboard(self, snap):
+        """Read scoreboard totals through PersistentNetwork's locked public API."""
         ssids = hs = comp = pmk = 0
         try:
-            if self._agent and hasattr(self._agent, "persistent_network"):
-                pn = self._agent.persistent_network
-                if pn and hasattr(pn, "_data"):
-                    ssids = len(pn._data.get("bssids", {}))
-                    for r in pn._data.get("pcaps", {}).values():
-                        for c in (r.get("analysis") or []):
-                            hs += 1
-                            if c.get("handshake_complete"):
-                                comp += 1
-                            if c.get("pmkid"):
-                                pmk += 1
+            pn = getattr(self._agent, "persistent_network", None)
+            if pn is not None:
+                list_bssids = getattr(pn, "list_known_bssids", None)
+                if callable(list_bssids):
+                    ssids = len(list_bssids())
+                else:
+                    # Compatibility with older stores that expose only the
+                    # detached public history accessor.
+                    get_bssids = getattr(pn, "get_all_bssids", None)
+                    if callable(get_bssids):
+                        ssids = len(get_bssids())
+
+                get_summary = getattr(pn, "get_capture_analysis_summary", None)
+                if callable(get_summary):
+                    summary = get_summary()
+                    if isinstance(summary, dict):
+                        hs = int(summary.get("total", 0))
+                        comp = int(summary.get("complete_handshakes", 0))
+                        pmk = int(summary.get("pmkids", 0))
+                else:
+                    # Older store implementations can still provide a detached
+                    # PCAP snapshot. Never inspect the live private _data dict:
+                    # background capture/archive work mutates it concurrently.
+                    get_records = getattr(pn, "get_pcap_records", None)
+                    records = get_records() if callable(get_records) else {}
+                    if isinstance(records, dict):
+                        for record in records.values():
+                            if not isinstance(record, dict):
+                                continue
+                            analysis = record.get("analysis") or []
+                            if not isinstance(analysis, (list, tuple)):
+                                continue
+                            for capture in analysis:
+                                if not isinstance(capture, dict):
+                                    continue
+                                hs += 1
+                                if capture.get("handshake_complete"):
+                                    comp += 1
+                                if capture.get("pmkid"):
+                                    pmk += 1
         except Exception:
-            pass
+            _LOG.debug("Could not read persistent scoreboard snapshot", exc_info=True)
         return ssids or len(snap.get("_aps", [])), hs, comp, pmk
 
     def _get_face(self, state: dict[str, Any]) -> str:
