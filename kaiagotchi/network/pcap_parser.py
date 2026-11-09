@@ -1056,7 +1056,7 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
 
                     # Determine the handshake owner from ToDS/FromDS address roles.
                     if packet.haslayer(EAPOL):
-                        handshake_bssid, client_mac = _dot11_bssid_client(packet)
+                        handshake_bssid, _ = _dot11_bssid_client(packet)
                         if handshake_bssid:
                             if handshake_bssid not in handshake_packets:
                                 handshake_packets[handshake_bssid] = []
@@ -1067,12 +1067,12 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                                 ssid = extract_ssid(packet)
                                 bssids[handshake_bssid] = {
                                     'bssid': handshake_bssid,
-                                'essid': ssid,
-                                'channel': '',
-                                'encryption': '',
-                                'first_seen': i,
-                                'last_seen': i,
-                                'beacons': 0,
+                                    'essid': ssid,
+                                    'channel': '',
+                                    'encryption': '',
+                                    'first_seen': i,
+                                    'last_seen': i,
+                                    'beacons': 0,
                                     'packets': 1
                                 }
 
