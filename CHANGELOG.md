@@ -4,6 +4,13 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Keep the terminal dashboard's tables and chatter pane within the terminal bounds, and display observed Wi-Fi channel identifiers beyond the old 1–12-only spectrum chart.
+- #142: Shut down through the normal cleanup path when the curses thread fails, instead of leaving monitoring running without its primary interface.
+- #141: Keep PMKID-only captures out of WPA handshake and Complete WPA totals while preserving a separate PMKID count.
+- #140: Count distinct observed SSIDs in the terminal scoreboard rather than counting BSSID records.
+- #139: Avoid writing terminal-control escape sequences during shutdown when stdout is not an interactive TTY.
+- #138: Read terminal scoreboard data through locked public persistence snapshots to avoid concurrent dictionary mutation.
+
 - Propagate successful temperature readings into `SystemState.metrics.temperature` while retaining the last known value when the sensor is unavailable.
 - Ignore a missing View channel during monitoring-state updates rather than converting `None` or inventing a current channel.
 - Type CLI optional imports and keep the splash screen optional; headless startup continues when that component is missing or cannot be constructed.

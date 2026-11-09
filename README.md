@@ -80,8 +80,11 @@ By default a cyber-deck web HUD also serves on `http://127.0.0.1:8080`
 `--host 0.0.0.0` to reach it from the LAN (unauthenticated — see the warning
 it logs).
 
+Use `--tui` to force the terminal-only interface even when the configuration
+enables the optional browser HUD. `--no-web` also disables the browser HUD.
+
 Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
-`--debug`, `--manual`, `--no-web`, `--port`, `--host`.
+`--debug`, `--manual`, `--tui`, `--no-web`, `--port`, `--host`.
 
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.

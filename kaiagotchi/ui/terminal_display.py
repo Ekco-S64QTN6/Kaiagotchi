@@ -255,8 +255,15 @@ class TerminalDisplay:
     def _draw_frame(self, scr, snap: dict[str, Any]):
         scr.erase()
         H, W = scr.getmaxyx()
-        if W < 60 or H < 18:
-            self._put(scr, 0, 0, "Terminal too small! Please resize.", curses.A_BOLD)
+        minimum_height = self._minimum_height(W)
+        if W < 60 or H < minimum_height:
+            self._put(
+                scr,
+                0,
+                0,
+                f"Terminal too small ({W}x{H}). Need at least 60x{minimum_height}; resize to continue.",
+                curses.A_BOLD,
+            )
             scr.refresh()
             return
 
@@ -339,23 +346,72 @@ class TerminalDisplay:
 
     # ── Sub-pane renderers ────────────────────────────────────
 
+    @staticmethod
+    def _minimum_height(width: int) -> int:
+        """Return the minimum height that keeps every TUI pane non-overlapping."""
+        # Narrow terminals stack the AP and station panes; each needs a header
+        # and at least one data row. Wide terminals place them side by side.
+        return 24 if width >= 100 else 29
+
     def _draw_spectrum(self, scr, y0, W, aps):
+        """Show observed Wi-Fi channels instead of assuming only 2.4 GHz (1–12).
+
+        Airodump's channel field is an integer identifier without an explicit
+        band label. Keep the display honest by showing each observed channel
+        number, including common 5 GHz and higher-band channels.
+        """
         cp = curses.color_pair
         ch_map: dict[int, int] = {}
-        for ap in aps:
+        records = aps if isinstance(aps, (list, tuple)) else []
+        for ap in records:
+            if not isinstance(ap, dict):
+                continue
+            raw_channel = ap.get("channel")
+            if isinstance(raw_channel, bool):
+                continue
             try:
-                ch_map[int(ap["channel"])] = ch_map.get(int(ap["channel"]), 0) + 1
-            except (KeyError, ValueError, TypeError):
-                pass
-        mx = max(ch_map.values()) if ch_map else 1
-        for row, grp in enumerate([[1, 5, 9], [2, 6, 10], [3, 7, 11], [4, 8, 12]]):
-            parts = []
-            for ch in grp:
-                cnt = ch_map.get(ch, 0)
-                f = min(6, int(round(cnt / max(1, mx) * 6)))
-                parts.append(f"Ch {ch:02d} [{'█' * f}{'░' * (6 - f)}] {cnt:2d} APs")
-            line = "   │   ".join(parts)
-            self._put(scr, y0 + row, max(2, (W - len(line)) // 2), line, cp(_CP_CYAN))
+                channel = int(raw_channel)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if isinstance(raw_channel, float) and not raw_channel.is_integer():
+                continue
+            if 1 <= channel <= 233:
+                ch_map[channel] = ch_map.get(channel, 0) + 1
+
+        # Preserve the familiar empty 2.4 GHz baseline before any APs arrive.
+        if not ch_map:
+            channels = [(channel, 0) for channel in range(1, 13)]
+            overflow = None
+        else:
+            ranked = sorted(ch_map.items(), key=lambda item: (-item[1], item[0]))
+            overflow = None
+            if len(ranked) > 12:
+                visible = ranked[:11]
+                hidden = ranked[11:]
+                overflow = (len(hidden), sum(count for _, count in hidden))
+            else:
+                visible = ranked
+            channels = sorted(visible, key=lambda item: item[0])
+
+        # Three compact columns fit the supported 60-column minimum. Capping
+        # each label to its own column prevents long counts from overwriting
+        # the adjacent channel.
+        column_width = max(1, (W - 4) // 3)
+        maximum = max(ch_map.values(), default=1)
+        entries: list[tuple[str, int | None]] = [
+            (f"Ch {channel:>3} [{('█' * (max(1, int(round(count / maximum * 3))) if count else 0)) + ('░' * (3 - (max(1, int(round(count / maximum * 3))) if count else 0)))}] {count}", count)
+            for channel, count in channels
+        ]
+        if overflow is not None:
+            hidden_channels, hidden_aps = overflow
+            entries.append((f"+{hidden_channels} ch / {hidden_aps} AP", None))
+
+        for index, (label, _count) in enumerate(entries[:12]):
+            row, column = divmod(index, 3)
+            x = 2 + column * column_width
+            label = label[: max(0, column_width - 1)]
+            x += max(0, (column_width - len(label)) // 2)
+            self._put(scr, y0 + row, x, label, cp(_CP_CYAN))
 
     def _pwr_display(self, pwr_raw):
         try:
