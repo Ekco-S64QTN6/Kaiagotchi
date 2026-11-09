@@ -100,11 +100,16 @@ async def test_lan_auth_protects_index_api_and_websocket_and_supports_browser_lo
         assert accepted.status == 302
         assert accepted.headers["Location"] == "/"
 
+        set_cookie_headers = accepted.headers.getall("Set-Cookie")
+        set_cookie_header = "; ".join(set_cookie_headers)
+        assert "HttpOnly" in set_cookie_header
+        assert "SameSite=Strict" in set_cookie_header
+        assert "Max-Age=43200" in set_cookie_header
+
         cookie = client.session.cookie_jar.filter_cookies(client.make_url("/"))[
             "kaiagotchi_hud_session"
         ]
-        assert "HttpOnly" in cookie.OutputString()
-        assert cookie["samesite"] == "Strict"
+        assert cookie.value in server._sessions
 
         index = await client.get("/")
         assert index.status == 200
