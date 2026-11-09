@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Align the README and requirements notes with the current passive-only capture path: monitor mode is sufficient, the privileged launcher does not forward arbitrary environment variables, and the combined extras example includes `fuzz`.
+
 - Honor custom `PluginManager(plugin_dir=...)` roots with isolated package namespaces and relative imports; replace the mocked discovery test with a real external package fixture.
 
 - Normalize Scapy's string channel identifiers for Epoch histograms, skip malformed optional AP/peer fields, and fall back safely when `bond_encounters_factor` is zero, negative, boolean, non-finite, or non-numeric.

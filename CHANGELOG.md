@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Correct hardware prerequisites to require monitor mode only (the current capture workflow is passive), document how the sudo wrapper handles auth-token environment variables, and include the optional `fuzz` extra in the all-extras install example.
 - Import external plugin packages from the configured `PluginManager(plugin_dir=...)` root, including their relative imports, instead of resolving every discovered name under the bundled package.
 - Normalize string/integer Wi-Fi channel IDs in Epoch observations; ignore malformed AP/peer values and guard the bond encounter scale against zero, non-finite, and non-numeric configuration.
 - Serialize shared `PersistentMood` mutations and disk saves across the asyncio/epoch worker threads; write detached state snapshots outside the state lock and keep the mood-state file owner-only (`0600`).
