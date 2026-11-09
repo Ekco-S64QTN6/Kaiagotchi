@@ -37,7 +37,7 @@ cleanup.
 Epoch observation tests must include string-valued channel IDs from Scapy and malformed optional peer/AP fields; zero/non-finite bond scaling must not abort monitoring.
 Plugin-discovery regressions should import a real temporary package from an external plugin root, including a relative helper module; do not mock away the import mechanism being tested.
 
-Web HUD auth regressions must cover already-established WebSockets as well as HTTP: logout revokes active sockets, expiry closes idle sockets, and expired clients cannot request a fresh state snapshot.
+Web HUD auth regressions must cover already-established WebSockets as well as HTTP: same-origin logout revokes active sockets, foreign-origin logout is rejected, expiry closes idle sockets, and expired clients cannot request a fresh state snapshot.
 
 Documented hardware requirements must match implemented operations: the current monitor/capture path is passive and does not require packet injection. The convenience root launcher deliberately forwards only named app selectors, not arbitrary environment variables.
 
