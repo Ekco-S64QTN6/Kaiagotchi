@@ -71,7 +71,7 @@ jobs:
           PY
 
   quality-baseline:
-    name: Compileall and static-analysis baseline (Python 3.11)
+    name: Compileall and static-analysis gates (Python 3.11)
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -121,9 +121,9 @@ jobs:
             exit "$status"
           fi
 
-      - name: Record mypy baseline (advisory)
+      - name: Mypy check (blocking)
         if: always()
-        id: mypy-baseline
+        id: mypy
         shell: bash
         run: |
           set +e
@@ -132,22 +132,26 @@ jobs:
           set -e
           errors=$(grep -Ec ' error:' mypy-report.txt || true)
           {
-            echo "### Mypy baseline (advisory)"
-            echo "- Command exit code: \`$status\`"
-            echo "- Error lines: \`$errors\`"
+            echo "### Mypy check (blocking)"
+            echo "- Command exit code: `$status`"
+            echo "- Error lines: `$errors`"
             if [ "$status" -eq 0 ]; then
-              echo "- Result: clean."
+              echo "- Result: clean; this gate passed."
             else
-              echo "- Result: advisory findings are reported, not hidden; see the uploaded full report."
+              echo "- Result: blocking failure; see the uploaded full report."
               echo ""
               echo "First 30 report lines:"
-              echo ' \`\`\`text'
+              echo '```text'
               head -n 30 mypy-report.txt
-              echo ' \`\`\`'
+              echo '```'
             fi
           } >> "$GITHUB_STEP_SUMMARY"
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           echo "errors=$errors" >> "$GITHUB_OUTPUT"
+          cat mypy-report.txt
+          if [ "$status" -ne 0 ]; then
+            exit "$status"
+          fi
 
       - name: Upload static-analysis baseline reports
         if: always()

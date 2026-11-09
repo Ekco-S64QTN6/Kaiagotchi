@@ -7,6 +7,7 @@ import shutil
 import sys
 import threading
 import time
+from collections.abc import Iterable
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -367,7 +368,7 @@ class TerminalDisplay:
             if not isinstance(ap, dict):
                 continue
             raw_channel = ap.get("channel")
-            if isinstance(raw_channel, bool):
+            if raw_channel is None or isinstance(raw_channel, bool):
                 continue
             try:
                 channel = int(raw_channel)
@@ -542,6 +543,7 @@ class TerminalDisplay:
     @staticmethod
     def _count_unique_ssids(records: Any) -> int:
         """Count distinct observed SSID names from AP records or history snapshots."""
+        values: Iterable[Any]
         if isinstance(records, dict):
             values = records.values()
         elif isinstance(records, (list, tuple)):

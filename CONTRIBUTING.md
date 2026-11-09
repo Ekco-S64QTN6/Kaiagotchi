@@ -25,11 +25,12 @@ python -m mypy kaiagotchi
 ```
 
 CI gates `compileall` and Ruff, builds the wheel, and runs pytest on Python 3.11, 3.12,
-and 3.13. The Python 3.11 quality job records Ruff's exit code/count and uploads its
-full report; any Ruff diagnostic fails CI. Mypy remains advisory and its full report
-is uploaded for triage. The initial baseline had 17 Ruff diagnostics (now cleared) and
-8 mypy errors across 1 source file, down from 96 errors across 18 files. A passing
-mypy baseline job does not mean there are no mypy findings.
+and 3.13. The Python 3.11 quality job gates compileall, Ruff, and Mypy. Any Ruff
+diagnostic or Mypy error fails CI; both full reports are uploaded for diagnosis. Ruff
+was promoted after clearing its 17-diagnostic starting baseline. The Mypy baseline
+measured immediately before promotion was 2 errors in 1 source file, down from 96
+errors across 18 files; those final two findings are cleared by the current TUI typing
+cleanup.
 
 Tests must use synthetic fixtures. Do not commit real capture files, credentials,
 or BSSID-specific data. Hardware smoke tests should be explicitly marked and must

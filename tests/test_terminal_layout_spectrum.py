@@ -129,6 +129,7 @@ def test_spectrum_includes_observed_channels_beyond_2_4_ghz(monkeypatch):
             {"channel": 149},
             {"channel": 161},
             {"channel": "not-a-channel"},
+            {"channel": None},
             None,
             {"channel": True},
         ],
