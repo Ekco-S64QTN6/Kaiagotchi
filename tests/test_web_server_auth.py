@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import time
 from types import SimpleNamespace
 
 import pytest
-from aiohttp import CookieJar, web
+from aiohttp import CookieJar, WSMsgType, web
 from aiohttp.client_exceptions import WSServerHandshakeError
 from aiohttp.test_utils import TestClient, TestServer
 from tomlkit import parse
@@ -121,15 +123,82 @@ async def test_lan_auth_protects_index_api_and_websocket_and_supports_browser_lo
         websocket = await client.ws_connect("/ws")
         initial_state = await websocket.receive_json(timeout=2)
         assert initial_state["aps"] == []
-        await websocket.close()
 
         logout = await client.post("/logout", allow_redirects=False)
         assert logout.status == 302
         assert logout.headers["Location"] == "/login"
 
+        revoked = await websocket.receive(timeout=2)
+        assert revoked.type == WSMsgType.CLOSE
+        assert revoked.data == 1008
+        assert websocket.closed
+
         state_after_logout = await client.get("/api/state")
         assert state_after_logout.status == 401
     finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_expired_session_rejects_websocket_state_requests():
+    server = WebServer(
+        {"web": {"host": "0.0.0.0", "auth_token": TOKEN}},
+        state_provider=lambda: {},
+    )
+    client = TestClient(TestServer(server._create_app()), cookie_jar=CookieJar(unsafe=True))
+    await client.start_server()
+    try:
+        await client.post("/login", data={"token": TOKEN}, allow_redirects=False)
+        cookie = client.session.cookie_jar.filter_cookies(client.make_url("/"))[
+            "kaiagotchi_hud_session"
+        ]
+        websocket = await client.ws_connect("/ws")
+        assert (await websocket.receive_json(timeout=2))["aps"] == []
+
+        server._sessions[cookie.value] = time.time() - 1
+        await websocket.send_json({"action": "request_state"})
+
+        revoked = await websocket.receive(timeout=2)
+        assert revoked.type == WSMsgType.CLOSE
+        assert revoked.data == 1008
+        assert websocket.closed
+    finally:
+        await client.close()
+
+
+@pytest.mark.asyncio
+async def test_broadcast_loop_closes_idle_websocket_when_session_expires():
+    server = WebServer(
+        {
+            "web": {
+                "host": "0.0.0.0",
+                "auth_token": TOKEN,
+                "update_hz": 10.0,
+            }
+        },
+        state_provider=lambda: {},
+    )
+    client = TestClient(TestServer(server._create_app()), cookie_jar=CookieJar(unsafe=True))
+    broadcast_task = asyncio.create_task(server._broadcast_loop())
+    await client.start_server()
+    try:
+        await client.post("/login", data={"token": TOKEN}, allow_redirects=False)
+        cookie = client.session.cookie_jar.filter_cookies(client.make_url("/"))[
+            "kaiagotchi_hud_session"
+        ]
+        websocket = await client.ws_connect("/ws")
+        assert (await websocket.receive_json(timeout=2))["aps"] == []
+
+        server._sessions[cookie.value] = time.time() - 1
+        expired = await websocket.receive(timeout=2)
+        assert expired.type == WSMsgType.CLOSE
+        assert expired.data == 1008
+        assert websocket.closed
+        assert websocket not in server._clients
+    finally:
+        server._stop_event.set()
+        broadcast_task.cancel()
+        await asyncio.gather(broadcast_task, return_exceptions=True)
         await client.close()
 
 
@@ -169,6 +238,25 @@ async def test_login_rejects_a_foreign_origin():
         await server._handle_login(request)
 
     assert error.value.text == "Cross-origin login is not allowed"
+
+
+@pytest.mark.asyncio
+async def test_logout_rejects_a_foreign_origin_without_revoking_session():
+    server = WebServer({"web": {"host": "0.0.0.0", "auth_token": TOKEN}})
+    session = "test-session"
+    server._sessions[session] = time.time() + 60
+    request = SimpleNamespace(
+        headers={"Origin": "https://evil.example"},
+        scheme="http",
+        host="127.0.0.1:8080",
+        cookies={server._auth_cookie_name: session},
+    )
+
+    with pytest.raises(web.HTTPForbidden) as error:
+        await server._handle_logout(request)
+
+    assert error.value.text == "Cross-origin logout is not allowed"
+    assert session in server._sessions
 
 def test_web_server_reads_auth_settings_from_the_real_toml_mapping_type():
     config = parse(

@@ -98,3 +98,28 @@
 
 ### Recommended first action
 - Check PR #154's current head and all required checks, fix any failure, squash-merge only after green CI, then verify post-merge `main` CI and continue the placeholder-utility review.
+
+
+## Run 2026-11-09 23:04 UTC — WebSocket session hardening
+
+**HEAD at start:** `3fd015b040b38e7da7b7ba599ff92834ac0c3bc4`
+**Code review finding:** active WebSockets were only authenticated at handshake; logout revoked HTTP sessions but did not close existing sockets, and expiry was not rechecked on subsequent broadcasts.
+
+### Issues filed
+- #155 — Stop `core.utils.extract_from_pcap()` from returning fabricated positive handshake data; labeled `bug`.
+- #156 — Replace the duplicate hard-coded `iface_channels()` placeholders with capability-aware behavior or a documented deprecation path; labeled `bug`.
+
+### In progress
+- Branch `fix/websocket-session-revocation-2026-11-09`: associate each active WebSocket with its authorizing session, enforce session validity for incoming actions and periodic broadcasts, close sockets immediately on logout/expiry, and reject cross-origin logout. Synthetic integration tests cover logout revocation, idle expiry, and expired state requests.
+- `README.md`, `CHANGELOG.md`, `ROADMAP.md`, and `CONTRIBUTING.md` updated to describe and test the session revocation contract.
+- #154 is merged at `3fd015b040b38e7da7b7ba599ff92834ac0c3bc4`; post-merge main CI run 42716073379 passed all five jobs.
+
+### Baseline and blockers
+- Main CI at `3fd015b040b38e7da7b7ba599ff92834ac0c3bc4` is green (run 42716073379).
+- Open issues now include #155 and #156; both are labeled `bug` and have explicit acceptance criteria.
+- No open PR existed at the start of this batch.
+- Local `ruff`, `mypy`, and `pytest` remain unavailable through the connected GitHub-only tools; use exact-head Actions and do not claim a local run.
+- Stale `fix/tui-thread-failure-shutdown-2026-11-09` still contains only changes already merged by #142; branch deletion remains blocked by the missing ref-delete capability.
+
+### Recommended first action
+- Open/verify the WebSocket session-revocation PR, repair any exact-head CI failure, and merge only after all required jobs pass. Then verify post-merge main CI and continue the source review with issues #155 and #156 in the backlog.

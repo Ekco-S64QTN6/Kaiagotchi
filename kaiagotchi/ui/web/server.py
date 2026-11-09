@@ -361,7 +361,10 @@ class WebServer:
         self._sessions: dict[str, float] = {}
         self._state_provider = state_provider
 
-        self._clients: set[web.WebSocketResponse] = set()
+        # Keep the authenticating session attached to each long-lived socket.
+        # HTTP middleware only runs at the WebSocket handshake; every later
+        # message and broadcast must enforce expiry/revocation independently.
+        self._clients: dict[web.WebSocketResponse, str | None] = {}
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._started = False
@@ -467,13 +470,9 @@ class WebServer:
         if not self._auth_enabled or request.path == "/login" or request.path.startswith("/static/"):
             return await handler(request)
 
-        now = time.time()
-        for session, expires_at in tuple(self._sessions.items()):
-            if expires_at <= now:
-                self._sessions.pop(session, None)
-
-        session = request.cookies.get(self._auth_cookie_name, "")
-        if session and self._sessions.get(session, 0.0) > now:
+        self._prune_expired_sessions()
+        session = request.cookies.get(self._auth_cookie_name)
+        if self._session_is_active(session):
             return await handler(request)
 
         if request.path == "/ws" or request.path.startswith("/api/"):
@@ -482,6 +481,30 @@ class WebServer:
                 headers={"Cache-Control": "no-store"},
             )
         raise web.HTTPFound("/login")
+
+    def _prune_expired_sessions(self) -> None:
+        """Remove expired browser sessions from the in-memory session table."""
+        now = time.time()
+        for session, expires_at in tuple(self._sessions.items()):
+            if expires_at <= now:
+                self._sessions.pop(session, None)
+
+    def _session_is_active(self, session: str | None) -> bool:
+        """Check whether a browser session is still authorized.
+
+        Loopback mode intentionally has no authentication and therefore no
+        session token. On an authenticated listener, missing, revoked, and
+        expired session IDs are all rejected.
+        """
+        if not self._auth_enabled:
+            return True
+        if not session:
+            return False
+        expires_at = self._sessions.get(session)
+        if expires_at is None or expires_at <= time.time():
+            self._sessions.pop(session, None)
+            return False
+        return True
 
     def _create_app(self) -> web.Application:
         """Build the HTTP/WebSocket app with its auth boundary and static routes."""
@@ -571,10 +594,8 @@ class WebServer:
             return self._login_page(error=True, status=401)
 
         # Bound session growth and expire old browser sessions on each request.
+        self._prune_expired_sessions()
         now = time.time()
-        for session, expires_at in tuple(self._sessions.items()):
-            if expires_at <= now:
-                self._sessions.pop(session, None)
         if len(self._sessions) >= 128:
             oldest = min(self._sessions.items(), key=lambda item: item[1])[0]
             self._sessions.pop(oldest, None)
@@ -595,8 +616,22 @@ class WebServer:
 
     async def _handle_logout(self, request: web.Request) -> web.StreamResponse:
         """Revoke the current browser session and clear its cookie."""
+        if self._auth_enabled and not _is_same_origin_request(
+            request, self._allowed_origin_hosts()
+        ):
+            raise web.HTTPForbidden(text="Cross-origin logout is not allowed")
+
         session = request.cookies.get(self._auth_cookie_name, "")
         self._sessions.pop(session, None)
+
+        # Revoking a cookie must also revoke sockets established with it.
+        for websocket, websocket_session in tuple(self._clients.items()):
+            if session and websocket_session == session:
+                try:
+                    await websocket.close(code=1008, message=b"Session revoked")
+                except Exception:
+                    _LOG.debug("Could not close revoked WebSocket session", exc_info=True)
+
         response = web.Response(status=302, headers={"Location": "/login"})
         response.del_cookie(self._auth_cookie_name, path="/")
         return response
@@ -621,26 +656,44 @@ class WebServer:
         return web.json_response(snap)
 
     async def _handle_ws(self, request: web.Request) -> web.WebSocketResponse:
-        """Handle WebSocket telemetry connections."""
+        """Handle WebSocket telemetry connections under the browser session lifetime."""
         if not _is_same_origin_request(request, self._allowed_origin_hosts()):
             raise web.HTTPForbidden(text="Cross-origin WebSocket access is not allowed")
+
+        session = (
+            request.cookies.get(self._auth_cookie_name)
+            if self._auth_enabled
+            else None
+        )
+        if not self._session_is_active(session):
+            raise web.HTTPUnauthorized(text="Web HUD session is no longer active")
 
         ws = web.WebSocketResponse(heartbeat=20.0)
         await ws.prepare(request)
 
-        self._clients.add(ws)
+        # The session may be revoked while the handshake is being prepared.
+        if not self._session_is_active(session):
+            await ws.close(code=1008, message=b"Session expired")
+            return ws
+
+        self._clients[ws] = session
         remote = request.remote
         _LOG.info("Cyber-Deck client connected: %s (total: %d)", remote, len(self._clients))
 
-        # Send immediate initial state
         try:
+            if not self._session_is_active(session):
+                await ws.close(code=1008, message=b"Session expired")
+                return ws
+
+            # Send immediate initial state only while this socket's session is active.
             init_state = self._get_latest_snapshot()
             await ws.send_str(json.dumps(init_state, default=str))
-        except Exception:
-            pass
 
-        try:
             async for msg in ws:
+                if not self._session_is_active(session):
+                    await ws.close(code=1008, message=b"Session expired")
+                    break
+
                 if msg.type == WSMsgType.TEXT:
                     try:
                         cmd = json.loads(msg.data)
@@ -648,14 +701,18 @@ class WebServer:
                         if action == "ping":
                             await ws.send_str(json.dumps({"action": "pong", "ts": time.time()}))
                         elif action == "request_state":
-                            st = self._get_latest_snapshot()
-                            await ws.send_str(json.dumps(st, default=str))
+                            # Re-check immediately before sending sensitive state.
+                            if not self._session_is_active(session):
+                                await ws.close(code=1008, message=b"Session expired")
+                                break
+                            state = self._get_latest_snapshot()
+                            await ws.send_str(json.dumps(state, default=str))
                     except Exception:
                         pass
                 elif msg.type == WSMsgType.ERROR:
                     _LOG.debug("WebSocket error with %s: %s", remote, ws.exception())
         finally:
-            self._clients.discard(ws)
+            self._clients.pop(ws, None)
             _LOG.info("Cyber-Deck client disconnected: %s (remaining: %d)", remote, len(self._clients))
 
         return ws
@@ -689,16 +746,24 @@ class WebServer:
                     payload = self._get_latest_snapshot()
                     message = json.dumps(payload, default=str)
 
-                    dead = set()
-                    for ws in list(self._clients):
+                    dead: set[web.WebSocketResponse] = set()
+                    for ws, session in tuple(self._clients.items()):
                         if ws.closed:
+                            dead.add(ws)
+                            continue
+                        if not self._session_is_active(session):
+                            try:
+                                await ws.close(code=1008, message=b"Session expired")
+                            except Exception:
+                                _LOG.debug("Could not close expired WebSocket session", exc_info=True)
                             dead.add(ws)
                             continue
                         try:
                             await ws.send_str(message)
                         except Exception:
                             dead.add(ws)
-                    self._clients -= dead
+                    for ws in dead:
+                        self._clients.pop(ws, None)
                 except Exception:
                     _LOG.debug("Broadcast error", exc_info=True)
 
