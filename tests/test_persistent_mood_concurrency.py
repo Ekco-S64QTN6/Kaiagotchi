@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import stat
 import threading
 
@@ -78,4 +79,4 @@ def test_mood_state_file_is_private_to_its_owner(tmp_path):
     mood = PersistentMood(storage_dir=str(tmp_path))
 
     assert mood.save()
-    assert stat.S_IMODE(mood.filepath and __import__("os").stat(mood.filepath).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(mood.filepath).st_mode) == 0o600
