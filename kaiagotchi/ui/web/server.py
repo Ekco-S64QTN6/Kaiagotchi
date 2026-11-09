@@ -10,15 +10,21 @@ Architecture:
 - Broadcasts JSON state snapshots to all connected browser clients.
 - Serves static assets from kaiagotchi/ui/web/static/.
 - Port defaults to 8080, configurable via config.toml [web] section.
+- Non-loopback binds require token authentication; browser sessions use an
+  HttpOnly, SameSite=Strict cookie for both HTTP telemetry and WebSockets.
 """
 from __future__ import annotations
 
 import asyncio
+import hmac
+import ipaddress
 import json
 import logging
 import math
+import os
 import random
 import re
+import secrets
 import socket
 import threading
 import time
@@ -84,21 +90,81 @@ def _is_same_origin_request(request: web.Request, allowed_hosts: set[str] | None
         return False
 
 
-def _log_listener_started(host: str, port: int) -> None:
-    """Log the actual bind address and warn when unauthenticated telemetry is exposed."""
+def _bind_host_is_loopback(host: str) -> bool:
+    """Return whether a configured bind host is unambiguously loopback-only."""
+    normalized = host.strip().strip("[]").rstrip(".").casefold()
+    if normalized == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(normalized.split("%", 1)[0])
+    except ValueError:
+        # A hostname other than the literal localhost may resolve to a LAN IP.
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        return address.ipv4_mapped.is_loopback
+    return address.is_loopback
+
+
+def _log_listener_started(host: str, port: int, authenticated: bool = False) -> None:
+    """Log the bind address and explain the trust boundary for LAN listeners."""
     normalized_host = host.strip().lower()
     if normalized_host in {"", "0.0.0.0", "::", "[::]"}:
-        _LOG.warning(
-            "Cyber-Deck HUD is bound to all network interfaces (%s:%d). "
-            "The telemetry UI has no authentication; expose it only on a trusted network.",
-            host or "*",
-            port,
-        )
+        if authenticated:
+            _LOG.warning(
+                "Cyber-Deck HUD is bound to all network interfaces (%s:%d) with "
+                "token authentication. HTTP is not encrypted; use a TLS reverse "
+                "proxy or a trusted private network.",
+                host or "*",
+                port,
+            )
+        else:
+            _LOG.warning(
+                "Cyber-Deck HUD is bound to all network interfaces (%s:%d) without "
+                "authentication; expose it only on a trusted network.",
+                host or "*",
+                port,
+            )
         return
 
     # IPv6 URLs require brackets around the literal address.
     display_host = f"[{host}]" if ":" in host and not host.startswith("[") else host
-    _LOG.info("Cyber-Deck HUD live at http://%s:%d", display_host, port)
+    suffix = " (token authentication enabled)" if authenticated else ""
+    _LOG.info("Cyber-Deck HUD live at http://%s:%d%s", display_host, port, suffix)
+
+
+_LOGIN_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kaiagotchi HUD Login</title>
+  <style>
+    body { background:#080d12; color:#d8e6ef; font:16px system-ui,sans-serif;
+           display:grid; min-height:100vh; place-items:center; margin:0; }
+    main { width:min(92vw,24rem); border:1px solid #24515e; padding:2rem;
+           background:#101b23; box-sizing:border-box; }
+    h1 { color:#00f0ff; font-size:1.25rem; }
+    label { display:block; margin:1rem 0 .4rem; }
+    input,button { box-sizing:border-box; width:100%; padding:.8rem; }
+    input { background:#080d12; border:1px solid #42606c; color:inherit; }
+    button { margin-top:1rem; background:#00d6d6; border:0; font-weight:700; }
+    .error { color:#ff8b82; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Kaiagotchi Cyber-Deck</h1>
+    <p>Enter the web HUD access token configured by the operator.</p>
+    <p class="error" role="alert">__ERROR__</p>
+    <form method="post" action="/login">
+      <label for="token">Access token</label>
+      <input id="token" name="token" type="password" autocomplete="current-password"
+             required autofocus>
+      <button type="submit">Unlock dashboard</button>
+    </form>
+  </main>
+</body>
+</html>"""
 
 
 _MOCK_APS = [
@@ -249,11 +315,29 @@ class WebServer:
     ):
         self._config = config or {}
         web_cfg = self._config.get("web", {})
+        if not isinstance(web_cfg, dict):
+            web_cfg = {}
         # The dashboard exposes live SSIDs, station MACs, and runtime telemetry.
-        # Keep it local unless the operator explicitly configures a LAN bind.
+        # Non-loopback listeners must have a long token before the socket is opened.
         self._host = str(web_cfg.get("host", "127.0.0.1"))
         self._port = int(web_cfg.get("port", 8080))
         self._hz = float(web_cfg.get("update_hz", 10.0))  # 10 Hz broadcast
+        configured_token = os.environ.get("KAIA_WEB_AUTH_TOKEN") or web_cfg.get("auth_token", "")
+        self._auth_token = str(configured_token).strip()
+        self._auth_enabled = bool(self._auth_token)
+        if self._auth_enabled and len(self._auth_token) < 24:
+            raise ValueError(
+                "Web HUD auth tokens must contain at least 24 characters; "
+                "use a randomly generated secret."
+            )
+        if not _bind_host_is_loopback(self._host) and not self._auth_enabled:
+            raise ValueError(
+                "Non-loopback Web HUD binds require web.auth_token or "
+                "KAIA_WEB_AUTH_TOKEN; do not expose telemetry without authentication."
+            )
+        self._auth_cookie_name = "kaiagotchi_hud_session"
+        self._session_ttl = 12 * 60 * 60
+        self._sessions: dict[str, float] = {}
         self._state_provider = state_provider
 
         self._clients: set[web.WebSocketResponse] = set()
@@ -352,19 +436,50 @@ class WebServer:
         if self._runner:
             await self._runner.cleanup()
 
-    async def _serve(self) -> None:
-        """Build and run the aiohttp application."""
-        app = web.Application()
+    @web.middleware
+    async def _auth_middleware(
+        self,
+        request: web.Request,
+        handler: Callable[[web.Request], Any],
+    ) -> web.StreamResponse:
+        """Require a live browser session for the dashboard and telemetry routes."""
+        if not self._auth_enabled or request.path == "/login" or request.path.startswith("/static/"):
+            return await handler(request)
 
-        # Routes
+        now = time.time()
+        for session, expires_at in tuple(self._sessions.items()):
+            if expires_at <= now:
+                self._sessions.pop(session, None)
+
+        session = request.cookies.get(self._auth_cookie_name, "")
+        if session and self._sessions.get(session, 0.0) > now:
+            return await handler(request)
+
+        if request.path == "/ws" or request.path.startswith("/api/"):
+            raise web.HTTPUnauthorized(
+                text="Authenticate at /login before accessing Cyber-Deck telemetry.",
+                headers={"Cache-Control": "no-store"},
+            )
+        raise web.HTTPFound("/login")
+
+    def _create_app(self) -> web.Application:
+        """Build the HTTP/WebSocket app with its auth boundary and static routes."""
+        app = web.Application(middlewares=[self._auth_middleware])
+        app.router.add_get("/login", self._handle_login)
+        app.router.add_post("/login", self._handle_login)
+        app.router.add_post("/logout", self._handle_logout)
         app.router.add_get("/", self._handle_index)
         app.router.add_get("/ws", self._handle_ws)
         app.router.add_get("/api/state", self._handle_api_state)
 
-        # Serve static assets
+        # Static code/assets contain no telemetry; data endpoints remain protected.
         if _STATIC_DIR.exists():
             app.router.add_static("/static/", path=str(_STATIC_DIR), name="static")
+        return app
 
+    async def _serve(self) -> None:
+        """Build and run the aiohttp application."""
+        app = self._create_app()
         self._runner = web.AppRunner(app)
         broadcast_task: asyncio.Task[None] | None = None
         try:
@@ -374,7 +489,7 @@ class WebServer:
             self._site = web.TCPSite(self._runner, self._host, self._port)
             await self._site.start()
 
-            _log_listener_started(self._host, self._port)
+            _log_listener_started(self._host, self._port, authenticated=self._auth_enabled)
 
             broadcast_task = asyncio.create_task(self._broadcast_loop())
             while not self._stop_event.is_set():
@@ -389,8 +504,84 @@ class WebServer:
 
     # ── Request Handlers ──────────────────────────────────────
 
+    def _login_page(self, error: bool = False, status: int = 200) -> web.Response:
+        """Render the small no-store login form without exposing the configured token."""
+        page = _LOGIN_PAGE.replace(
+            "__ERROR__",
+            "Access token was not accepted." if error else "",
+        )
+        return web.Response(
+            text=page,
+            status=status,
+            content_type="text/html",
+            headers={
+                "Cache-Control": "no-store",
+                "Content-Security-Policy": (
+                    "default-src 'none'; style-src 'unsafe-inline'; "
+                    "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+                ),
+                "X-Content-Type-Options": "nosniff",
+                "Referrer-Policy": "no-referrer",
+            },
+        )
+
+    async def _handle_login(self, request: web.Request) -> web.Response:
+        """Authenticate the configured token and issue a short-lived HttpOnly session."""
+        if not self._auth_enabled:
+            raise web.HTTPNotFound()
+
+        if request.method == "GET":
+            return self._login_page()
+
+        if not _is_same_origin_request(request, self._allowed_origin_hosts()):
+            raise web.HTTPForbidden(text="Cross-origin login is not allowed")
+
+        try:
+            form = await request.post()
+            supplied = form.get("token", "")
+        except (ValueError, TypeError):
+            return web.Response(status=400, text="Invalid login request")
+
+        if (
+            not isinstance(supplied, str)
+            or len(supplied) > 512
+            or not hmac.compare_digest(supplied.encode("utf-8"), self._auth_token.encode("utf-8"))
+        ):
+            return self._login_page(error=True, status=401)
+
+        # Bound session growth and expire old browser sessions on each request.
+        now = time.time()
+        for session, expires_at in tuple(self._sessions.items()):
+            if expires_at <= now:
+                self._sessions.pop(session, None)
+        if len(self._sessions) >= 128:
+            oldest = min(self._sessions.items(), key=lambda item: item[1])[0]
+            self._sessions.pop(oldest, None)
+
+        session = secrets.token_urlsafe(32)
+        self._sessions[session] = now + self._session_ttl
+        response = web.HTTPFound("/")
+        response.set_cookie(
+            self._auth_cookie_name,
+            session,
+            max_age=self._session_ttl,
+            httponly=True,
+            samesite="Strict",
+            secure=request.secure,
+            path="/",
+        )
+        return response
+
+    async def _handle_logout(self, request: web.Request) -> web.Response:
+        """Revoke the current browser session and clear its cookie."""
+        session = request.cookies.get(self._auth_cookie_name, "")
+        self._sessions.pop(session, None)
+        response = web.HTTPFound("/login")
+        response.del_cookie(self._auth_cookie_name, path="/")
+        return response
+
     async def _handle_index(self, request: web.Request) -> web.StreamResponse:
-        """Serve index.html."""
+        """Serve index.html after the auth middleware has checked the browser session."""
         index_file = _STATIC_DIR / "index.html"
         if index_file.is_file():
             return web.FileResponse(index_file)
