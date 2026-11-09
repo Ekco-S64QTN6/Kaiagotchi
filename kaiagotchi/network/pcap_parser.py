@@ -979,8 +979,6 @@ def parse_pcap_comprehensive(filepath: str, use_streaming: bool = False) -> Netw
                 if packet.haslayer(Dot11):
                     dot11 = packet[Dot11]
                     bssid = dot11.addr3
-                    transmitter = dot11.addr2
-                    receiver = dot11.addr1
 
                     # Process beacon frames (all access points)
                     if packet.haslayer(Dot11Beacon):
