@@ -79,3 +79,22 @@
 
 ### Recommended first action next run
 - Finish and merge the passive-capture/docs truth-up PR, then review/deprecate the unused placeholder utility APIs and continue the codebase sweep.
+
+
+## Run 2026-11-09 22:53 UTC — Phase 9 update
+
+**Latest merged main:** `6293bad76e02927e1a1055a2d9007269680c004e`
+**Docs batch:** PR #154, `docs/passive-capture-prereqs-and-extras-2026-11-09`; documentation changes are committed through `4fda73c357592ae0cf5a819b48229070ac964cd8`, and this appended handoff update is included in the same PR.
+
+### Additional docs verification
+- Confirmed `run_kaiagotchi.sh` allowlists only `KAIAGOTCHI_INTERFACE` and `KAIA_CONFIG` through sudo; the Web HUD token should be placed in a protected config file when using that wrapper.
+- Confirmed pyproject extras are `dev`, `splash`, `net`, and `fuzz`; the `requirements.txt` all-extras example now names all four.
+- Removed the stale `hcxpcapngtool` system-prerequisite comment; no source or launcher invocation uses that tool.
+- Re-read the README hardware/auth/plugin passages and the changed requirements, CHANGELOG, ROADMAP, and CONTRIBUTING text against the implementation.
+
+### Current blocker
+- PR #154 is open and must pass its exact-head CI before merge. Do not merge while checks are queued, running, or red.
+- Stale branch `fix/tui-thread-failure-shutdown-2026-11-09` still only contains the already-merged PR #142 changes; ref deletion is unavailable through this connection.
+
+### Recommended first action
+- Check PR #154's current head and all required checks, fix any failure, squash-merge only after green CI, then verify post-merge `main` CI and continue the placeholder-utility review.
