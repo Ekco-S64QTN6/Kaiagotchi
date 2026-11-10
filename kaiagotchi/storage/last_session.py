@@ -64,7 +64,7 @@ class LastSession:
             self.logger.error("Failed to save session data to %s", self.session_file)
 
     # ------------------------------------------------------------------
-    def get(self, key: str, default=None):
+    def get(self, key: str, default=None) -> Any:
         """Get a value from the session data dictionary."""
         return self.data.get(key, default)
 
