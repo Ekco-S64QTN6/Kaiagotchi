@@ -43,7 +43,7 @@ def test_main_refuses_non_loopback(monkeypatch, capsys):
     assert "loopback" in capsys.readouterr().err
 
 
-def _serve_once() -> tuple[http.server.HTTPServer, int]:
+def _serve_once(body: bytes) -> tuple[http.server.HTTPServer, int]:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -51,8 +51,9 @@ def _serve_once() -> tuple[http.server.HTTPServer, int]:
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
-            self.wfile.write(b"ok")
+            self.wfile.write(body)
 
         def log_message(self, *a):
             pass
@@ -62,10 +63,39 @@ def _serve_once() -> tuple[http.server.HTTPServer, int]:
     return srv, port
 
 
-def test_wait_healthy_true_when_served():
-    srv, port = _serve_once()
+@pytest.mark.parametrize("body", [
+    b'<html><head><title>Cyber-Deck</title></head><body><div id="app-container"></div></body></html>',
+    b'<html><head><title>Kaiagotchi HUD Login</title></head><body>Login</body></html>',
+])
+def test_wait_healthy_accepts_kaiagotchi_dashboard_or_login(body):
+    srv, port = _serve_once(body)
     try:
         assert hud.wait_healthy(f"http://127.0.0.1:{port}/", timeout=5) is True
+    finally:
+        srv.shutdown()
+
+
+def test_wait_healthy_rejects_unrelated_200_test_page():
+    body = (
+        b"<html><body><h1>KAIAGOTCHI // CYBER-DECK</h1>"
+        b"<p>HUD-in-a-window launcher test (--no-backend)</p></body></html>"
+    )
+    srv, port = _serve_once(body)
+    try:
+        assert hud.wait_healthy(f"http://127.0.0.1:{port}/", timeout=0.5) is False
+    finally:
+        srv.shutdown()
+
+
+def test_wait_healthy_rejects_dead_backend_even_if_port_answers():
+    srv, port = _serve_once(b'<html><body><div id="app-container"></div></body></html>')
+    class ExitedBackend:
+        def poll(self):
+            return 1
+    try:
+        assert hud.wait_healthy(
+            f"http://127.0.0.1:{port}/", timeout=5, backend=ExitedBackend()
+        ) is False
     finally:
         srv.shutdown()
 
@@ -89,3 +119,25 @@ def test_stop_backend_is_a_noop_when_already_exited(monkeypatch):
 def test_venv_python_prefers_project_venv():
     p = hud.venv_python()
     assert p.endswith("python3") or p == sys.executable
+
+
+def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
+    commands = []
+    popen_calls = []
+    monkeypatch.setenv("KAIAGOTCHI_INTERFACE", "wlan3")
+    monkeypatch.setenv("KAIA_CONFIG", "/etc/kaiagotchi/config.toml")
+    monkeypatch.setenv("UNRELATED_SECRET", "must-not-cross-sudo")
+    monkeypatch.setattr(hud.subprocess, "run", lambda cmd, **kwargs: commands.append((cmd, kwargs)))
+    monkeypatch.setattr(hud.subprocess, "Popen", lambda cmd, **kwargs: popen_calls.append((cmd, kwargs)) or object())
+    monkeypatch.setattr(hud, "venv_python", lambda: "/repo/venv/bin/python3")
+
+    hud.start_backend(["--no-web"])
+
+    assert commands == [(["sudo", "-v"], {"check": True})]
+    cmd, kwargs = popen_calls[0]
+    assert cmd[:5] == [
+        "sudo", "env", "KAIAGOTCHI_INTERFACE=wlan3",
+        "KAIA_CONFIG=/etc/kaiagotchi/config.toml", "/repo/venv/bin/python3",
+    ]
+    assert "UNRELATED_SECRET" not in " ".join(cmd)
+    assert kwargs["stdin"] is hud.subprocess.DEVNULL
