@@ -89,6 +89,7 @@ class Manager:
         self._stopping = False
         self._stop_lock = asyncio.Lock()
         self._stop_tasks: dict[str, asyncio.Task[bool]] = {}
+        self._stop_completed: set[str] = set()
         self._shutdown_complete = False
 
     async def bootstrap(self) -> None:
@@ -301,7 +302,7 @@ class Manager:
             active_tasks: dict[str, asyncio.Task[bool]] = {}
 
             for label, obj, methods in components:
-                if obj is None:
+                if obj is None or label in self._stop_completed:
                     continue
 
                 previous = self._stop_tasks.get(label)
@@ -340,11 +341,11 @@ class Manager:
                 self._run_event.set()
 
             if active_tasks:
-                done, pending = await asyncio.wait(
+                _done, pending = await asyncio.wait(
                     set(active_tasks.values()), timeout=_STOP_TIMEOUT_SECONDS
                 )
             else:
-                done, pending = set(), set()
+                pending = set()
 
             failed_labels: list[str] = []
             pending_labels: list[str] = []
@@ -363,6 +364,7 @@ class Manager:
 
                 if succeeded:
                     self._stop_tasks.pop(label, None)
+                    self._stop_completed.add(label)
                 else:
                     failed_labels.append(label)
 
