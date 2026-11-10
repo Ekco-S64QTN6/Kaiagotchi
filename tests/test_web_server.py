@@ -111,6 +111,12 @@ def test_serialize_snapshot_tolerates_explicit_null_network():
     assert output["current_rssi"] is None
 
 
+def test_serialize_snapshot_preserves_agent_startup_readiness():
+    server = WebServer()
+    assert server._serialize_snapshot({"startup_ready": False})["startup_ready"] is False
+    assert server._serialize_snapshot({"startup_ready": True})["startup_ready"] is True
+
+
 def test_serialize_does_not_invent_metrics():
     """Metrics the engine does not measure are null, never placeholder numbers."""
     out = WebServer()._serialize_snapshot({"aps_list": []})
