@@ -847,9 +847,14 @@ class PersistentNetwork:
             )
             for entry in bssid_records:
                 raw_ssid = entry.get("essid")
+                normalized_ssid = (
+                    raw_ssid.strip() if isinstance(raw_ssid, str) else ""
+                )
                 ssid = (
-                    raw_ssid.strip()
-                    if isinstance(raw_ssid, str) and raw_ssid.strip()
+                    normalized_ssid
+                    if normalized_ssid
+                    and normalized_ssid.casefold()
+                    not in {"hidden or unknown", "unknown", "<hidden>", "--"}
                     else "Hidden or Unknown"
                 )
                 if ssid not in unique_ssids:
