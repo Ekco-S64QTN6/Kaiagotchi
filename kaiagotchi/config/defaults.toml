@@ -51,7 +51,7 @@ sad_num_epochs = 25
 # Scales how strongly repeated encounters build "bond".
 bond_encounters_factor = 20000
 
-# Channels to hop across ([] = let the driver decide). Seconds spent per hop.
+# Explicit channels enable mood-paced manual hopping. [] leaves channel selection to airodump-ng.
 channels = []
 hop_recon_time = 10
 

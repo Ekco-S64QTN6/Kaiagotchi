@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Preserve the default driver-managed channel scan when personality.channels is empty; apply decision-loop mood-paced channel changes only when the operator supplies an explicit channel list.
+
 - Make the terminal AP/station tables compatible with the typed AccessPoint schema (boolean privacy and ssid naming) and resilient to malformed/null row values without dropping the entire curses frame.
 
 - Normalize the trailing iproute2 veth peer-index annotation when collecting IP addresses so virtual-interface addresses merge under the actual local interface name rather than creating duplicate records.
