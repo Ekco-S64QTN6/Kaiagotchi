@@ -85,7 +85,43 @@ async def test_explicit_channel_list_is_preserved_and_cycles_with_manual_hops(mo
     assert await manager.hop_channel() is True
     assert await manager.hop_channel() is True
 
+    assert await manager.hop_channel() is True
+    assert await manager.hop_channel() is True
+
     assert calls == [
+        ("iw", "dev", "wlan1", "set", "channel", "1"),
         ("iw", "dev", "wlan1", "set", "channel", "6"),
         ("iw", "dev", "wlan1", "set", "channel", "36"),
+        ("iw", "dev", "wlan1", "set", "channel", "1"),
+    ]
+
+
+async def test_single_configured_channel_is_selected_on_every_manual_hop(monkeypatch):
+    manager = InterfaceActionManager(
+        {
+            "main": {"iface": "wlan1"},
+            "personality": {"channels": [149]},
+        }
+    )
+    calls = []
+
+    async def interface_exists(_interface):
+        return True
+
+    async def fake_spawn(*command, **_kwargs):
+        calls.append(command)
+        return FakeProcess()
+
+    monkeypatch.setattr(manager, "_interface_exists", interface_exists)
+    monkeypatch.setattr(
+        action_manager_module.asyncio,
+        "create_subprocess_exec",
+        fake_spawn,
+    )
+
+    assert await manager.hop_channel() is True
+    assert await manager.hop_channel() is True
+    assert calls == [
+        ("iw", "dev", "wlan1", "set", "channel", "149"),
+        ("iw", "dev", "wlan1", "set", "channel", "149"),
     ]

@@ -75,8 +75,8 @@ class InterfaceActionManager:
             self.logger.error(f"Cannot hop channel: interface {iface_to_use} not found.")
             return False
 
-        self._channel_index = (self._channel_index + 1) % len(self._channel_list)
         next_channel = self._channel_list[self._channel_index]
+        self._channel_index = (self._channel_index + 1) % len(self._channel_list)
 
         self.logger.debug(f"Hopping {iface_to_use} → channel {next_channel}")
 

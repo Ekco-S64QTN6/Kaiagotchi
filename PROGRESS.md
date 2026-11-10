@@ -237,3 +237,20 @@
 
 ### Next action
 - Review/open PR #166, require all five exact-head CI jobs plus GitGuardian, merge only when green, close #166, verify post-merge main CI and counters, then continue another source review.
+
+
+## Run 2026-11-09 18:40 CDT — manual channel cycle start index
+
+**Latest merged main:** 488f3dc50f9a044c27b2424e1f4c98619213fe2d
+**Previous batch:** PR #167 restored default driver-managed automatic scanning. Exact-head run 42728312101 passed all five required jobs plus GitGuardian. Issue #166 directly verified closed; post-merge main run 42728474420 passed all five jobs.
+**New finding:** Issue #168 — manual hopping incremented the index before selecting, skipping the first configured channel on startup.
+
+### In progress
+- Branch fix/manual-channel-cycle-start-index-2026-11-09.
+- hop_channel() now selects the current configured channel first, then advances the index for the next call. Empty-list driver-managed mode is unchanged.
+- Updated the manual channel test to verify [1, 6, 36, 1] on successive hops; automatic mode tests remain in place.
+- CHANGELOG, ROADMAP, CONTRIBUTING, PROGRESS updated.
+- No hardware required in the tests; no Web HUD or TUI rendering changes.
+
+### Next action
+- Review/open PR #168, pass exact-head CI and GitGuardian, merge only when green, close #168, verify post-merge main, then continue code review.
