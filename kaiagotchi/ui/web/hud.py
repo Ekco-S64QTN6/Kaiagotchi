@@ -19,21 +19,50 @@ from __future__ import annotations
 import argparse
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
 import urllib.request
+from urllib.parse import urlsplit, urlunsplit
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.join(ROOT, "kaiagotchi", "ui", "web"))
 import app_window  # noqa: E402  (standalone module, no project imports)
 
-DEFAULT_URL = "http://127.0.0.1:8080/"
+DEFAULT_HOST = "127.0.0.1"
+DEFAULT_PORT = 8080
+DEFAULT_URL = f"http://{DEFAULT_HOST}:{DEFAULT_PORT}/"
 
 
 def venv_python() -> str:
     cand = os.path.join(ROOT, "venv", "bin", "python3")
     return cand if os.path.exists(cand) else sys.executable
+
+
+def loopback_port_available(port: int, host: str = DEFAULT_HOST) -> bool:
+    """Check whether a loopback TCP port can be bound right now."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.bind((host, port))
+        return True
+    except OSError:
+        return False
+
+
+def select_loopback_port(preferred: int = DEFAULT_PORT, host: str = DEFAULT_HOST) -> int:
+    """Use the preferred port when free, otherwise ask the OS for a free one.
+
+    The Cyber-Deck default is 8080, but a stale test/development server must
+    never be mistaken for Kaiagotchi's backend. Choosing an ephemeral loopback
+    port lets the real backend start without killing or taking over that
+    unrelated listener.
+    """
+    if loopback_port_available(preferred, host):
+        return preferred
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind((host, 0))
+        return int(probe.getsockname()[1])
 
 
 def wait_healthy(
@@ -99,8 +128,10 @@ def stop_backend(proc: subprocess.Popen) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__.split("\\n\\n")[0])
     ap.add_argument("--url", default=DEFAULT_URL, help="loopback HUD URL (default %(default)s)")
+    ap.add_argument("--port", type=int, default=None, help="backend port (default: 8080, or an available port if busy)")
+    ap.add_argument("--host", default=None, help="loopback bind host (default 127.0.0.1)")
     ap.add_argument("--no-backend", action="store_true",
                     help="do not start the capture backend; attach to one already running")
     ap.add_argument("--size", default="1280x800")
@@ -111,15 +142,47 @@ def main(argv: list[str] | None = None) -> int:
               "python-gobject (pacman -S webkit2gtk-4.1 python-gobject).", file=sys.stderr)
         return 2
 
+    parsed_url = urlsplit(args.url)
+    host = args.host or parsed_url.hostname or DEFAULT_HOST
+    if parsed_url.scheme != "http" or host not in (DEFAULT_HOST, "localhost"):
+        print("the desktop HUD only supports an HTTP loopback URL", file=sys.stderr)
+        return 2
+    if args.port is not None and not 1 <= args.port <= 65535:
+        print("--port must be between 1 and 65535", file=sys.stderr)
+        return 2
+
+    configured_port = parsed_url.port or DEFAULT_PORT
+    port = args.port or configured_port
+    if not args.no_backend:
+        if args.port is not None:
+            if not loopback_port_available(port, DEFAULT_HOST):
+                print(f"requested HUD port {port} is already in use", file=sys.stderr)
+                return 1
+        else:
+            selected = select_loopback_port(port, DEFAULT_HOST)
+            if selected != port:
+                print(
+                    f"HUD port {port} is already in use; using available loopback port {selected}",
+                    file=sys.stderr,
+                )
+            port = selected
+
+    # Normalize the bind host to the numeric loopback address. That avoids
+    # localhost resolving to a different address family than the probe socket.
+    host = DEFAULT_HOST
+    path = parsed_url.path or "/"
+    url = urlunsplit(("http", f"{host}:{port}", path, parsed_url.query, ""))
+
     backend: subprocess.Popen | None = None
     try:
         if not args.no_backend:
-            backend = start_backend(passthrough)
-        if not wait_healthy(args.url, backend=backend):
-            print(f"the HUD did not come up at {args.url}; the backend may have failed to start "
-                  "(run ./run_kaiagotchi.sh on its own to see why).", file=sys.stderr)
+            backend_args = [*passthrough, "--host", host, "--port", str(port)]
+            backend = start_backend(backend_args)
+        if not wait_healthy(url, backend=backend):
+            print(f"the HUD did not come up at {url}; the backend may have failed to start "
+                  "(run ./run_kaiagotchi.sh --no-window on its own to see why).", file=sys.stderr)
             return 1
-        window = app_window.launch(args.url, size=args.size)
+        window = app_window.launch(url, size=args.size)
         if window is None:
             return 2
         signal.signal(signal.SIGTERM, lambda *a: window.terminate())
