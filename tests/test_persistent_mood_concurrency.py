@@ -96,3 +96,19 @@ def test_mood_permission_helper_does_not_follow_symlink_targets(tmp_path):
     assert link.is_symlink()
     assert target.read_text(encoding="utf-8") == '{"external": true}'
     assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+def test_mood_permission_helper_does_not_follow_symlink_targets(tmp_path):
+    target = tmp_path / "external-mood-state.json"
+    target.write_text('{"external": true}', encoding="utf-8")
+    target.chmod(0o644)
+    link = tmp_path / "mood_state.json"
+    link.symlink_to(target)
+
+    mood = PersistentMood.__new__(PersistentMood)
+    mood.filepath = str(link)
+    mood._ensure_permissions()
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == '{"external": true}'
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
