@@ -62,18 +62,40 @@ class PersistentMood:
     def _now_iso(self) -> str:
         return datetime.now(tz=TZ).isoformat()
 
-    def _ensure_permissions(self):
-        """Ensure file exists with user-writable permissions."""
+    def _ensure_permissions(self) -> None:
+        """Restrict a regular mood-state file without following symlinks."""
+        descriptor: int | None = None
         try:
-            if not os.path.exists(self.filepath):
-                open(self.filepath, "a").close()
-            os.chmod(self.filepath, stat.S_IRUSR | stat.S_IWUSR)
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            descriptor = os.open(self.filepath, flags)
+            if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                LOGGER.warning(
+                    "Refusing to adjust non-regular mood-state path %s",
+                    self.filepath,
+                )
+                return
+
+            os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
             try:
-                os.chown(self.filepath, os.getuid(), os.getgid())
-            except Exception:
+                os.fchown(descriptor, os.getuid(), os.getgid())
+            except PermissionError:
+                # An unprivileged process may not be able to change ownership.
                 pass
-        except Exception:
-            LOGGER.warning(f"Could not adjust permissions on {self.filepath}")
+        except FileNotFoundError:
+            LOGGER.debug("Mood state file is not present yet: %s", self.filepath)
+        except OSError as exc:
+            LOGGER.warning(
+                "Could not safely adjust permissions on %s: %s",
+                self.filepath,
+                exc,
+            )
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
     # ------------------------------------------------------------------
     def load(self) -> None:

@@ -80,3 +80,41 @@ def test_mood_state_file_is_private_to_its_owner(tmp_path):
 
     assert mood.save()
     assert stat.S_IMODE(os.stat(mood.filepath).st_mode) == 0o600
+
+
+def test_mood_permission_helper_does_not_follow_symlink_targets(tmp_path):
+    target = tmp_path / "external-mood-state.json"
+    target.write_text('{"external": true}', encoding="utf-8")
+    target.chmod(0o644)
+    link = tmp_path / "mood_state.json"
+    link.symlink_to(target)
+
+    mood = PersistentMood.__new__(PersistentMood)
+    mood.filepath = str(link)
+    mood._ensure_permissions()
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == '{"external": true}'
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+def test_persistent_mood_load_replaces_symlink_without_reading_target(tmp_path):
+    target = tmp_path / "external-mood-state.json"
+    target.write_text(
+        '{"mood": "external", "reward_points": 99.0}',
+        encoding="utf-8",
+    )
+    target.chmod(0o644)
+    link = tmp_path / "mood_state.json"
+    link.symlink_to(target)
+
+    mood = PersistentMood(storage_dir=str(tmp_path))
+
+    assert not link.is_symlink()
+    assert mood.get_mood() == "neutral"
+    assert mood.get_reward_points() == 0.0
+    assert stat.S_IMODE(link.stat().st_mode) == 0o600
+    assert target.read_text(encoding="utf-8") == (
+        '{"mood": "external", "reward_points": 99.0}'
+    )
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644

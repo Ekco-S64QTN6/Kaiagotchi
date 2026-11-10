@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make JSON state loading and atomic replacement refuse symlink/non-regular paths: loading uses no-follow descriptors and symlink destinations are replaced with owner-private `0600` files without inheriting target metadata.
+
 - Enforce the private PCAP archive boundary for direct registration, parser analysis, and bulk re-analysis; reject external and symlink paths and fail closed when the archive root itself is a symlink.
 
 - Keep Markdown/JSON network reports available when persisted BSSID or PCAP records are partial: normalize invalid ESSIDs, ignore malformed records, and render missing/null hidden-AP timestamps safely.

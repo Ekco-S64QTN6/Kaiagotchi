@@ -45,6 +45,8 @@ PCAP registration/re-analysis tests must verify that only regular direct childre
 
 Network summary-report tests must cover hidden AP records with missing/null `last_seen`, non-string optional ESSID/channel/encryption values, and malformed non-dictionary persisted records while confirming that valid neighboring entries still appear in both JSON and Markdown outputs.
 
+JSON storage tests must verify that `load_data()` refuses symlink/non-regular inputs without reading targets, and that atomic save replaces a symlink destination with a private `0600` regular file while leaving the target untouched. Retain regular-file permission preservation, relative-path behavior, and file/directory fsync ordering tests. `PersistentMood` permission changes and `LastSession` loads/saves must use the same no-follow regular-file contract, and the `~/.kaiagotchi` storage directory itself must not be a symlink.
+
 Unsupported backend compatibility shims must fail explicitly on `start()`; do not add successful-looking no-op process lifecycle methods. Any newly supported external capture backend needs bounded startup, health/error reporting, and deterministic process termination/reaping tests before it is documented as available.
 
 Wireless channel capability tests must use synthetic iw dev / iw phy outputs, cover 2.4/5/6 GHz and disabled frequencies, and verify unavailable interfaces/commands return an empty list without a hardware dependency.

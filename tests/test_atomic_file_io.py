@@ -114,3 +114,37 @@ def test_atomic_save_reports_directory_fsync_failure_after_replace(tmp_path, mon
     assert json.loads(target.read_text(encoding="utf-8")) == {"new": True}
     assert sorted(path.name for path in tmp_path.iterdir()) == ["state.json"]
     assert "was replaced, but durability could not be confirmed" in caplog.text
+
+
+def test_atomic_save_replaces_symlink_without_inheriting_target_permissions(tmp_path):
+    target = tmp_path / "external.json"
+    target.write_text('{"external": true}', encoding="utf-8")
+    target.chmod(0o644)
+    link = tmp_path / "state.json"
+    link.symlink_to(target)
+
+    assert file_io.atomically_save_data(str(link), {"private": "state"})
+
+    assert not link.is_symlink()
+    assert json.loads(link.read_text(encoding="utf-8")) == {"private": "state"}
+    assert stat.S_IMODE(link.stat().st_mode) == 0o600
+    assert target.read_text(encoding="utf-8") == '{"external": true}'
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+
+
+def test_load_data_returns_default_for_symlink_without_reading_target(tmp_path):
+    target = tmp_path / "external.json"
+    target.write_text('{"external": "state"}', encoding="utf-8")
+    link = tmp_path / "state.json"
+    link.symlink_to(target)
+    default = {"safe": True}
+
+    assert file_io.load_data(str(link), default=default) == default
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == '{"external": "state"}'
+
+
+def test_load_data_returns_default_for_non_regular_paths(tmp_path):
+    default = {"safe": True}
+
+    assert file_io.load_data(str(tmp_path), default=default) == default

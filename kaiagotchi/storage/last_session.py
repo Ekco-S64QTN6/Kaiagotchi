@@ -1,109 +1,67 @@
-# kaiagotchi/storage/last_session.py
-import json
+"""Private, atomic persistence for the most recent Kaiagotchi session."""
+
 import logging
 import os
 import stat
-import tempfile
 from typing import Any
+
+from .file_io import atomically_save_data, load_data
 
 
 class LastSession:
-    """
-    Handles saving and loading of Kaiagotchi's last session data
-    in a user-safe and atomic manner.
-
-    Fixes:
-    - Prevents permission corruption (always owned by current user)
-    - Writes atomically (no partial JSON)
-    - Auto-creates ~/.kaiagotchi directory if missing
-    """
+    """Load and save last-session metadata inside an owner-only directory."""
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(__name__)
         self.session_dir = os.path.expanduser("~/.kaiagotchi")
         self.session_file = os.path.join(self.session_dir, "last_session.json")
         self.data: dict[str, Any] = {}
+        self._storage_ready = False
 
-        # Ensure directory exists and is writable by the user
+        descriptor: int | None = None
         try:
             os.makedirs(self.session_dir, exist_ok=True)
-            os.chmod(self.session_dir, 0o700)
-        except Exception as e:
-            self.logger.error(f"Could not create or secure session directory {self.session_dir}: {e}")
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            descriptor = os.open(self.session_dir, flags)
+            if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                raise OSError("session storage path is not a directory")
+            os.fchmod(descriptor, 0o700)
+            self._storage_ready = True
+        except OSError as exc:
+            self.logger.error(
+                "Could not securely open session directory %s: %s",
+                self.session_dir,
+                exc,
+            )
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
     # ------------------------------------------------------------------
     def load(self) -> None:
-        """Load last session data from JSON file."""
-        try:
-            if os.path.exists(self.session_file):
-                with open(self.session_file, encoding="utf-8") as f:
-                    self.data = json.load(f)
-                self.logger.info(f"Loaded session data from {self.session_file}")
-            else:
-                self.data = {}
-                self.logger.info("No previous session file found — starting fresh.")
-        except json.JSONDecodeError:
-            self.logger.error(f"Session file {self.session_file} is corrupted. Resetting.")
+        """Load JSON only from a regular session file, never a symlink target."""
+        if not self._storage_ready:
             self.data = {}
-        except PermissionError as e:
-            self.logger.error(f"Permission denied when reading {self.session_file}: {e}")
-            self.data = {}
-        except Exception as e:
-            self.logger.error(f"Failed to load session data: {e}")
-            self.data = {}
+            return
+
+        value = load_data(self.session_file, default={})
+        self.data = value if isinstance(value, dict) else {}
 
     # ------------------------------------------------------------------
     def save(self) -> None:
-        """Atomically save session data to file with preserved permissions."""
-        dir_path = os.path.dirname(self.session_file)
-        temp_file_name = None
+        """Atomically save the session using the shared private-file contract."""
+        if not self._storage_ready:
+            self.logger.error("Session storage is unavailable; refusing to save.")
+            return
 
-        # Default permissions for new file
-        existing_mode = 0o600
-        existing_uid = os.getuid()
-        existing_gid = os.getgid()
-
-        # Preserve old ownership and mode if file exists
-        if os.path.exists(self.session_file):
-            try:
-                st = os.stat(self.session_file)
-                existing_mode = stat.S_IMODE(st.st_mode)
-                existing_uid = st.st_uid
-                existing_gid = st.st_gid
-            except Exception as e:
-                self.logger.debug(f"Could not stat {self.session_file}: {e}")
-
-        try:
-            # Write to temp file in same directory
-            with tempfile.NamedTemporaryFile(
-                mode="w", delete=False, dir=dir_path, encoding="utf-8"
-            ) as tmp_fp:
-                json.dump(self.data, tmp_fp, indent=2)
-                temp_file_name = tmp_fp.name
-
-            os.replace(temp_file_name, self.session_file)
-
-            # Reapply ownership and permissions
-            try:
-                os.chmod(self.session_file, existing_mode)
-            except Exception as e:
-                self.logger.debug(f"chmod({self.session_file}) failed: {e}")
-
-            try:
-                os.chown(self.session_file, existing_uid, existing_gid)
-            except PermissionError:
-                pass
-            except Exception as e:
-                self.logger.debug(f"chown({self.session_file}) failed: {e}")
-
-            self.logger.info(f"Session data saved to {self.session_file}")
-        except Exception as e:
-            self.logger.error(f"Failed to save session data atomically: {e}")
-            if temp_file_name and os.path.exists(temp_file_name):
-                try:
-                    os.remove(temp_file_name)
-                except Exception:
-                    pass
+        if atomically_save_data(self.session_file, self.data, fmt="json"):
+            self.logger.info("Session data saved to %s", self.session_file)
+        else:
+            self.logger.error("Failed to save session data to %s", self.session_file)
 
     # ------------------------------------------------------------------
     def get(self, key: str, default=None) -> Any:
