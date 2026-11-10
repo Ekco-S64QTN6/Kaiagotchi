@@ -78,7 +78,7 @@ features or capture-backend changes.
 
 ## Recently completed
 
-- Make Manager shutdown serialize concurrent callers, report component-stop failures as incomplete, and retry only failed or still-running Agent/ticker/View cleanup without repeating successful stops.
+- Propagate explicit incomplete shutdown results from MonitoringAgent through Agent to Manager; retry failed process reaping, archive cleanup, managed-mode restoration, and Agent/ticker/View stops without repeating successful steps.
 
 - Correct manual channel cycle indexing so the first hop selects the first configured channel and subsequent hops advance and wrap in configured order.
 

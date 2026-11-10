@@ -158,3 +158,89 @@ async def test_agent_stop_skips_action_manager_cleanup_when_uninitialized():
 
     agent.last_session.save.assert_called_once_with()
     assert agent._running is False
+
+
+
+@pytest.mark.asyncio
+async def test_agent_retries_incomplete_monitor_shutdown_after_run_loop_stops():
+    class RetryMonitor:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            return self.stop_calls > 1
+
+    monitor = RetryMonitor()
+    agent = Agent.__new__(Agent)
+    agent.logger = logging.getLogger("tests.agent-stop-retry")
+    agent._running = True
+    agent._stop_lock = asyncio.Lock()
+    agent._stop_completed = set()
+    agent._shutdown_complete = False
+    agent.automata = None
+    agent._update_task = None
+    agent._decision_task = None
+    agent._monitor_task = None
+    agent.monitoring_agent = monitor
+    agent.persistent_mood = None
+    agent.persistent_network = None
+    agent.last_session = SimpleNamespace(save=Mock())
+    agent.action_manager = None
+    agent.system_state = SimpleNamespace(mood="neutral")
+    agent._view = None
+
+    assert await agent.stop() is False
+    assert agent._running is False
+    assert agent._shutdown_complete is False
+
+    # A retry must reach MonitoringAgent even though the Agent run flag is down.
+    assert await agent.stop() is True
+    assert monitor.stop_calls == 2
+    assert agent._shutdown_complete is True
+    agent.last_session.save.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_agent_concurrent_stop_callers_share_component_cleanup():
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    class BlockingMonitor:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            started.set()
+            await release.wait()
+            return True
+
+    monitor = BlockingMonitor()
+    agent = Agent.__new__(Agent)
+    agent.logger = logging.getLogger("tests.agent-stop-concurrent")
+    agent._running = True
+    agent._stop_lock = asyncio.Lock()
+    agent._stop_completed = set()
+    agent._shutdown_complete = False
+    agent.automata = None
+    agent._update_task = None
+    agent._decision_task = None
+    agent._monitor_task = None
+    agent.monitoring_agent = monitor
+    agent.persistent_mood = None
+    agent.persistent_network = None
+    agent.last_session = SimpleNamespace(save=Mock())
+    agent.action_manager = None
+    agent.system_state = SimpleNamespace(mood="neutral")
+    agent._view = None
+
+    first = asyncio.create_task(agent.stop())
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    second = asyncio.create_task(agent.stop())
+    await asyncio.sleep(0)
+    assert not second.done()
+
+    release.set()
+    assert await asyncio.wait_for(asyncio.gather(first, second), timeout=2.0) == [True, True]
+    assert monitor.stop_calls == 1

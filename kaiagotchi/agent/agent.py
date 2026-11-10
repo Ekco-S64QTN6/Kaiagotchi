@@ -49,6 +49,16 @@ from .monitoring_agent import MonitoringAgent
 _log = logging.getLogger("kaiagotchi.agent.agent")
 
 
+async def _call_shutdown_hook(fn) -> Any:
+    """Run sync/async cleanup hooks and preserve their explicit completion result."""
+    if asyncio.iscoroutinefunction(fn):
+        return await fn()
+    result = await asyncio.get_running_loop().run_in_executor(None, fn)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
 class Agent(kaiagotchiBase):
     """Main Kaiagotchi agent — orchestrates monitoring, decisions, emotions, and UI sync."""
 
@@ -56,6 +66,9 @@ class Agent(kaiagotchiBase):
     _update_task: asyncio.Task[AnyType] | None
     _decision_task: asyncio.Task[AnyType] | None
     _monitor_task: asyncio.Task[AnyType] | None
+    _stop_lock: asyncio.Lock
+    _stop_completed: set[str]
+    _shutdown_complete: bool
 
     def __init__(
         self,
@@ -72,6 +85,9 @@ class Agent(kaiagotchiBase):
         self.state_lock = self._state_lock
         self._started_at = time.time()
         self._running = False
+        self._stop_lock = asyncio.Lock()
+        self._stop_completed: set[str] = set()
+        self._shutdown_complete = False
 
         # Initialize DecisionEngine
         self.decision_engine = DecisionEngine(config)
@@ -269,6 +285,8 @@ class Agent(kaiagotchiBase):
     async def start_async(self):
         """Run the agent and always clean up, including during startup awaits."""
         self._running = True
+        self._stop_completed = set()
+        self._shutdown_complete = False
         self.logger.info("Agent main run loop starting...")
 
         try:
@@ -424,84 +442,178 @@ class Agent(kaiagotchiBase):
         await self._view.async_update(current_snapshot)
         self.logger.debug(f"[UI] Updated view (iter={iteration}) aps={aps} mode={mode} mood={mood}")
 
-    async def stop(self):
-        """Clean shutdown of Agent and all components, including emotions and persistence."""
-        if not self._running:
-            self.logger.debug("Agent.stop() called but already stopped")
-            return
+    async def stop(self) -> bool:
+        """Stop each component once and retain incomplete cleanup for safe retry."""
+        stop_lock = getattr(self, "_stop_lock", None)
+        if stop_lock is None:
+            # Tests and legacy embedders may construct Agent without __init__.
+            stop_lock = asyncio.Lock()
+            self._stop_lock = stop_lock
 
-        self.logger.info("Stopping Kaiagotchi agent...")
-        self._running = False
+        async with stop_lock:
+            if getattr(self, "_shutdown_complete", False):
+                self.logger.debug("Agent.stop() called after completed shutdown")
+                return True
 
-        if self.automata:
-            await self.automata.stop()
-            self.logger.info("Automata emotional loop stopped.")
+            self.logger.info("Stopping Kaiagotchi agent...")
+            self._running = False
+            completed: set[str] = getattr(self, "_stop_completed", set())
+            cleanup_ok = True
 
-        tasks_to_cancel = []
-        for name, task in (
-            ("update", self._update_task),
-            ("decision", self._decision_task),
-            ("monitor", self._monitor_task),
-        ):
-            if task and not task.done():
-                tasks_to_cancel.append(task)
-                self.logger.debug(f"Cancelling {name} task")
+            async def finish(label: str, operation) -> None:
+                nonlocal cleanup_ok
+                if label in completed:
+                    return
+                try:
+                    result = await operation()
+                except Exception:
+                    cleanup_ok = False
+                    self.logger.exception(
+                        "%s shutdown failed; it will be retried", label
+                    )
+                    return
 
-        if tasks_to_cancel:
-            for task in tasks_to_cancel:
-                task.cancel()
-            try:
-                await asyncio.wait_for(asyncio.gather(*tasks_to_cancel, return_exceptions=True), timeout=5.0)
-                self.logger.info("All agent tasks cancelled successfully.")
-            except TimeoutError:
-                self.logger.warning("Some tasks didn't cancel within timeout")
-            except Exception as e:
-                self.logger.error(f"Error cancelling tasks: {e}")
+                if result is False:
+                    cleanup_ok = False
+                    self.logger.warning(
+                        "%s shutdown reports incomplete; it will be retried",
+                        label,
+                    )
+                else:
+                    completed.add(label)
 
-        if hasattr(self, 'monitoring_agent') and self.monitoring_agent:
-            try:
-                self.logger.info("Stopping MonitoringAgent...")
-                await self.monitoring_agent.stop()
-                self.logger.info("MonitoringAgent stopped successfully.")
-            except Exception as e:
-                self.logger.error(f"Error stopping MonitoringAgent: {e}")
+            async def stop_automata() -> bool:
+                automata = getattr(self, "automata", None)
+                if automata is not None:
+                    return await _call_shutdown_hook(automata.stop)
+                return True
 
-        if self.persistent_mood:
-            mood_val = getattr(self.system_state, "mood", AgentMood.NEUTRAL.value)
-            reward_val = getattr(self.automata, "last_reward", 0.0) if self.automata else 0.0
-            self.persistent_mood.set_and_save(mood_val, reward_val)
-            self.logger.info(f"Saved persistent mood={mood_val}, reward={reward_val}")
+            async def stop_agent_tasks() -> bool:
+                tasks = [
+                    task
+                    for task in (
+                        getattr(self, "_update_task", None),
+                        getattr(self, "_decision_task", None),
+                        getattr(self, "_monitor_task", None),
+                    )
+                    if task is not None
+                ]
+                active = [task for task in tasks if not task.done()]
+                for task in active:
+                    task.cancel()
+                if active:
+                    _done, pending = await asyncio.wait(active, timeout=5.0)
+                    if pending:
+                        self.logger.warning(
+                            "%d agent background task(s) are still stopping",
+                            len(pending),
+                        )
+                        return False
+                for task in tasks:
+                    if task.done() and not task.cancelled():
+                        try:
+                            exc = task.exception()
+                        except asyncio.CancelledError:
+                            exc = None
+                        if exc is not None:
+                            self.logger.warning(
+                                "Agent background task finished with an error during shutdown: %s",
+                                exc,
+                            )
+                self.logger.info("Agent background tasks stopped.")
+                return True
 
-        if self.persistent_network:
-            self.persistent_network.save()
-            # generate_reports() was decoupled from save() to avoid per-save stalls;
-            # regenerate once on clean shutdown so summaries stay current.
-            try:
-                self.persistent_network.generate_reports()
-            except Exception as e:
-                self.logger.warning("generate_reports() failed on shutdown: %s", e)
-            self.logger.info("Persistent network state saved.")
+            async def stop_monitoring() -> bool:
+                monitor = getattr(self, "monitoring_agent", None)
+                if monitor is not None:
+                    return await _call_shutdown_hook(monitor.stop)
+                return True
 
-        try:
-            self.last_session.save()
-            self.logger.info("Last session saved.")
-        except Exception as e:
-            self.logger.error(f"Failed to save last session: {e}")
+            async def save_mood() -> bool:
+                persistence = getattr(self, "persistent_mood", None)
+                if persistence is not None:
+                    mood_val = getattr(
+                        self.system_state, "mood", AgentMood.NEUTRAL.value
+                    )
+                    automata = getattr(self, "automata", None)
+                    reward_val = (
+                        getattr(automata, "last_reward", 0.0)
+                        if automata is not None
+                        else 0.0
+                    )
+                    persistence.set_and_save(mood_val, reward_val)
+                    self.logger.info(
+                        "Saved persistent mood=%s, reward=%s", mood_val, reward_val
+                    )
+                return True
 
-        if self.action_manager is not None:
-            await self.action_manager.cleanup()
-            self.logger.info("ActionManager cleaned up.")
+            async def save_network() -> bool:
+                persistence = getattr(self, "persistent_network", None)
+                if persistence is not None:
+                    saved = persistence.save()
+                    if saved is False:
+                        return False
+                    try:
+                        persistence.generate_reports()
+                    except Exception:
+                        self.logger.exception(
+                            "Persistent network reports failed during shutdown"
+                        )
+                        return False
+                    self.logger.info("Persistent network state saved.")
+                return True
 
-        if self._view and hasattr(self._view, "on_shutdown"):
-            try:
-                shutdown_result = self._view.on_shutdown()
-                if inspect.isawaitable(shutdown_result):
-                    await shutdown_result
-                self.logger.info("View on_shutdown() executed")
-            except Exception as e:
-                self.logger.error(f"View.on_shutdown() failed: {e}")
+            async def save_session() -> bool:
+                session = getattr(self, "last_session", None)
+                if session is not None:
+                    session.save()
+                    self.logger.info("Last session saved.")
+                return True
 
-        self.logger.info("Kaiagotchi agent stopped cleanly.")
+            async def cleanup_action_manager() -> bool:
+                action_manager = getattr(self, "action_manager", None)
+                if action_manager is not None:
+                    return await _call_shutdown_hook(action_manager.cleanup)
+                return True
+
+            async def shutdown_view() -> bool:
+                view = getattr(self, "_view", None)
+                on_shutdown = getattr(view, "on_shutdown", None)
+                if callable(on_shutdown):
+                    result = on_shutdown()
+                    if inspect.isawaitable(result):
+                        result = await result
+                    return result is not False
+                return True
+
+            operations = (
+                ("automata", stop_automata),
+                ("agent tasks", stop_agent_tasks),
+                ("monitoring", stop_monitoring),
+                ("persistent mood", save_mood),
+                ("persistent network", save_network),
+                ("last session", save_session),
+                ("action manager", cleanup_action_manager),
+                ("view", shutdown_view),
+            )
+            for label, operation in operations:
+                await finish(label, operation)
+
+            self._stop_completed = completed
+            self._shutdown_complete = (
+                cleanup_ok and len(completed) == len(operations)
+            )
+            if self._shutdown_complete:
+                self.logger.info("Kaiagotchi agent stopped cleanly.")
+            else:
+                pending = [
+                    label for label, _operation in operations if label not in completed
+                ]
+                self.logger.warning(
+                    "Kaiagotchi agent shutdown incomplete; retryable components: %s",
+                    ", ".join(pending),
+                )
+            return self._shutdown_complete
 
     async def _handle_thought(self, thought: str):
         """Callback for Automata to inject thoughts into the main chatter log."""

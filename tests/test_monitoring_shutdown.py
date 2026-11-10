@@ -49,7 +49,7 @@ async def test_stop_reaps_capture_process_even_when_running_flag_is_false(
     monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
     monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", lambda: None)
 
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert process.terminate_called is True
     assert process.wait_called is True
@@ -171,7 +171,7 @@ async def test_stop_defers_capture_cleanup_and_mode_restore_until_process_is_rea
     )
     monkeypatch.setattr(monitor, "_emit_capture_summary", emit_summary)
 
-    await monitor.stop()
+    assert await monitor.stop() is False
 
     assert process.wait_attempts == 1
     assert process.returncode is None
@@ -186,7 +186,7 @@ async def test_stop_defers_capture_cleanup_and_mode_restore_until_process_is_rea
 
     # The next stop() retries wait/reap and only then restores the adapter and
     # archives/removes the private temporary capture directory.
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert process.wait_attempts == 2
     assert process.returncode == 0
@@ -312,7 +312,7 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
 
     monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", cleanup_capture)
 
-    await monitor.stop()
+    assert await monitor.stop() is False
 
     assert process.terminate_called is True
     assert process.kill_called is True
@@ -329,7 +329,7 @@ async def test_stop_retains_child_and_capture_files_after_post_kill_wait_failure
 
     # A later stop() retries reaping before restoring the interface or touching
     # any capture file, preventing loss of a still-running child's output.
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert process.wait_attempts == 3
     assert process.returncode == 0
@@ -392,7 +392,7 @@ async def test_stop_retries_managed_mode_restore_without_repeating_finalization(
     )
     monkeypatch.setattr(monitor, "_emit_capture_summary", summary)
 
-    await monitor.stop()
+    assert await monitor.stop() is False
 
     assert process.returncode == 0
     assert monitor._process is None
@@ -405,7 +405,7 @@ async def test_stop_retries_managed_mode_restore_without_repeating_finalization(
 
     # Retry only the failed adapter restoration; do not repeat session-end side
     # effects once capture cleanup and persistence have reached their terminal state.
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert monitor._managed_mode_restore_pending is False
     assert len(calls) == 6
@@ -481,7 +481,7 @@ async def test_stop_orders_reaping_restore_archive_and_persistence(monkeypatch):
     monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", cleanup_capture)
     monkeypatch.setattr(monitor, "_emit_capture_summary", emit_summary)
 
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert events == [
         "terminate",

@@ -714,3 +714,26 @@ async def test_timed_out_manager_stop_reuses_pending_component_task(monkeypatch)
         for task in manager._stop_tasks.values():
             if not task.done():
                 await asyncio.gather(task, return_exceptions=True)
+
+
+
+@pytest.mark.asyncio
+async def test_manager_retries_explicit_incomplete_agent_stop_result():
+    class IncompleteThenCompleteAgent:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            return self.stop_calls > 1
+
+    agent = IncompleteThenCompleteAgent()
+    manager = Manager(config={}, system_state={})
+    manager.agent = agent
+
+    await manager.stop()
+    assert manager._shutdown_complete is False
+
+    await manager.stop()
+    assert manager._shutdown_complete is True
+    assert agent.stop_calls == 2

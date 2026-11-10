@@ -274,11 +274,18 @@ class Manager:
                     found_method = True
                     try:
                         if asyncio.iscoroutinefunction(fn):
-                            await fn()
+                            result = await fn()
                         else:
                             result = await asyncio.get_running_loop().run_in_executor(None, fn)
                             if inspect.isawaitable(result):
-                                await result
+                                result = await result
+                        if result is False:
+                            logger.warning(
+                                "Manager: %s.%s() reports incomplete shutdown",
+                                label,
+                                name,
+                            )
+                            return False
                         logger.debug("Manager: %s stopped via %s()", label, name)
                         return True
                     except Exception:

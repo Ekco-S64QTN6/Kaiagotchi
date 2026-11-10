@@ -60,6 +60,7 @@ class MonitoringAgent:
         self._managed_mode_restore_pending = False
         self._managed_mode_restore_attempted = False
         self._shutdown_complete = False
+        self._stop_lock = asyncio.Lock()
         self._process: asyncio.subprocess.Process | None = None
         self._csv_path: Path | None = None
         self._base_path: Path | None = None
@@ -237,51 +238,54 @@ class MonitoringAgent:
             raise
 
     # ------------------------------------------------------------------
-    async def stop(self):
-        """Finish bounded shutdown even across repeated caller cancellation.
+    async def stop(self) -> bool:
+        """Finish bounded shutdown and report whether every cleanup step is complete.
 
-        Keep the inner cleanup task shielded for the entire reaping/cleanup
-        attempt. Remember the first caller cancellation, defer it until the
-        cleanup task is terminal, and then propagate it to the caller.
+        The inner cleanup task remains shielded across repeated caller
+        cancellation. Concurrent callers serialize so they cannot race process
+        reaping, archive cleanup, or managed-mode restoration.
         """
-        cleanup_task = asyncio.create_task(self._stop_impl())
-        cancellation: asyncio.CancelledError | None = None
+        async with self._stop_lock:
+            cleanup_task = asyncio.create_task(self._stop_impl())
+            cancellation: asyncio.CancelledError | None = None
 
-        while not cleanup_task.done():
-            try:
-                await asyncio.shield(cleanup_task)
-            except asyncio.CancelledError as exc:
-                if cleanup_task.cancelled():
+            while not cleanup_task.done():
+                try:
+                    await asyncio.shield(cleanup_task)
+                except asyncio.CancelledError as exc:
+                    if cleanup_task.cancelled():
+                        break
+                    if cancellation is None:
+                        cancellation = exc
+                except Exception:
+                    # Retrieve the cleanup exception after its task is terminal.
                     break
-                if cancellation is None:
-                    cancellation = exc
-            except Exception:
-                # Retrieve the cleanup exception after its task is terminal.
-                break
 
-        cleanup_error: Exception | None = None
-        try:
-            await cleanup_task
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            cleanup_error = exc
+            cleanup_error: Exception | None = None
+            cleanup_complete = False
+            try:
+                cleanup_complete = await cleanup_task
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                cleanup_error = exc
 
-        if cancellation is not None:
+            if cancellation is not None:
+                if cleanup_error is not None:
+                    _LOG.error(
+                        "[monitoring] Shutdown cleanup failed after caller cancellation",
+                        exc_info=(
+                            type(cleanup_error),
+                            cleanup_error,
+                            cleanup_error.__traceback__,
+                        ),
+                    )
+                raise cancellation
             if cleanup_error is not None:
-                _LOG.error(
-                    "[monitoring] Shutdown cleanup failed after caller cancellation",
-                    exc_info=(
-                        type(cleanup_error),
-                        cleanup_error,
-                        cleanup_error.__traceback__,
-                    ),
-                )
-            raise cancellation
-        if cleanup_error is not None:
-            raise cleanup_error
+                raise cleanup_error
+            return cleanup_complete
 
-    async def _stop_impl(self):
+    async def _stop_impl(self) -> bool:
         # Once capture cleanup/finalization is complete, retry only a failed
         # managed-mode restore rather than duplicating session-end side effects.
         if self._shutdown_complete:
@@ -301,7 +305,7 @@ class MonitoringAgent:
                     )
                 else:
                     _LOG.info("[monitoring] Managed mode restored on retry")
-            return
+            return not self._managed_mode_restore_pending
 
         # A partial startup or an earlier shutdown error can clear _running
         # while still leaving a child process/task/temp capture directory to reap.
@@ -312,7 +316,7 @@ class MonitoringAgent:
             and self._capture_tmp_dir is None
             and not self._managed_mode_restore_pending
         ):
-            return
+            return True
 
         _LOG.info("[monitoring] Stopping agent...")
         self._running = False
@@ -393,7 +397,7 @@ class MonitoringAgent:
             await self._emit_capture_summary(
                 "Monitoring shutdown incomplete; capture process could not be reaped."
             )
-            return
+            return False
 
         if (
             not self._managed_mode_restore_attempted
@@ -461,6 +465,7 @@ class MonitoringAgent:
             if self._shutdown_complete
             else "[monitoring] Shutdown cleanup remains pending."
         )
+        return self._shutdown_complete and not self._managed_mode_restore_pending
 
     # NEW: Public method to force PCAP archiving without full stop
     async def archive_current_pcap(self):
