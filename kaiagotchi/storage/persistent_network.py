@@ -127,12 +127,26 @@ class PersistentNetwork:
                 exc,
             )
 
+        descriptor: int | None = None
         try:
-            os.chmod(self.pcaps_dir, stat.S_IRWXU)
+            # The archive directory itself must not be a symlink: chmod(path)
+            # would follow it and could make an external directory private.
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_DIRECTORY", 0)
+                | getattr(os, "O_NOFOLLOW", 0)
+            )
+            descriptor = os.open(self.pcaps_dir, flags)
+            if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                raise OSError("PCAP storage path is not a directory")
+            os.fchmod(descriptor, stat.S_IRWXU)
         except OSError as exc:
             raise PermissionError(
                 f"Could not secure PCAP storage directory {self.pcaps_dir}"
             ) from exc
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
         LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
 
@@ -1241,9 +1255,10 @@ class PersistentNetwork:
             return None
         try:
             candidate = Path(raw_path)
-            if candidate.is_symlink():
+            archive_root = Path(self.pcaps_dir)
+            if archive_root.is_symlink() or candidate.is_symlink():
                 return None
-            root = Path(self.pcaps_dir).resolve()
+            root = archive_root.resolve()
             resolved = candidate.resolve(strict=False)
             if resolved.parent != root:
                 return None
