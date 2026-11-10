@@ -132,9 +132,7 @@ def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
 
     hud.start_backend(["--no-web"])
 
-    assert commands[0][0] == ["sudo", "-S", "-v"]
-    assert commands[0][1]["check"] is True
-    assert commands[0][1]["stdin"].name == "/dev/tty"
+    assert commands == [(["sudo", "-v"], {"check": True})]
 
     cmd, kwargs = popen_calls[0]
     assert cmd[:6] == [
