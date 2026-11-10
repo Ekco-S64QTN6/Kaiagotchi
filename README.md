@@ -69,19 +69,30 @@ pip install -e .            # add ".[dev]" for tests/lint/type-check tooling
 The interface work requires root, so launch with `sudo`. Any of these work:
 
 ```bash
-# Convenience wrapper (re-execs itself with sudo, uses ./venv if present)
+# Convenience wrapper (desktop HUD when a graphical session is available)
 ./run_kaiagotchi.sh
 
-# Console script installed by pip
-sudo kaiagotchi --debug
+# Force the primary curses dashboard in the terminal
+./run_kaiagotchi.sh --no-window
 
-# Module form
-sudo python -m kaiagotchi.cli --debug
+# Direct terminal-only invocation
+sudo kaiagotchi --debug --tui
+
+# Module form (terminal-only)
+sudo python -m kaiagotchi.cli --debug --tui
 ```
 
-By default the Cyber-Deck web HUD serves on
-`http://127.0.0.1:8080` (animated avatar and live telemetry). Add `--no-web`
-for terminal-only mode.
+On a graphical desktop, `run_kaiagotchi.sh` opens Cyber-Deck in its own GTK
+window and starts a web-only backend; it does not start curses in the launching
+terminal. Without a graphical session, the wrapper falls back to the TUI when
+an interactive terminal is available. `--no-window` or `--tui` selects the
+terminal-only dashboard.
+
+The direct CLI defaults to the configured web HUD on loopback
+(`http://127.0.0.1:8080` when enabled). Its in-window startup indicator remains
+visible until the monitoring agent is ready. Use `--no-tui` to disable curses
+when running a web backend without a desktop window, or the wrapper's
+`--headless` flag to disable both presentation layers.
 
 A non-loopback bind (for example, `--host 0.0.0.0`) is refused unless a token
 is configured in `[web].auth_token` or the `KAIA_WEB_AUTH_TOKEN` environment
@@ -108,9 +119,10 @@ or a root shell).
 
 Use `--tui` to force the terminal-only interface even when the configuration
 enables the optional browser HUD. `--no-web` also disables the browser HUD.
+`--no-tui` disables curses while leaving the selected web service available.
 
 Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
-`--debug`, `--manual`, `--tui`, `--no-web`, `--port`, `--host`.
+`--debug`, `--manual`, `--tui`, `--no-tui`, `--no-web`, `--port`, `--host`.
 
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.

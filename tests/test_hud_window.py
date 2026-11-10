@@ -130,7 +130,7 @@ def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
     monkeypatch.setattr(hud.subprocess, "Popen", lambda cmd, **kwargs: popen_calls.append((cmd, kwargs)) or object())
     monkeypatch.setattr(hud, "venv_python", lambda: "/repo/venv/bin/python3")
 
-    hud.start_backend(["--no-web"])
+    hud.start_backend(["--manual"])
 
     assert commands == [(["sudo", "-v"], {"check": True})]
 
@@ -139,6 +139,10 @@ def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
         "sudo", "-n", "env", "KAIAGOTCHI_INTERFACE=wlan3",
         "KAIA_CONFIG=/etc/kaiagotchi/config.toml", "/repo/venv/bin/python3",
     ]
+    assert cmd[6:11] == [
+        "-m", "kaiagotchi.cli", "--debug", "--web", "--no-tui",
+    ]
+    assert cmd[-1] == "--manual"
     assert "UNRELATED_SECRET" not in " ".join(cmd)
     assert kwargs["stdin"] is hud.subprocess.DEVNULL
     assert kwargs["process_group"] == 0

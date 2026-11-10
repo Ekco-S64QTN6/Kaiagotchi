@@ -132,6 +132,11 @@ def parse_arguments():
     parser.add_argument("--web", action="store_true", default=None, help="Enable Cyber-Deck Web UI (default: enabled)")
     parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
     parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
+    parser.add_argument(
+        "--no-tui",
+        action="store_true",
+        help="Disable the curses display (for web-only or headless operation)",
+    )
     parser.add_argument("--port", type=int, default=None, help="Port for Web UI (default: 8080)")
     parser.add_argument("--host", type=str, default=None, help="Host address for Web UI (non-loopback binds require web.auth_token or KAIA_WEB_AUTH_TOKEN)")
     # helper flags (handled below in __main__)
@@ -148,6 +153,14 @@ def _web_enabled(args: Any, config: dict[str, Any]) -> bool:
         return True
     web_config = config.get("web", {})
     return bool(web_config.get("enabled", True)) if isinstance(web_config, dict) else True
+
+
+def _terminal_display_enabled(args: Any, config: dict[str, Any], web_available: bool = True) -> bool:
+    """Select one interactive surface: curses when web is off, never both."""
+    return (
+        not getattr(args, "no_tui", False)
+        and (not _web_enabled(args, config) or not web_available)
+    )
 
 
 def _create_splash_screen() -> Any | None:
@@ -307,12 +320,14 @@ async def run_agent() -> int:
         )
         state_lock = asyncio.Lock()
 
-        # Initialize View (do not call start_rotation here; Manager/Agent will control lifecycle)
-        view = View(config)
-        view.suppress_output = True  # Suppress output during splash
-
-        # Initialize Web Server (Cyber-Deck UI)
+        # Resolve the interface before constructing View. A web backend must not
+        # also create a curses thread in the launcher's terminal.
         web_enabled = _web_enabled(args, config)
+        terminal_enabled = _terminal_display_enabled(args, config, WebServer is not None)
+
+        # Initialize View (do not call start_rotation here; Manager/Agent will control lifecycle)
+        view = View(config, create_display=terminal_enabled)
+        view.suppress_output = True  # Suppress output during terminal splash
 
         if args.port:
             config.setdefault("web", {})["port"] = args.port
@@ -339,8 +354,9 @@ async def run_agent() -> int:
 
         display_monitor_task = asyncio.create_task(monitor_display_quit())
 
-        # Show splash screen (after View init so it clears screen first)
-        splash = _create_splash_screen()
+        # Only terminal mode owns the terminal splash. Web mode presents its
+        # own in-dashboard startup overlay; headless mode stays silent.
+        splash = _create_splash_screen() if terminal_enabled else None
 
         # Prefer Manager if it exists (wires AI subsystems and orchestrates lifecycle)
         if Manager is not None:

@@ -839,6 +839,7 @@ class WebServer:
             "aps": aps,
             "stations": stations,
             "chatter": chatter[-50:],
+            "startup_ready": bool(snap.get("startup_ready", True)),
         }
 
 

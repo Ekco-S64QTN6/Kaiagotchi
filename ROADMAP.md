@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep desktop and terminal launch modes mutually exclusive: the HUD backend does not construct or start curses, the TUI launcher disables the web server, and the web dashboard shows startup progress until the Agent runtime is ready.
+
 - Make JSON state loading and atomic replacement refuse symlink/non-regular paths: loading uses no-follow descriptors and symlink destinations are replaced with owner-private `0600` files without inheriting target metadata.
 
 - Enforce the private PCAP archive boundary for direct registration, parser analysis, and bulk re-analysis; reject external and symlink paths and fail closed when the archive root itself is a symlink.

@@ -12,23 +12,34 @@ if [ -x "venv/bin/python3" ]; then
     PYTHON_EXEC="$SCRIPT_DIR/venv/bin/python3"
 fi
 
-# On a desktop session, run the Cyber-Deck HUD in its own window (kaiagotchi-hud
-# starts the root backend itself and opens a WebKitGTK window as this user).
-# Headless, or with --no-window, fall through to the plain root backend below.
-WINDOW=1
+# Select exactly one interface. A graphical desktop gets the standalone HUD;
+# --no-window/--tui selects curses; --headless disables both interfaces.
+MODE="desktop"
 ARGS=()
 for arg in "$@"; do
     case "$arg" in
-        --no-window|--headless) WINDOW=0 ;;
+        --no-window) MODE="tui" ;;
+        --headless) MODE="headless" ;;
+        --tui|--no-web) MODE="tui"; ARGS+=("$arg") ;;
+        --no-tui) MODE="web"; ARGS+=("$arg") ;;
         *) ARGS+=("$arg") ;;
     esac
 done
-if [ "${EUID:-$(id -u)}" -ne 0 ] && [ "$WINDOW" -eq 1 ] \
+if [ "${EUID:-$(id -u)}" -ne 0 ] && [ "$MODE" = "desktop" ] \
         && { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; }; then
     exec "$SCRIPT_DIR/kaiagotchi-hud" "${ARGS[@]+"${ARGS[@]}"}"
 fi
-set -- "${ARGS[@]+"${ARGS[@]}"}"
 
+# Without a GUI, prefer curses on an interactive terminal; otherwise headless.
+if [ "$MODE" = "desktop" ]; then
+    if [ -t 1 ]; then MODE="tui"; else MODE="headless"; fi
+fi
+if [ "$MODE" = "tui" ] && [[ ! " ${ARGS[*]} " =~ " --tui " ]]; then
+    ARGS+=(--tui)
+elif [ "$MODE" = "headless" ]; then
+    ARGS+=(--no-web --no-tui)
+fi
+set -- "${ARGS[@]+"${ARGS[@]}"}"
 # Kaiagotchi needs elevated privileges to manage the wireless interface.
 if [ "$EUID" -ne 0 ]; then
     echo "🔐 Re-launching as root..."

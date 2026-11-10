@@ -7,6 +7,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const $ = (id) => document.getElementById(id);
   const telemetry = new window.TelemetryController();
   const operative = new window.OperativeController();
+  const startupOverlay = $('startup-overlay');
+  let startupReady = false;
 
   let channel = '--';
   const rateChart = new window.LineChart($('pkt-rate-canvas'), {
@@ -24,10 +26,25 @@ document.addEventListener('DOMContentLoaded', () => {
   const fmtNum = (v) => (typeof v === 'number' ? v.toLocaleString() : '--');
   const setText = (id, text) => { const el = $(id); if (el) el.textContent = text; };
 
+  function setStartupReady(ready) {
+    startupReady = ready;
+    if (startupOverlay) {
+      startupOverlay.hidden = ready;
+      startupOverlay.setAttribute('aria-busy', String(!ready));
+    }
+    setText('hud-status', ready ? 'PASSIVE MONITORING' : 'SYSTEM INITIALIZING');
+  }
+
   let lastTotals = null;
 
   function handle(snap) {
     if (!snap || snap.action === 'pong') return;
+
+    // Live View snapshots carry an explicit readiness bit. Mock/older feeds
+    // predate it and remain immediately usable.
+    setStartupReady(
+      typeof snap.startup_ready === 'boolean' ? snap.startup_ready : true
+    );
 
     setText('val-aps', `${snap.aps_count ?? 0} (${snap.aps_total ?? snap.aps_count ?? 0})`);
     setText('val-pwnd', `${snap.pwnd_count ?? 0}`);
@@ -82,7 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ws = new WebSocket(`${proto}//${location.host}/ws`);
     ws.onopen = () => {
       attempts = 0;
-      setText('hud-status', 'PASSIVE MONITORING');
+      setText('hud-status', startupReady ? 'PASSIVE MONITORING' : 'SYSTEM INITIALIZING');
       operative.setLink(true);
     };
     ws.onmessage = (ev) => {
@@ -93,7 +110,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     };
     ws.onclose = () => {
-      setText('hud-status', 'LINK LOST — RECONNECTING');
+      setText(
+        'hud-status',
+        startupReady ? 'LINK LOST — RECONNECTING' : 'WAITING FOR CORE — RECONNECTING'
+      );
       operative.setLink(false);
       attempts++;
       setTimeout(connect, Math.min(4000, 500 * Math.pow(1.5, attempts)));

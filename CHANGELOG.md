@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Make launcher interface selection exclusive: desktop HUD runs a web-only backend, `--no-window`/`--tui` runs curses only, and `--headless` disables both; replace the terminal splash in desktop mode with an in-dashboard startup indicator that clears when the Agent reaches its ready state.
 - Refuse symlink/non-regular JSON state inputs during load, replace symlinked save destinations with owner-private 0600 files without following or inheriting target metadata, and apply the same no-follow checks to PersistentMood and LastSession.
 - Restrict direct PCAP registration, analysis, and re-analysis to regular files directly inside the private archive; reject external paths, symlinks, and symlinked archive roots.
 - Keep network reports usable with partial persisted state: ignore malformed BSSID/PCAP records, normalize unknown ESSIDs and metadata, and render hidden APs with missing timestamps safely.

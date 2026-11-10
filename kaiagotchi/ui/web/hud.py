@@ -113,8 +113,10 @@ def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
     # Authentication was just refreshed above. Never prompt from the
     # detached backend's stdin; preserve the terminal session so sudo's
     # terminal-scoped timestamp remains valid, but isolate its process group.
-    cmd = ["sudo", "-n", "env", *app_env, venv_python(), "-m", "kaiagotchi.cli",
-           "--debug", *(extra_args or [])]
+    cmd = [
+        "sudo", "-n", "env", *app_env, venv_python(), "-m", "kaiagotchi.cli",
+        "--debug", "--web", "--no-tui", *(extra_args or []),
+    ]
     return subprocess.Popen(
         cmd, cwd=ROOT, process_group=0, stdin=subprocess.DEVNULL
     )

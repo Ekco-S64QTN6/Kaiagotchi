@@ -17,3 +17,5 @@ def test_root_launcher_does_not_preserve_callers_path_or_environment():
     assert 'PATH=$PATH' not in content
     assert 'KAIAGOTCHI_INTERFACE=$KAIAGOTCHI_INTERFACE' in content
     assert 'KAIA_CONFIG=$KAIA_CONFIG' in content
+    assert '--tui' in content
+    assert '--no-web --no-tui' in content
