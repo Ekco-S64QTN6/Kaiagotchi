@@ -109,14 +109,14 @@ def test_initialization_fails_if_private_pcap_directory_cannot_be_enforced(tmp_p
 
     storage = tmp_path / "storage"
     pcap_dir = storage / "pcaps"
-    real_chmod = os.chmod
+    real_open = os.open
 
-    def fail_private_pcap_chmod(path, mode):
-        if Path(path) == pcap_dir and mode == 0o700:
-            raise PermissionError("simulated chmod denial")
-        return real_chmod(path, mode)
+    def fail_private_pcap_open(path, flags, *args, **kwargs):
+        if Path(path) == pcap_dir:
+            raise PermissionError("simulated no-follow directory open denial")
+        return real_open(path, flags, *args, **kwargs)
 
-    monkeypatch.setattr(persistent_network_module.os, "chmod", fail_private_pcap_chmod)
+    monkeypatch.setattr(persistent_network_module.os, "open", fail_private_pcap_open)
 
     with pytest.raises(PermissionError, match="Could not secure PCAP storage directory"):
         PersistentNetwork(storage_dir=str(storage))
