@@ -307,6 +307,10 @@ class Agent(kaiagotchiBase):
             self.logger.info(
                 "Decision loop (delay=%s s) and UI update loop started.", decision_delay
             )
+            if self._view is not None:
+                mark_startup_ready = getattr(self._view, "mark_startup_ready", None)
+                if callable(mark_startup_ready):
+                    mark_startup_ready()
 
             try:
                 tasks = [
