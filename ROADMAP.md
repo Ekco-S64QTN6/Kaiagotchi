@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Enforce the private PCAP archive boundary for direct registration, parser analysis, and bulk re-analysis; reject external and symlink paths and fail closed when the archive root itself is a symlink.
+
 - Keep Markdown/JSON network reports available when persisted BSSID or PCAP records are partial: normalize invalid ESSIDs, ignore malformed records, and render missing/null hidden-AP timestamps safely.
 
 - Keep PCAP startup reconciliation inside the private archive: ignore symlinks, avoid following them when applying file permissions, and discard stale metadata that points through a symlink.
