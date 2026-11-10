@@ -155,3 +155,53 @@ def test_counter_on_a_non_pcap_file_reports_nothing_without_raising(tmp_path):
     s = c.update(str(junk))
     assert s.total_rx == 0 and s.total_tx == 0
     assert c.update(str(tmp_path / "missing.cap")).total_rx == 0
+
+
+def test_the_fast_tally_matches_scapy_frame_by_frame():
+    """`_tally_raw` reads the bytes the live counter needs; every frame shape here
+    must give exactly what scapy's dissection gives (or be handed to scapy)."""
+    import itertools
+
+    from scapy.all import (
+        EAPOL,
+        LLC,
+        SNAP,
+        Dot11,
+        Dot11Auth,
+        Dot11Beacon,
+        Dot11Elt,
+        Dot11ProbeReq,
+        Dot11QoS,
+        RadioTap,
+        Raw,
+        raw,
+    )
+
+    from kaiagotchi.network import pcap_parser as P
+
+    eapol = LLC(dsap=0xaa, ssap=0xaa, ctrl=3) / SNAP(OUI=0, code=0x888e) / EAPOL(version=2, type=3) / Raw(b"\0" * 95)
+    other = LLC() / SNAP(code=0x0800) / Raw(b"x" * 20)
+    radiotaps = [
+        (RadioTap(dBm_AntSignal=-42), b""),
+        (RadioTap(present="TSFT+Flags+Rate+Channel+dBm_AntSignal", mac_timestamp=1, Flags=0, Rate=2,
+                  ChannelFrequency=2412, ChannelFlags=0xa0, dBm_AntSignal=-67), b""),
+        (RadioTap(present="Flags+dBm_AntSignal", Flags="FCS", dBm_AntSignal=-80), b"\0\0\0\0"),
+        (RadioTap(present="Rate+Channel", Rate=2, ChannelFrequency=2437), b""),
+        (RadioTap(), b""),
+    ]
+    kinds = [(0, 8, Dot11Beacon() / Dot11Elt(ID=0, info=b"Net")), (0, 4, Dot11ProbeReq() / Dot11Elt(ID=0, info=b"")),
+             (0, 11, Dot11Auth()), (0, 5, Raw(b"\0" * 8)), (2, 0, eapol), (2, 0, other),
+             (2, 8, Dot11QoS() / eapol), (2, 8, Dot11QoS() / other), (1, 13, Raw(b""))]
+    checked = 0
+    for (rt, fcs), (ftype, sub, body), flags in itertools.product(radiotaps, kinds, [0, 1, 2, 3, 0x40, 0x80, 0x82]):
+        frame = Dot11(type=ftype, subtype=sub, FCfield=flags, addr1="aa:bb:cc:dd:ee:01",
+                      addr2="11:22:33:44:55:66", addr3="aa:bb:cc:dd:ee:01", addr4="22:22:22:22:22:22") / body
+        for linktype, data in ((127, raw(rt / frame) + fcs), (105, raw(frame))):
+            want, got = P._empty_stats(), P._empty_stats()
+            P._tally_frame((P.RadioTap if linktype == 127 else P.Dot11)(data), want)
+            if not P._tally_raw(data, linktype, got):
+                continue
+            checked += 1
+            assert (got.total_rx, got.total_tx, got.breakdown, got.max_signal) == \
+                   (want.total_rx, want.total_tx, want.breakdown, want.max_signal), (linktype, frame.summary())
+    assert checked > 500

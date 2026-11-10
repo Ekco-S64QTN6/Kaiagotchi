@@ -216,3 +216,89 @@ def test_main_rejects_an_explicit_port_that_is_already_in_use(monkeypatch, capsy
         monkeypatch.setattr(hud, "start_backend", lambda _args: pytest.fail("must not start backend"))
         assert hud.main(["--port", str(occupied)]) == 1
     assert "already in use" in capsys.readouterr().err
+
+
+def _launched_url(monkeypatch, argv):
+    launched = []
+
+    class FakeWindow:
+        def wait(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(hud.app_window, "available", lambda: True)
+    monkeypatch.setattr(hud, "wait_healthy", lambda url, backend=None: True)
+    monkeypatch.setattr(hud.app_window, "launch", lambda url, size: launched.append(url) or FakeWindow())
+    rc = hud.main(["--no-backend", *argv])
+    return rc, launched
+
+
+@pytest.mark.parametrize("argv,face", [
+    ([], None),                      # the page's own default: t2
+    (["--face", "k59"], "k59"),
+    (["--t1"], "t1"),
+    (["--random"], "random"),
+])
+def test_portrait_flags_select_the_face(monkeypatch, argv, face):
+    rc, launched = _launched_url(monkeypatch, argv)
+    assert rc == 0
+    assert (f"face={face}" in launched[0]) if face else ("face=" not in launched[0])
+
+
+def test_an_unknown_portrait_is_refused(monkeypatch, capsys):
+    rc, launched = _launched_url(monkeypatch, ["--face", "nobody"])
+    assert rc == 2 and not launched
+    assert "--face must be one of" in capsys.readouterr().err
+
+
+def test_the_page_defaults_to_the_t2_portrait():
+    js = (WEB_DIR / "static" / "js" / "operative.js").read_text()
+    assert ".get('face') || 't2'" in js
+
+
+class _Proc:
+    def __init__(self, code):
+        self.code, self.returncode, self.terminated = code, None, False
+
+    def wait(self, timeout=None):
+        if self.code is None:
+            raise subprocess.TimeoutExpired("w", timeout)
+        self.returncode = self.code
+        return self.code
+
+    def terminate(self):
+        self.terminated = True
+
+
+def _launch_with(monkeypatch, codes):
+    started = []
+
+    def popen(argv, stdin=None, env=None):
+        started.append(env or {})
+        return _Proc(codes[len(started) - 1])
+
+    monkeypatch.setattr(app_window, "available", lambda: True)
+    monkeypatch.setattr(app_window.subprocess, "Popen", popen)
+    monkeypatch.delenv(app_window.SOFTWARE_ENV, raising=False)
+    return app_window.launch("http://127.0.0.1:8080/"), started
+
+
+def test_the_window_renders_on_the_gpu_first(monkeypatch):
+    window, started = _launch_with(monkeypatch, [None])          # still running: kept
+    assert len(started) == 1 and app_window.SOFTWARE_ENV not in started[0]
+    assert window.code is None
+
+
+def test_a_window_that_dies_at_once_reopens_with_software_rendering(monkeypatch, capsys):
+    window, started = _launch_with(monkeypatch, [1, None])
+    assert len(started) == 2
+    assert app_window.SOFTWARE_ENV not in started[0]
+    assert started[1][app_window.SOFTWARE_ENV] == "1"
+    assert "software rendering" in capsys.readouterr().err
+
+
+def test_a_window_closed_normally_is_not_reopened(monkeypatch):
+    window, started = _launch_with(monkeypatch, [0])
+    assert len(started) == 1

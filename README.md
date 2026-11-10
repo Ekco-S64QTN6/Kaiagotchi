@@ -120,6 +120,13 @@ setting. Use `KAIA_WEB_AUTH_TOKEN` only when it is already present in the
 privileged CLI process environment (for example, a service-manager environment
 or a root shell).
 
+Kaia's portrait in the HUD is t2. `--face <name>` (k28, k59, k60, t1, t2, t3), a shortcut such as
+`--t1`, or `--random` (rotate through all six) picks another for that launch.
+
+The desktop window renders with the GPU. If WebKitGTK's GPU path fails at startup the window
+reopens with software rendering (`WEBKIT_DISABLE_DMABUF_RENDERER=1`), which always works but
+draws the HUD at only a few frames a second; setting that variable yourself forces it.
+
 Use `--tui` to force the terminal-only interface even when the configuration
 enables the optional browser HUD. `--no-web` also disables the browser HUD.
 `--no-tui` disables curses while leaving the selected web service available.

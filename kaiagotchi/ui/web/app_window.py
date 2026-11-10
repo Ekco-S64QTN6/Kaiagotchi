@@ -20,6 +20,12 @@ import sys
 from urllib.parse import urlsplit
 
 SYSTEM_PYTHON = "/usr/bin/python3"
+#: WebKitGTK's switch to software rendering. Set, the whole HUD (the WebGL codec
+#: included) is drawn on the CPU: about 7 fps on the RTX 3060 / Wayland machine,
+#: against 57 with GPU rendering. Only the fallback, or the user, sets it.
+SOFTWARE_ENV = "WEBKIT_DISABLE_DMABUF_RENDERER"
+#: A window that exits within this many seconds of opening is a failed start.
+EARLY_EXIT_S = 6.0
 
 
 def system_python() -> str:
@@ -50,12 +56,30 @@ def launch(url: str, title: str = "Kaiagotchi", wm_class: str = "Kaiagotchi",
     """Open ``url`` in its own window; None if this machine can't."""
     if not available():
         return None
+    argv = [system_python(), os.path.abspath(__file__), "--url", url, "--title", title,
+            "--class", wm_class, "--size", size, "--icon", icon]
     try:
-        return subprocess.Popen(
-            [system_python(), os.path.abspath(__file__), "--url", url, "--title", title,
-             "--class", wm_class, "--size", size, "--icon", icon],
-            stdin=subprocess.DEVNULL, env={**os.environ},
-        )
+        window = subprocess.Popen(argv, stdin=subprocess.DEVNULL, env={**os.environ})
+    except OSError:
+        return None
+    if os.environ.get(SOFTWARE_ENV):
+        return window
+    # GPU (DMA-BUF) rendering first. A window that dies at once is the old
+    # NVIDIA/Wayland failure ("Error 71 (Protocol error)"); reopen it on the
+    # software path, which always works but draws the HUD at a few frames a second.
+    try:
+        window.wait(timeout=EARLY_EXIT_S)
+    except subprocess.TimeoutExpired:
+        return window
+    except BaseException:
+        window.terminate()
+        raise
+    if window.returncode == 0:
+        return window
+    print("the HUD window failed with GPU rendering; reopening with software rendering",
+          file=sys.stderr)
+    try:
+        return subprocess.Popen(argv, stdin=subprocess.DEVNULL, env={**os.environ, SOFTWARE_ENV: "1"})
     except OSError:
         return None
 
@@ -73,9 +97,8 @@ def _main() -> int:
         print("refusing a non-loopback HUD URL", file=sys.stderr)
         return 2
 
-    # WebKitGTK's DMA-BUF renderer fails on this machine's NVIDIA driver under
-    # Wayland ("Error 71 (Protocol error)") and the window closes at once.
-    os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
+    # Rendering: GPU (DMA-BUF) unless SOFTWARE_ENV is set, by launch()'s
+    # fallback after a failed start or by the user.
     import gi
     gi.require_version("Gtk", "3.0")
     gi.require_version("WebKit2", "4.1")

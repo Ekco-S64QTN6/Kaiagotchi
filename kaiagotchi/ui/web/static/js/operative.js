@@ -41,10 +41,15 @@ class OperativeController {
     };
     window.KaiaOperative = hook;
 
-    // ?face=k59 etc. selects a portrait (see KaiaCodec.PORTRAITS); otherwise a
-    // random one each load, never the one shown last.
-    const face = new URLSearchParams(location.search).get('face') || 'random';
-    window.KaiaCodec.mount(this.stageEl, { portrait: face })
+    // Kaia's portrait is t2 (Kaiacord assets/kaia-avatar/portraits/t2), as in Kaia
+    // Sentinel. ?face=<name> shows another (see KaiaCodec.PORTRAITS); ?face=random
+    // rotates through all six.
+    const face = new URLSearchParams(location.search).get('face') || 't2';
+    // maxFps 120: the codec renders a frame only when a full interval has passed,
+    // so the engine's default 60 landed on every second refresh of a 100 Hz
+    // display (50 fps). A frame costs well under a millisecond, and the animation
+    // is time-based, so rendering on each refresh up to 120 Hz is just smoother.
+    window.KaiaCodec.mount(this.stageEl, { portrait: face, maxFps: 120 })
       .then((codec) => {
         this.codec = codec;
         if (this.pending) this.updateState(this.pending);
