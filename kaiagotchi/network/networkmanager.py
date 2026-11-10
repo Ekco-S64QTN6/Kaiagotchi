@@ -13,8 +13,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable, Iterable
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 RESERVATION_PATH = Path("/etc/NetworkManager/conf.d/99-ignore-project-dongle.conf")
 SYS_CLASS_NET = Path("/sys/class/net")
@@ -124,7 +125,7 @@ def _updated_reservation_text(content: str, intended_macs: Iterable[str]) -> str
     """Merge MAC selectors into the app-owned drop-in without dropping others."""
     entries = parse_unmanaged_devices(content)
     seen = {entry.lower() for entry in entries}
-    for mac in intended_macs:
+    for mac in sorted(intended_macs):
         selector = f"mac:{mac.lower()}"
         if selector not in seen:
             entries.append(selector)
@@ -541,6 +542,8 @@ def build_doctor_report(
     )
     interface_rows: list[dict[str, Any]] = []
     for interface in interfaces:
+        mac: str | None
+        mac_error: str | None
         try:
             mac = read_interface_mac(interface, sysfs_root=sysfs_root)
         except NetworkManagerReservationError as exc:
