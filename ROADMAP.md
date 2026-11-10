@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Reclaim the capture dongle on launch: the backend terminates any stale Kaiagotchi instance (or its airodump) still bound to the capture interface before claiming it, so overlapping launches can no longer contend for the one monitor-mode adapter and leave a new dashboard spinning forever. Its own process tree is never signalled.
+
 - Live packet telemetry and channel RSSI history on the Cyber-Deck HUD: the monitoring agent counts 802.11 frame types (probe/beacon/auth/eapol, rx/tx by DS direction) from the capture PCAP and derives per-second rates, and the RSSI history fills from the strongest measured signal (per-frame RadioTap, else the strongest AP) so it populates while the radio hops channels.
 
 - Keep desktop and terminal launch modes mutually exclusive: the HUD backend does not construct or start curses, the TUI launcher disables the web server, and the web dashboard shows startup progress until the Agent runtime is ready.
