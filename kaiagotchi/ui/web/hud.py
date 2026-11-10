@@ -36,17 +36,32 @@ def venv_python() -> str:
     return cand if os.path.exists(cand) else sys.executable
 
 
-def wait_healthy(url: str, timeout: float = 45.0) -> bool:
-    """True once the loopback HUD answers; the backend takes a few seconds to
-    bring up monitor mode before the web server serves a page."""
+def wait_healthy(
+    url: str, timeout: float = 45.0, backend: subprocess.Popen | None = None
+) -> bool:
+    """Wait for Kaiagotchi's real dashboard, not an unrelated HTTP 200 on port 8080.
+
+    A stale development server can own the default port and return a placeholder
+    page. The previous status-only probe treated that as healthy and opened it
+    even when the backend started by this launcher had failed.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
+        # Do not let an older listener make a dead child process look healthy.
+        if backend is not None and backend.poll() is not None:
+            return False
         try:
             with urllib.request.urlopen(url, timeout=2) as r:
-                if r.status == 200:
-                    return True
+                if r.status == 200 and r.headers.get_content_type() == "text/html":
+                    page = r.read(128 * 1024)
+                    if (
+                        b'id="app-container"' in page
+                        or b"<title>Kaiagotchi HUD Login</title>" in page
+                    ):
+                        return True
         except OSError:
-            time.sleep(0.4)
+            pass
+        time.sleep(0.4)
     return False
 
 
@@ -55,7 +70,15 @@ def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
     be signalled on exit. ``sudo -v`` first, so any password prompt happens in
     the terminal before the window takes over."""
     subprocess.run(["sudo", "-v"], check=True)
-    cmd = ["sudo", venv_python(), "-m", "kaiagotchi.cli", "--debug", *(extra_args or [])]
+    # Match run_kaiagotchi.sh: carry only the explicit Kaiagotchi selectors
+    # through sudo. In particular, KAIAGOTCHI_INTERFACE remains an override.
+    app_env = [
+        f"{name}={os.environ[name]}"
+        for name in ("KAIAGOTCHI_INTERFACE", "KAIA_CONFIG")
+        if name in os.environ
+    ]
+    cmd = ["sudo", "env", *app_env, venv_python(), "-m", "kaiagotchi.cli",
+           "--debug", *(extra_args or [])]
     return subprocess.Popen(cmd, cwd=ROOT, start_new_session=True, stdin=subprocess.DEVNULL)
 
 
@@ -92,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if not args.no_backend:
             backend = start_backend(passthrough)
-        if not wait_healthy(args.url):
+        if not wait_healthy(args.url, backend=backend):
             print(f"the HUD did not come up at {args.url}; the backend may have failed to start "
                   "(run ./run_kaiagotchi.sh on its own to see why).", file=sys.stderr)
             return 1
