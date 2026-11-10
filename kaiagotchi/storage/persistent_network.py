@@ -891,7 +891,7 @@ class PersistentNetwork:
                     )
                     raw_pmkid = capture.get("pmkid")
                     pmkid = raw_pmkid if isinstance(raw_pmkid, str) else ""
-                    handshake_complete = bool(capture.get("handshake_complete", False))
+                    handshake_complete = capture.get("handshake_complete") is True
                     raw_type = capture.get("type")
                     cap_type = raw_type if isinstance(raw_type, str) and raw_type else "WPA Handshake"
 
@@ -1065,6 +1065,8 @@ class PersistentNetwork:
             vulnerable_networks = []
             for entry in bssid_records:
                 raw_encryption = entry.get("encryption")
+                if raw_encryption is not None and not isinstance(raw_encryption, str):
+                    continue
                 enc = raw_encryption.upper() if isinstance(raw_encryption, str) else ""
                 if "OPEN" in enc or "WEP" in enc or "WPA" in enc or not enc:
                     vulnerable_networks.append(entry)
@@ -1116,8 +1118,8 @@ class PersistentNetwork:
                 raw_ssid = entry.get("essid")
                 if (
                     not isinstance(raw_ssid, str)
-                    or not raw_ssid.strip()
-                    or raw_ssid.strip().casefold() == "hidden or unknown"
+                    or raw_ssid.strip().casefold()
+                    in {"", "hidden or unknown", "unknown", "<hidden>", "--"}
                 ):
                     hidden_aps.append(entry)
 
@@ -1184,8 +1186,21 @@ class PersistentNetwork:
                         last_seen_display = (
                             last_seen[:19] if isinstance(last_seen, str) else ""
                         )
+                        channel_value = entry.get("channel")
+                        channel_display = (
+                            str(channel_value)
+                            if isinstance(channel_value, (str, int))
+                            and not isinstance(channel_value, bool)
+                            else "-"
+                        )
+                        encryption_value = entry.get("encryption")
+                        encryption_display = (
+                            encryption_value
+                            if isinstance(encryption_value, str)
+                            else "-"
+                        )
                         md_lines.append(
-                            f"| {ssid_display} | `{entry.get('bssid')}` | {entry.get('channel') or '-'} | {entry.get('encryption') or '-'} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} |"
+                            f"| {ssid_display} | `{entry.get('bssid')}` | {channel_display} | {encryption_display} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} |"
                         )
                 md_lines.append("\n")
 
