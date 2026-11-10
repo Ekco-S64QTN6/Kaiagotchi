@@ -102,16 +102,7 @@ def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
     can detach it from the terminal and make the second sudo invocation unable
     to reuse the authentication just obtained.
     """
-    # Explicitly use the controlling terminal for the prompt. Standard input
-    # may be redirected by a desktop terminal wrapper even when /dev/tty exists.
-    try:
-        with open("/dev/tty", encoding="utf-8") as terminal:
-            subprocess.run(["sudo", "-S", "-v"], stdin=terminal, check=True)
-    except OSError as exc:
-        raise RuntimeError(
-            "Cannot authenticate the HUD backend: no controlling terminal is "
-            "available. Launch ./run_kaiagotchi.sh from a terminal."
-        ) from exc
+    subprocess.run(["sudo", "-v"], check=True)
     # Match run_kaiagotchi.sh: carry only the explicit Kaiagotchi selectors
     # through sudo. In particular, KAIAGOTCHI_INTERFACE remains an override.
     app_env = [
