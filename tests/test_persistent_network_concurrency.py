@@ -246,3 +246,49 @@ def test_bssid_and_station_record_getters_return_detached_records(tmp_path):
     assert network._data["bssids"]["AA:BB:CC:DD:EE:FF"]["metadata"]["essids"] == ["TestNet"]
     assert network._data["stations"]["11:22:33:44:55:66"]["essids"] == ["TestNet"]
 
+
+
+def test_sync_skips_symlinked_pcaps_without_chmodding_external_targets(
+    tmp_path, monkeypatch
+):
+    import stat
+
+    import kaiagotchi.storage.persistent_network as persistent_network_module
+
+    monkeypatch.setattr(persistent_network_module, "parse_pcap_comprehensive", None)
+    network = PersistentNetwork(storage_dir=str(tmp_path / "storage"))
+    network._sync_thread.join(timeout=5.0)
+    assert not network._sync_thread.is_alive()
+
+    external_capture = tmp_path / "external-capture.pcap"
+    external_capture.write_bytes(b"external synthetic capture")
+    external_capture.chmod(0o644)
+
+    archive = Path(network.pcaps_dir)
+    symlink = archive / "external-capture.pcap"
+    symlink.symlink_to(external_capture)
+    regular_capture = archive / "regular-capture.PCAP"
+    regular_capture.write_bytes(b"regular synthetic capture")
+
+    # Exercise the permission helper directly as well as the reconciliation path.
+    network._ensure_file_permissions(str(symlink))
+    assert stat.S_IMODE(external_capture.stat().st_mode) == 0o644
+
+    # A stale record for the symlink must not keep an external target registered.
+    with network._state_lock:
+        network._data.setdefault("pcaps", {})[symlink.name] = {
+            "bssid": "UNKNOWN",
+            "created": "2026-11-09T12:00:00-06:00",
+            "size": external_capture.stat().st_size,
+            "path": str(symlink),
+        }
+
+    network._sync_pcaps_with_filesystem()
+
+    records = network.get_pcap_records()
+    assert symlink.is_symlink()
+    assert symlink.name not in records
+    assert regular_capture.name in records
+    assert stat.S_IMODE(external_capture.stat().st_mode) == 0o644
+    assert external_capture.read_bytes() == b"external synthetic capture"
+    assert stat.S_IMODE(regular_capture.stat().st_mode) == 0o600
