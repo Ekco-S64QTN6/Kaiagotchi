@@ -835,10 +835,28 @@ class PersistentNetwork:
             with self._state_lock:
                 data = deepcopy(self._data)
 
-            # 1. Gather all unique SSIDs ever seen
+            # 1. Gather all unique SSIDs ever seen. Persisted state may be
+            # older or partially malformed, so skip entries that cannot be
+            # represented as a BSSID record and normalize unknown names.
             unique_ssids: dict[str, list[dict[str, Any]]] = {}
-            for _bssid, entry in data.get("bssids", {}).items():
-                ssid = entry.get("essid", "") or "Hidden or Unknown"
+            raw_bssids = data.get("bssids", {})
+            bssid_records = (
+                [entry for entry in raw_bssids.values() if isinstance(entry, dict)]
+                if isinstance(raw_bssids, dict)
+                else []
+            )
+            for entry in bssid_records:
+                raw_ssid = entry.get("essid")
+                normalized_ssid = (
+                    raw_ssid.strip() if isinstance(raw_ssid, str) else ""
+                )
+                ssid = (
+                    normalized_ssid
+                    if normalized_ssid
+                    and normalized_ssid.casefold()
+                    not in {"hidden or unknown", "unknown", "<hidden>", "--"}
+                    else "Hidden or Unknown"
+                )
                 if ssid not in unique_ssids:
                     unique_ssids[ssid] = []
                 unique_ssids[ssid].append(entry)
@@ -846,18 +864,36 @@ class PersistentNetwork:
             # Sort SSIDs alphabetically
             sorted_ssids = sorted(unique_ssids.keys())
 
-            # 2. Gather all handshakes and PMKIDs
+            # 2. Gather all handshakes and PMKIDs from valid records only.
             handshakes_list = []
-            for filename, record in data.get("pcaps", {}).items():
+            raw_pcaps = data.get("pcaps", {})
+            pcap_records = raw_pcaps.items() if isinstance(raw_pcaps, dict) else ()
+            for filename, record in pcap_records:
+                if not isinstance(record, dict):
+                    continue
                 analysis = record.get("analysis", []) or []
-                created = record.get("created", "")
+                if not isinstance(analysis, (list, tuple)):
+                    continue
+                created_value = record.get("created")
+                created = created_value if isinstance(created_value, str) else ""
                 for capture in analysis:
-                    bssid = (capture.get("bssid") or "").upper()
-                    ssid = capture.get("ssid") or ""
-                    client_mac = (capture.get("client_mac") or "").upper()
-                    pmkid = capture.get("pmkid") or ""
-                    handshake_complete = capture.get("handshake_complete", False)
-                    cap_type = capture.get("type") or "WPA Handshake"
+                    if not isinstance(capture, dict):
+                        continue
+                    raw_bssid = capture.get("bssid")
+                    bssid = raw_bssid.strip().upper() if isinstance(raw_bssid, str) else ""
+                    raw_ssid = capture.get("ssid")
+                    ssid = raw_ssid if isinstance(raw_ssid, str) else ""
+                    raw_client_mac = capture.get("client_mac")
+                    client_mac = (
+                        raw_client_mac.strip().upper()
+                        if isinstance(raw_client_mac, str)
+                        else ""
+                    )
+                    raw_pmkid = capture.get("pmkid")
+                    pmkid = raw_pmkid if isinstance(raw_pmkid, str) else ""
+                    handshake_complete = capture.get("handshake_complete") is True
+                    raw_type = capture.get("type")
+                    cap_type = raw_type if isinstance(raw_type, str) and raw_type else "WPA Handshake"
 
                     # Normalize MAC addresses only when they are valid 48-bit
                     # addresses. Placeholder MACs produce misleading, unusable hashes.
@@ -954,14 +990,17 @@ class PersistentNetwork:
 
             # Group channels
             chan_map: dict[int, int] = {}
-            for entry in data.get("bssids", {}).values():
+            for entry in bssid_records:
                 ch_val = entry.get("channel")
-                if ch_val:
-                    try:
-                        c_int = int(ch_val)
-                        chan_map[c_int] = chan_map.get(c_int, 0) + 1
-                    except ValueError:
-                        pass
+                if ch_val is None or isinstance(ch_val, bool):
+                    continue
+                try:
+                    channel = int(ch_val)
+                    if isinstance(ch_val, float) and not ch_val.is_integer():
+                        continue
+                except (TypeError, ValueError, OverflowError):
+                    continue
+                chan_map[channel] = chan_map.get(channel, 0) + 1
 
             # Divide channels into 2.4GHz and 5GHz/6GHz lists
             chans_24 = sorted([c for c in chan_map.keys() if c <= 14])
@@ -1024,8 +1063,11 @@ class PersistentNetwork:
             md_lines.append("Identified Open or insecure legacy networks in the wireless vicinity:\n")
 
             vulnerable_networks = []
-            for _bssid, entry in data.get("bssids", {}).items():
-                enc = (entry.get("encryption") or "").upper()
+            for entry in bssid_records:
+                raw_encryption = entry.get("encryption")
+                if raw_encryption is not None and not isinstance(raw_encryption, str):
+                    continue
+                enc = raw_encryption.upper() if isinstance(raw_encryption, str) else ""
                 if "OPEN" in enc or "WEP" in enc or "WPA" in enc or not enc:
                     vulnerable_networks.append(entry)
 
@@ -1035,8 +1077,18 @@ class PersistentNetwork:
                 md_lines.append("| SSID | BSSID | Channel | Encryption Profile | Security Status |")
                 md_lines.append("| --- | --- | --- | --- | --- |")
                 for entry in vulnerable_networks:
-                    ssid_display = entry.get("essid", "") or "*Hidden/Unknown*"
-                    enc_profile = entry.get("encryption") or "Open / Unencrypted"
+                    raw_ssid = entry.get("essid")
+                    ssid_display = (
+                        raw_ssid.strip()
+                        if isinstance(raw_ssid, str) and raw_ssid.strip()
+                        else "*Hidden/Unknown*"
+                    )
+                    raw_encryption = entry.get("encryption")
+                    enc_profile = (
+                        raw_encryption
+                        if isinstance(raw_encryption, str) and raw_encryption
+                        else "Open / Unencrypted"
+                    )
                     enc_upper = enc_profile.upper()
 
                     if "WEP" in enc_upper:
@@ -1062,9 +1114,13 @@ class PersistentNetwork:
             md_lines.append("Access points broadcasting in stealth mode (Hidden SSIDs):\n")
 
             hidden_aps = []
-            for _bssid, entry in data.get("bssids", {}).items():
-                ssid = entry.get("essid", "")
-                if ssid == "Hidden or Unknown" or not ssid or ssid.strip() == "":
+            for entry in bssid_records:
+                raw_ssid = entry.get("essid")
+                if (
+                    not isinstance(raw_ssid, str)
+                    or raw_ssid.strip().casefold()
+                    in {"", "hidden or unknown", "unknown", "<hidden>", "--"}
+                ):
                     hidden_aps.append(entry)
 
             if not hidden_aps:
@@ -1073,8 +1129,22 @@ class PersistentNetwork:
                 md_lines.append("| BSSID | Channel | Packets | Beacons | Last Seen | Security |")
                 md_lines.append("| --- | --- | --- | --- | --- | --- |")
                 for entry in hidden_aps:
+                    last_seen = entry.get("last_seen")
+                    last_seen_display = (
+                        last_seen[:19] if isinstance(last_seen, str) else ""
+                    )
+                    channel_value = entry.get("channel")
+                    channel_display = (
+                        str(channel_value)
+                        if isinstance(channel_value, (str, int)) and not isinstance(channel_value, bool)
+                        else "-"
+                    )
+                    encryption_value = entry.get("encryption")
+                    encryption_display = (
+                        encryption_value if isinstance(encryption_value, str) else "-"
+                    )
                     md_lines.append(
-                        f"| `{entry.get('bssid')}` | {entry.get('channel') or '-'} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {entry.get('last_seen')[:19]} | {entry.get('encryption') or '-'} |"
+                        f"| `{entry.get('bssid')}` | {channel_display} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} | {encryption_display} |"
                     )
                 md_lines.append("\n")
 
@@ -1116,8 +1186,21 @@ class PersistentNetwork:
                         last_seen_display = (
                             last_seen[:19] if isinstance(last_seen, str) else ""
                         )
+                        channel_value = entry.get("channel")
+                        channel_display = (
+                            str(channel_value)
+                            if isinstance(channel_value, (str, int))
+                            and not isinstance(channel_value, bool)
+                            else "-"
+                        )
+                        encryption_value = entry.get("encryption")
+                        encryption_display = (
+                            encryption_value
+                            if isinstance(encryption_value, str)
+                            else "-"
+                        )
                         md_lines.append(
-                            f"| {ssid_display} | `{entry.get('bssid')}` | {entry.get('channel') or '-'} | {entry.get('encryption') or '-'} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} |"
+                            f"| {ssid_display} | `{entry.get('bssid')}` | {channel_display} | {encryption_display} | {entry.get('packets', 0)} | {entry.get('beacons', 0)} | {last_seen_display} |"
                         )
                 md_lines.append("\n")
 

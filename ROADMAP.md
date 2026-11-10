@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep Markdown/JSON network reports available when persisted BSSID or PCAP records are partial: normalize invalid ESSIDs, ignore malformed records, and render missing/null hidden-AP timestamps safely.
+
 - Keep PCAP startup reconciliation inside the private archive: ignore symlinks, avoid following them when applying file permissions, and discard stale metadata that points through a symlink.
 
 - Propagate explicit incomplete shutdown results from MonitoringAgent through Agent to Manager; retry failed process reaping, archive cleanup, managed-mode restoration, and Agent/ticker/View stops without repeating successful steps.

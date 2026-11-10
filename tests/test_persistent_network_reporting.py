@@ -74,3 +74,63 @@ def test_report_generation_tolerates_missing_last_seen_timestamp(tmp_path):
     report = (tmp_path / "handshakes_summary.md").read_text(encoding="utf-8")
     assert "timestamp-free-network" in report
     assert "AA:BB:CC:DD:EE:FF" in report
+
+
+def test_reports_tolerate_hidden_aps_with_missing_timestamps_and_partial_records(
+    tmp_path,
+):
+    import json
+
+    network = _network(tmp_path)
+    network._data["bssids"] = {
+        "AA:BB:CC:DD:EE:FF": {
+            "bssid": "AA:BB:CC:DD:EE:FF",
+            "essid": None,
+            "channel": ["malformed"],
+            "encryption": 42,
+            "packets": 0,
+            "beacons": 0,
+            "last_seen": None,
+        },
+        "BB:CC:DD:EE:FF:00": None,
+        "CC:DD:EE:FF:00:11": {
+            "bssid": "CC:DD:EE:FF:00:11",
+            "essid": "visible-network",
+            "channel": "6",
+            "encryption": "WPA2",
+            "packets": 4,
+            "beacons": 2,
+            "last_seen": None,
+        },
+    }
+    network._data["pcaps"] = {
+        "malformed-record.pcap": None,
+        "valid-record.pcap": {
+            "created": None,
+            "analysis": [
+                None,
+                {
+                    "bssid": "CC:DD:EE:FF:00:11",
+                    "ssid": "visible-network",
+                    "client_mac": "11:22:33:44:55:66",
+                    "handshake_complete": True,
+                    "pmkid": None,
+                    "type": "WPA Handshake",
+                },
+            ],
+        },
+    }
+
+    network.generate_reports()
+
+    markdown = (tmp_path / "handshakes_summary.md").read_text(encoding="utf-8")
+    json_report = json.loads(
+        (tmp_path / "handshakes_summary.json").read_text(encoding="utf-8")
+    )
+
+    assert "AA:BB:CC:DD:EE:FF" in markdown
+    assert "*Hidden/Unknown*" in markdown
+    assert "visible-network" in markdown
+    assert json_report["summary"]["total_unique_ssids_seen"] == 2
+    assert json_report["summary"]["total_handshakes_captured"] == 1
+    assert json_report["summary"]["total_complete_handshakes"] == 1
