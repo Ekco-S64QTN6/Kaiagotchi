@@ -42,14 +42,25 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
     existing_uid = os.getuid()
     existing_gid = os.getgid()
 
-    if os.path.exists(filepath):
-        try:
-            st = os.stat(filepath)
-            existing_mode = stat.S_IMODE(st.st_mode)
-            existing_uid = st.st_uid
-            existing_gid = st.st_gid
-        except OSError as exc:
-            file_io_logger.debug("Could not stat existing file %s: %s", filepath, exc)
+    try:
+        # lstat is deliberate: a symlink target is not the metadata source for
+        # the new state file. os.replace() will replace the link itself.
+        existing_stat = os.lstat(filepath)
+    except FileNotFoundError:
+        existing_stat = None
+    except OSError as exc:
+        file_io_logger.debug("Could not lstat existing file %s: %s", filepath, exc)
+        existing_stat = None
+
+    if existing_stat is not None and stat.S_ISREG(existing_stat.st_mode):
+        existing_mode = stat.S_IMODE(existing_stat.st_mode)
+        existing_uid = existing_stat.st_uid
+        existing_gid = existing_stat.st_gid
+    elif existing_stat is not None:
+        file_io_logger.warning(
+            "Replacing non-regular state path %s with a private regular file",
+            filepath,
+        )
 
     temp_file_name: str | None = None
     replaced = False
@@ -132,31 +143,56 @@ def atomically_save_data(filepath: str, data: dict[str, Any], fmt: str = "json")
 
 
 def load_data(filepath: str, default: Any = None) -> Any:
-    """
-    Loads data from JSON, handling permission and decoding errors safely.
-    """
-    if not os.path.exists(filepath):
-        file_io_logger.debug(f"File not found: {filepath}. Returning default value.")
-        return default
-
-    file_io_logger.debug(f"Loading data from: {filepath}")
+    """Load JSON only from a regular file, without following symlinks."""
+    file_io_logger.debug("Loading data from: %s", filepath)
+    descriptor: int | None = None
     try:
-        with open(filepath, encoding="utf-8") as fp:
+        flags = (
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_NONBLOCK", 0)
+        )
+        descriptor = os.open(filepath, flags)
+        file_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(file_stat.st_mode):
+            file_io_logger.warning(
+                "Refusing to load non-regular state path %s", filepath
+            )
+            return default
+
+        state_file = os.fdopen(descriptor, "r", encoding="utf-8")
+        descriptor = None
+        with state_file as fp:
             data = json.load(fp)
-            file_io_logger.info(f"Successfully loaded data from {filepath}")
-            return data
-    except PermissionError as e:
+        file_io_logger.info("Successfully loaded data from %s", filepath)
+        return data
+    except FileNotFoundError:
+        file_io_logger.debug("File not found: %s. Returning default value.", filepath)
+        return default
+    except PermissionError as exc:
         file_io_logger.error(
-            f"Permission denied when reading {filepath}: {e}. "
-            "Try adjusting ownership or running as the same user who created the file."
+            "Permission denied when reading %s: %s. "
+            "Try adjusting ownership or running as the same user who created the file.",
+            filepath,
+            exc,
         )
         return default
     except json.JSONDecodeError:
-        file_io_logger.error(f"File {filepath} is corrupted (Invalid JSON).")
+        file_io_logger.error("File %s is corrupted (Invalid JSON).", filepath)
         return default
-    except Exception as e:
-        file_io_logger.error(f"Error reading file {filepath}: {e}")
+    except OSError as exc:
+        file_io_logger.warning(
+            "Could not safely open state file %s without following links: %s",
+            filepath,
+            exc,
+        )
         return default
+    except Exception as exc:
+        file_io_logger.error("Error reading file %s: %s", filepath, exc)
+        return default
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def total_unique_handshakes(path: str) -> int:
