@@ -41,6 +41,8 @@ Legacy capture helper tests must exercise missing, empty, malformed, valid-empty
 
 Wireless channel capability tests must use synthetic iw dev / iw phy outputs, cover 2.4/5/6 GHz and disabled frequencies, and verify unavailable interfaces/commands return an empty list without a hardware dependency.
 
+Terminal table tests must cover AccessPoint.model_dump() values (boolean privacy and ssid), nullable/non-string display fields, malformed row filtering, and snapshot sorting with no real curses terminal.
+
 InterfaceMonitor merge tests must combine synthetic source records that describe the same interface; later sources may override conflicting fields but must not erase unrelated fields, and interfaces first seen in different sources must all remain in the merged snapshot. IP-address parser tests must include veth peer display names such as veth0@if7 and confirm the address is stored under the local interface name veth0.
 
 Web HUD auth regressions must cover already-established WebSockets as well as HTTP: same-origin logout revokes active sockets, foreign-origin logout is rejected, expiry closes idle sockets, and expired clients cannot request a fresh state snapshot.
