@@ -169,7 +169,8 @@ raise `NotImplementedError` rather than silently succeeding. Their `stop()`
 methods are harmless because these shims never own a process. The old
 `[bettercap].handshakes` setting is unused and has been removed from the
 packaged defaults and example config. PCAP archives currently live under
-`kaiagotchi/storage/pcaps`.
+`kaiagotchi/storage/pcaps`. Startup reconciliation indexes only regular files
+inside that directory; symlink entries are ignored and never chmod their targets.
 
 Point Kaiagotchi at a different file with `--config` or the `KAIA_CONFIG`
 environment variable.

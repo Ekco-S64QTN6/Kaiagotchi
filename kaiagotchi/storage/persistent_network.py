@@ -136,14 +136,35 @@ class PersistentNetwork:
 
         LOGGER.debug("Ensured package storage permissions for %s", self.storage_dir)
 
-    def _ensure_file_permissions(self, filepath: str):
-        """Ensure file has proper read/write permissions."""
+    def _ensure_file_permissions(self, filepath: str) -> None:
+        """Restrict regular files without following a symlink outside the archive."""
+        descriptor: int | None = None
         try:
-            if os.path.exists(filepath):
-                os.chmod(filepath, stat.S_IRUSR | stat.S_IWUSR)
-                LOGGER.debug(f"Set permissions for {filepath}")
-        except Exception as e:
-            LOGGER.error(f"Failed to set file permissions for {filepath}: {e}")
+            flags = (
+                os.O_RDONLY
+                | getattr(os, "O_NOFOLLOW", 0)
+                | getattr(os, "O_NONBLOCK", 0)
+            )
+            descriptor = os.open(filepath, flags)
+            file_stat = os.fstat(descriptor)
+            if not stat.S_ISREG(file_stat.st_mode):
+                return
+            os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
+            LOGGER.debug("Set private file permissions for %s", filepath)
+        except FileNotFoundError:
+            return
+        except OSError as exc:
+            if os.path.islink(filepath):
+                LOGGER.warning(
+                    "Skipping file permissions for symlink %s", filepath
+                )
+            else:
+                LOGGER.error(
+                    "Failed to set file permissions for %s: %s", filepath, exc
+                )
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
     @_state_locked
     def load(self) -> None:
@@ -209,14 +230,19 @@ class PersistentNetwork:
             # Support the formats accepted by pcap_parser, including
             # case-insensitive extensions, instead of silently ignoring PCAPNG.
             pcap_dir = Path(self.pcaps_dir)
-            pcap_files = sorted(
-                (
-                    path
-                    for path in pcap_dir.iterdir()
-                    if path.is_file() and path.suffix.lower() in {".pcap", ".pcapng"}
-                ),
-                key=lambda path: path.name,
-            )
+            pcap_files: list[Path] = []
+            for path in pcap_dir.iterdir():
+                if path.is_symlink():
+                    LOGGER.warning(
+                        "Skipping symlinked PCAP archive entry: %s", path
+                    )
+                    continue
+                if (
+                    path.suffix.lower() in {".pcap", ".pcapng"}
+                    and path.is_file()
+                ):
+                    pcap_files.append(path)
+            pcap_files.sort(key=lambda path: path.name)
             existing_filenames = {path.name for path in pcap_files}
 
             changed = False
@@ -228,29 +254,60 @@ class PersistentNetwork:
                 for filename in list(self._data.get("pcaps", {}).keys()):
                     if filename not in existing_filenames:
                         candidate = Path(self.pcaps_dir) / filename
-                        if candidate.exists():
+                        managed_candidate = self._managed_pcap_path(candidate)
+                        if (
+                            managed_candidate is not None
+                            and managed_candidate.is_file()
+                        ):
                             existing_filenames.add(filename)
                             continue
-                        LOGGER.info("Removing pcap record for deleted file: %s", filename)
+                        if candidate.is_symlink():
+                            LOGGER.warning(
+                                "Removing PCAP metadata for symlinked archive entry: %s",
+                                candidate,
+                            )
+                        else:
+                            LOGGER.info(
+                                "Removing PCAP record for missing or unmanaged file: %s",
+                                filename,
+                            )
                         del self._data["pcaps"][filename]
                         changed = True
 
             # Add records for files that exist but aren't in our records
             for pcap_file in pcap_files:
+                # Re-check with lstat immediately before touching the entry. A
+                # symlink must never redirect chmod, stat, or parser I/O outside
+                # this private archive.
+                try:
+                    file_info = pcap_file.lstat()
+                except OSError:
+                    continue
+                if not stat.S_ISREG(file_info.st_mode):
+                    LOGGER.warning(
+                        "Skipping non-regular PCAP archive entry: %s", pcap_file
+                    )
+                    continue
                 self._ensure_file_permissions(str(pcap_file))
+                if pcap_file.is_symlink():
+                    LOGGER.warning(
+                        "Skipping PCAP archive entry replaced by a symlink: %s",
+                        pcap_file,
+                    )
+                    continue
                 with self._state_lock:
                     needs_record = pcap_file.name not in self._data.get("pcaps", {})
                 if needs_record:
                     changed = True
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
-                    stat = pcap_file.stat()
+                    file_stat = file_info
                     # ENHANCED: Better BSSID extraction that handles various filename formats
                     bssid = self._extract_bssid_from_filename(pcap_file.name)
 
                     record: dict[str, Any] = {
                         "bssid": bssid,
-                        "created": datetime.fromtimestamp(stat.st_mtime, tz=TZ).isoformat(),
-                        "size": stat.st_size,
+                        "created": datetime.fromtimestamp(file_stat.st_mtime, tz=TZ).isoformat(),
+                        "size": file_stat.st_size,
                         "path": str(pcap_file),
                     }
 
