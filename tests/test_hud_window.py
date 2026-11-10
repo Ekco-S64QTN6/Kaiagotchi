@@ -89,12 +89,11 @@ def test_wait_healthy_rejects_unrelated_200_test_page():
 
 def test_wait_healthy_rejects_dead_backend_even_if_port_answers():
     srv, port = _serve_once(b'<html><body><div id="app-container"></div></body></html>')
-    class ExitedBackend:
-        def poll(self):
-            return 1
+    backend = subprocess.Popen(["false"])
+    backend.wait()
     try:
         assert hud.wait_healthy(
-            f"http://127.0.0.1:{port}/", timeout=5, backend=ExitedBackend()
+            f"http://127.0.0.1:{port}/", timeout=5, backend=backend
         ) is False
     finally:
         srv.shutdown()
