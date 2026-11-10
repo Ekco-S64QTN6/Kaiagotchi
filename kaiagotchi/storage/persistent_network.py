@@ -823,6 +823,7 @@ class PersistentNetwork:
                         record.get("created"),
                     )
                     for filename, record in self._data.get("pcaps", {}).items()
+                    if isinstance(record, dict)
                 ]
 
             for filename, record, original_analysis, original_path, original_created in records:
@@ -1263,7 +1264,7 @@ class PersistentNetwork:
             if resolved.parent != root:
                 return None
             return resolved
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError, TypeError):
             return None
 
     def _calculate_pcap_storage(self) -> int:
