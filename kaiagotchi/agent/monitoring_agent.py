@@ -48,10 +48,19 @@ class MonitoringAgent:
         self.state_lock = state_lock if state_lock is not None else asyncio.Lock()
         self._fallback_captures: list[dict[str, Any]] = []
 
+        _cfg = self.config if isinstance(self.config, dict) else {}
+        _main = _cfg.get("main")
+        if not isinstance(_main, dict):
+            _main = {}
+
+        # The managed/internet adapter ([main].iface) is deliberately separate
+        # from the monitor-mode capture dongle. Environment overrides the config
+        # key so operators can select hardware per invocation.
         self.interface = (
             interface
-            or (self.config.get("interface") if isinstance(self.config, dict) else None)
             or os.getenv("KAIAGOTCHI_INTERFACE")
+            or _main.get("capture_iface")
+            or _cfg.get("interface")  # legacy flat-key compatibility
             or "wlan1"
         )
 
