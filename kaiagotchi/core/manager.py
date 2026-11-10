@@ -319,6 +319,7 @@ class Manager:
 
                     if previous_succeeded:
                         self._stop_tasks.pop(label, None)
+                        self._stop_completed.add(label)
                         continue
 
                     # A failed/cancelled attempt is terminal. Replace it with a
