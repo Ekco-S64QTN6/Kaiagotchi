@@ -129,6 +129,19 @@ def parse_arguments():
         help="Path to configuration file",
     )
     parser.add_argument("--manual", action="store_true", help="Start in manual mode")
+    parser.add_argument(
+        "--capture-interface",
+        "--interface",
+        dest="capture_iface",
+        help="Dedicated capture adapter (overrides main.capture_iface)",
+    )
+    parser.add_argument(
+        "--reserve-interface",
+        dest="reserve_interfaces",
+        action="append",
+        default=[],
+        help="Additional dedicated capture adapter to reserve from NetworkManager (repeatable)",
+    )
     parser.add_argument("--web", action="store_true", default=None, help="Enable Cyber-Deck Web UI (default: enabled)")
     parser.add_argument("--no-web", action="store_true", help="Disable Cyber-Deck Web UI")
     parser.add_argument("--tui", action="store_true", help="Force curses TUI mode in terminal")
@@ -285,8 +298,11 @@ async def run_agent() -> int:
         nonlocal shutdown_requested
         shutdown_requested += 1
         if shutdown_requested > 1:
-            logger.warning("Force exiting Kaiagotchi immediately...")
-            os._exit(130)
+            # Never bypass the monitor's process-group reaping with os._exit().
+            # The first signal already requested orderly shutdown; later signals
+            # are acknowledged while the bounded cleanup path finishes.
+            logger.warning("Additional shutdown signal received; cleanup remains active")
+            return
         logger.info("Signal received, initiating shutdown...")
         _shutdown_event.set()
         if view and view.display:
@@ -307,6 +323,21 @@ async def run_agent() -> int:
         # Load configuration
         config = load_config(args.config)
         logger.info(f"Configuration loaded from {args.config}")
+
+        capture_iface = getattr(args, "capture_iface", None)
+        if capture_iface:
+            config.setdefault("main", {})["capture_iface"] = capture_iface
+        reserve_interfaces = getattr(args, "reserve_interfaces", None) or []
+        if reserve_interfaces:
+            main_config = config.setdefault("main", {})
+            configured = main_config.get("capture_ifaces", [])
+            if isinstance(configured, str):
+                configured = [configured]
+            elif not isinstance(configured, list):
+                configured = []
+            main_config["capture_ifaces"] = list(
+                dict.fromkeys([*configured, *reserve_interfaces])
+            )
 
         # Manual override if requested
         if args.manual:
@@ -762,8 +793,119 @@ async def run_agent() -> int:
 
         await _await_cleanup_resilient(_cleanup_runtime())
 
+def doctor_main(argv: list[str] | None = None) -> int:
+    """Print read-only NetworkManager, kernel, process, and journal diagnostics."""
+    parser = argparse.ArgumentParser(
+        prog="kaiagotchi doctor",
+        description="Diagnose capture-adapter reservation and shutdown state.",
+    )
+    parser.add_argument(
+        "--config",
+        default="/etc/kaiagotchi/config.toml",
+        help="Path to configuration file",
+    )
+    parser.add_argument(
+        "--capture-interface",
+        "--interface",
+        dest="capture_iface",
+        help="Capture adapter override (defaults to configured main.capture_iface)",
+    )
+    parser.add_argument(
+        "--reserve-interface",
+        dest="reserve_interfaces",
+        action="append",
+        default=[],
+        help="Additional dedicated adapter to inspect (repeatable)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        config = load_config(args.config)
+        if args.capture_iface:
+            config.setdefault("main", {})["capture_iface"] = args.capture_iface
+        if args.reserve_interfaces:
+            main_config = config.setdefault("main", {})
+            configured = main_config.get("capture_ifaces", [])
+            if isinstance(configured, str):
+                configured = [configured]
+            elif not isinstance(configured, list):
+                configured = []
+            main_config["capture_ifaces"] = list(
+                dict.fromkeys([*configured, *args.reserve_interfaces])
+            )
+
+        from kaiagotchi.network.networkmanager import build_doctor_report
+
+        report = build_doctor_report(config, args.capture_iface)
+    except Exception as exc:
+        print(f"Kaiagotchi doctor: unable to collect diagnostics: {exc}", file=sys.stderr)
+        return 1
+
+    print("Kaiagotchi doctor")
+    print(f"NetworkManager reservation: {report['reservation_path']}")
+    if report["reservation_error"]:
+        print(f"  Read error: {report['reservation_error']}")
+    else:
+        print(f"  File: {'present' if report['reservation_exists'] else 'MISSING'}")
+    selectors = report["config_macs"]
+    print(
+        "  MAC selectors: "
+        + (", ".join(selectors) if selectors else "(none)")
+    )
+
+    print("Intended capture adapters:")
+    healthy = True
+    for item in report["interfaces"]:
+        mac = item["mac"] or f"unavailable ({item['mac_error']})"
+        reserved = "yes" if item["in_config"] else "NO"
+        nm_managed = item["nm_managed"]
+        nm_ok = nm_managed == "no"
+        healthy = healthy and bool(item["mac"]) and item["in_config"] and nm_ok
+        print(
+            f"  {item['name']}: MAC={mac}; in config={reserved}; "
+            f"NM-MANAGED={nm_managed}; kernel type={item['kernel_type']}"
+        )
+
+    uplink = report["uplink"]
+    if uplink["name"]:
+        print(
+            f"Primary/uplink adapter: {uplink['name']}; "
+            f"NetworkManager state={uplink['state']}"
+        )
+
+    processes = report["airodump_processes"]
+    if processes:
+        print("airodump-ng processes:")
+        for process in processes:
+            print(
+                f"  PID={process['pid']} PPID={process['ppid']}; "
+                f"{process['command']}"
+            )
+        healthy = False
+    else:
+        print("airodump-ng processes: none")
+
+    journal = report["journal_scan_rejections"]
+    if journal["available"]:
+        print(
+            "Plasma unmanaged-device scan rejections in current boot: "
+            f"{journal['count']}"
+        )
+        for sample in journal["samples"]:
+            print(f"  {sample}")
+    else:
+        print(
+            "Plasma journal scan rejections: unavailable"
+            + (f" ({journal.get('error')})" if journal.get("error") else "")
+        )
+
+    return 0 if healthy else 1
+
+
 def run() -> int:
-    """Main CLI entrypoint wrapper that runs the async runner."""
+    """Main CLI entrypoint wrapper that runs the async runner or doctor."""
+    if len(sys.argv) > 1 and sys.argv[1] == "doctor":
+        return doctor_main(sys.argv[2:])
     try:
         return asyncio.run(run_agent())
     except KeyboardInterrupt:

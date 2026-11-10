@@ -9,6 +9,17 @@ import pytest
 
 import kaiagotchi.agent.monitoring_agent as monitoring_module
 from kaiagotchi.agent.monitoring_agent import MonitoringAgent
+from kaiagotchi.network.networkmanager import NetworkManagerReservationError
+
+
+@pytest.fixture(autouse=True)
+def bypass_host_networkmanager_for_unit_tests(monkeypatch):
+    """Keep host NetworkManager/physical adapters out of synthetic startup tests."""
+    monkeypatch.setattr(
+        monitoring_module,
+        "ensure_networkmanager_reservation",
+        lambda *_args, **_kwargs: {"available": False},
+    )
 
 
 class FakeProcess:
@@ -44,7 +55,7 @@ async def test_monitor_mode_setup_checks_commands_and_verifies_wlan1(monkeypatch
     assert ("iw", "dev", "wlan1", "set", "type", "monitor") in calls
     assert ("iw", "dev", "wlan1", "info") in calls
     assert all("wlan0" not in call for call in calls)
-    assert ("nmcli", "device", "set", "wlan1", "managed", "no") in calls
+    assert not any(call[:3] == ("nmcli", "device", "set") for call in calls)
 
 
 @pytest.mark.asyncio
@@ -272,7 +283,10 @@ async def test_cancelled_airodump_spawn_reaps_child_and_cleans_private_directory
 
     process = FakeProcess()
 
-    async def fake_create_subprocess_exec(*_args, **_kwargs):
+    spawn_options = {}
+
+    async def fake_create_subprocess_exec(*_args, **kwargs):
+        spawn_options.update(kwargs)
         spawn_started.set()
         await allow_spawn.wait()
         return process
@@ -301,6 +315,7 @@ async def test_cancelled_airodump_spawn_reaps_child_and_cleans_private_directory
     with pytest.raises(asyncio.CancelledError):
         await start_task
 
+    assert spawn_options["start_new_session"] is True
     assert process.terminated is True
     assert process.waited is True
     assert monitor._process is None
@@ -485,3 +500,79 @@ def test_legacy_flat_interface_key_remains_supported(monkeypatch):
     monkeypatch.delenv("KAIAGOTCHI_INTERFACE", raising=False)
     monitor = MonitoringAgent(config={"interface": "wlan2"}, system_state={})
     assert monitor.interface == "wlan2"
+
+
+
+@pytest.mark.asyncio
+async def test_start_verifies_durable_nm_reservation_before_changing_kernel_mode(
+    monkeypatch,
+):
+    monitor = MonitoringAgent(
+        interface="wlan3",
+        config={"main": {"iface": "wlan1", "capture_iface": "wlan3"}},
+        system_state={},
+    )
+    events = []
+
+    def reserve(config, interface):
+        assert config["main"]["capture_iface"] == "wlan3"
+        assert interface == "wlan3"
+        events.append("reservation")
+        return {
+            "available": True,
+            "interfaces": [{"name": "wlan3", "mac": "aa:bb:cc:dd:ee:03"}],
+        }
+
+    async def set_monitor_mode():
+        events.append("kernel-mode")
+
+    async def launch_airodump():
+        events.append("capture")
+
+    async def scan_loop():
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(
+        monitoring_module, "ensure_networkmanager_reservation", reserve
+    )
+    monkeypatch.setattr(monitor, "_set_monitor_mode", set_monitor_mode)
+    monkeypatch.setattr(monitor, "_launch_airodump", launch_airodump)
+    monkeypatch.setattr(monitor, "_scan_loop", scan_loop)
+    monkeypatch.setattr(
+        monitor, "_restore_managed_mode", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", lambda: None)
+    monkeypatch.setattr(monitor, "_emit_capture_summary", AsyncMock())
+
+    await monitor.start()
+
+    assert events == ["reservation", "kernel-mode", "capture"]
+    assert await monitor.stop() is True
+
+
+@pytest.mark.asyncio
+async def test_start_refuses_capture_when_nm_reservation_cannot_be_verified(
+    monkeypatch,
+):
+    monitor = MonitoringAgent(interface="wlan3", config={}, system_state={})
+    setup = AsyncMock()
+
+    def reservation_failure(*_args, **_kwargs):
+        raise NetworkManagerReservationError(
+            "NetworkManager still manages wlan3"
+        )
+
+    monkeypatch.setattr(
+        monitoring_module, "ensure_networkmanager_reservation", reservation_failure
+    )
+    monkeypatch.setattr(monitor, "_set_monitor_mode", setup)
+
+    with pytest.raises(
+        NetworkManagerReservationError,
+        match="still manages wlan3",
+    ):
+        await monitor.start()
+
+    assert monitor._running is False
+    setup.assert_not_awaited()

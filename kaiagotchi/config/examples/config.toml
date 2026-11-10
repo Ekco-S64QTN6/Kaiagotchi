@@ -11,6 +11,8 @@ name = "kaiagotchi"
 iface = "wlan0"
 # Dedicated adapter for monitor-mode capture.
 capture_iface = "wlan1"
+# Additional dedicated capture dongles (names are resolved to MACs at startup).
+capture_ifaces = []
 
 # KAIAGOTCHI_INTERFACE overrides main.capture_iface for one invocation.
 

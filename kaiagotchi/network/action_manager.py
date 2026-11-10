@@ -8,8 +8,9 @@ import asyncio
 import logging
 import os
 import re
-import shutil
 from typing import Any
+
+from kaiagotchi.network.networkmanager import ensure_networkmanager_reservation
 
 
 class InterfaceActionManager:
@@ -295,10 +296,13 @@ class InterfaceActionManager:
                 self.logger.error("Cannot set monitor mode: interface %s not found", target)
                 return False
 
-            self.logger.info("Setting %s into monitor mode...", target)
-            if shutil.which("nmcli"):
-                await self._run_checked("nmcli", "device", "set", target, "managed", "no")
+            # Keep this helper safe for standalone callers too: verify the
+            # permanent MAC reservation before touching kernel interface mode.
+            await asyncio.to_thread(
+                ensure_networkmanager_reservation, self.config, target
+            )
 
+            self.logger.info("Setting %s into monitor mode...", target)
             await self._run_checked("ip", "link", "set", "dev", target, "down")
             await self._run_checked("iw", "dev", target, "set", "type", "monitor")
             await self._run_checked("ip", "link", "set", "dev", target, "up")
@@ -327,8 +331,6 @@ class InterfaceActionManager:
             await self._run_checked("ip", "link", "set", "dev", target, "down")
             await self._run_checked("iw", "dev", target, "set", "type", "managed")
             await self._run_checked("ip", "link", "set", "dev", target, "up")
-            if shutil.which("nmcli"):
-                await self._run_checked("nmcli", "device", "set", target, "managed", "yes")
 
             info = await self.get_interface_info(target)
             if info.get("mode") not in {"managed", "unknown"}:
