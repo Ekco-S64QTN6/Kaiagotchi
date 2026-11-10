@@ -98,9 +98,8 @@ broken = "(☓‿‿☓)"
 # -----------------------------------------------------------------------------
 # Capture storage
 # -----------------------------------------------------------------------------
-[bettercap]
-# Directory where captured handshakes / PCAPs are written.
-handshakes = "/var/lib/kaiagotchi/handshakes"
+# The current passive airodump-ng archive is stored in kaiagotchi/storage/pcaps.
+# There is no supported Bettercap backend or [bettercap].handshakes setting.
 
 # -----------------------------------------------------------------------------
 # Plugins

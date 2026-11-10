@@ -7,8 +7,10 @@ features or capture-backend changes.
 ## Current baseline
 
 - Python 3.11+ async application with a curses dashboard and optional browser HUD.
-- `airodump-ng` capture integration, Scapy-based PCAP parsing, Pydantic state,
-  a reward/mood loop, persistence, and a lightweight plugin lifecycle.
+- Passive `airodump-ng` capture integration, Scapy-based PCAP parsing,
+  Pydantic state, a reward/mood loop, persistence, and a lightweight plugin
+  lifecycle. Bettercap is not a supported capture backend; its legacy import
+  facade fails fast on `start()`.
 - GitHub Actions builds a wheel, verifies packaged UI/splash assets, and runs
   pytest on Python 3.11, 3.12, and 3.13.
 - Automated CI does not validate a physical Wi-Fi adapter, monitor-mode setup,
