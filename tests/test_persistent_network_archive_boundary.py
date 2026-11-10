@@ -111,6 +111,13 @@ def test_reanalyze_all_pcaps_skips_persisted_external_and_symlink_paths(
             "analysis": [],
             "path": str(symlink),
         },
+        "malformed-record.pcap": None,
+        "invalid-path.pcap": {
+            "bssid": "DD:EE:FF:00:11:22",
+            "created": "2026-11-09T12:00:00-06:00",
+            "analysis": [],
+            "path": {"unexpected": "mapping"},
+        },
         "managed.pcap": {
             "bssid": "CC:DD:EE:FF:00:11",
             "created": "2026-11-09T12:00:00-06:00",
