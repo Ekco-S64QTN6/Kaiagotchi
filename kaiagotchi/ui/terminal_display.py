@@ -497,6 +497,8 @@ class TerminalDisplay:
             self._put(scr, ry, x, f"{bssid:<18} {channel:<4} ", cp(_CP_WHITE))
             self._put(scr, ry, x + 23, ps, cp(pc))
             self._put(scr, ry, x + 29, f"{encryption:<10} {essid}", cp(_CP_WHITE))
+
+
     def _draw_sta_rows(self, scr, y, x, mw, mr, stas):
         cp = curses.color_pair
         self._put(scr, y, x, f"{'STATION':<18} {'Pwr':<5} {'Pkts':<6} BSSID",
@@ -520,6 +522,8 @@ class TerminalDisplay:
             self._put(scr, ry, x, f"{mac:<18} ", cp(_CP_WHITE))
             self._put(scr, ry, x + 19, ps, cp(pc))
             self._put(scr, ry, x + 25, f"{packets:<6} {bssid}", cp(_CP_WHITE))
+
+
     def _draw_chatter(self, scr, y0, W, max_lines, snap):
         cp = curses.color_pair
         palette = [_CP_CYAN, _CP_YELLOW, _CP_GREEN, _CP_RED, _CP_MAGENTA]
