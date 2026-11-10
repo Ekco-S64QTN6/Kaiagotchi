@@ -7,10 +7,12 @@
 
 [main]
 name = "kaiagotchi"
-# Primary/managed adapter for normal internet access; capture defaults to wlan1.
+# Primary/managed adapter for normal internet access.
 iface = "wlan0"
+# Dedicated adapter for monitor-mode capture.
+capture_iface = "wlan1"
 
-# To choose another capture adapter, set KAIAGOTCHI_INTERFACE in the environment.
+# KAIAGOTCHI_INTERFACE overrides main.capture_iface for one invocation.
 
 [log]
 level = "INFO"
