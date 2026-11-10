@@ -122,3 +122,25 @@ def test_reanalyze_all_pcaps_skips_persisted_external_and_symlink_paths(
     assert parsed_paths == [str(managed_capture.resolve())]
     assert stat.S_IMODE(external_capture.stat().st_mode) == 0o644
     assert external_capture.read_bytes() == b"external synthetic capture"
+
+
+def test_initialization_rejects_symlinked_private_archive_root_without_chmodding_target(
+    tmp_path,
+):
+    external_archive = tmp_path / "external-archive"
+    external_archive.mkdir()
+    external_archive.chmod(0o755)
+
+    storage = tmp_path / "storage"
+    storage.mkdir()
+    (storage / "pcaps").symlink_to(external_archive, target_is_directory=True)
+
+    import pytest
+
+    with pytest.raises(
+        PermissionError, match="Could not secure PCAP storage directory"
+    ):
+        PersistentNetwork(storage_dir=str(storage))
+
+    assert stat.S_IMODE(external_archive.stat().st_mode) == 0o755
+    assert external_archive.is_dir()
