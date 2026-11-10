@@ -441,3 +441,39 @@ async def test_default_route_on_another_interface_does_not_block_the_dongle(monk
 
     assert ("iw", "dev", "wlan3", "set", "type", "monitor") in calls
     assert all("wlan1" not in call for call in calls if call[:4] != ("ip", "-o", "route", "show"))
+
+def test_capture_interface_uses_main_capture_iface_and_ignores_main_iface():
+    monitor = MonitoringAgent(
+        config={"main": {"iface": "wlan0", "capture_iface": "wlan3"}},
+        system_state={},
+    )
+    assert monitor.interface == "wlan3"
+
+
+def test_capture_interface_environment_overrides_config(monkeypatch):
+    monkeypatch.setenv("KAIAGOTCHI_INTERFACE", "wlan2")
+    monitor = MonitoringAgent(
+        config={"main": {"iface": "wlan0", "capture_iface": "wlan3"}},
+        system_state={},
+    )
+    assert monitor.interface == "wlan2"
+
+
+def test_explicit_capture_interface_argument_has_highest_precedence(monkeypatch):
+    monkeypatch.setenv("KAIAGOTCHI_INTERFACE", "wlan2")
+    monitor = MonitoringAgent(
+        interface="wlan4",
+        config={"main": {"iface": "wlan0", "capture_iface": "wlan3"}},
+        system_state={},
+    )
+    assert monitor.interface == "wlan4"
+
+
+def test_capture_interface_defaults_when_capture_iface_is_missing():
+    monitor = MonitoringAgent(config={"main": {"iface": "wlan0"}}, system_state={})
+    assert monitor.interface == "wlan1"
+
+
+def test_legacy_flat_capture_interface_remains_supported():
+    monitor = MonitoringAgent(config={"interface": "wlan2"}, system_state={})
+    assert monitor.interface == "wlan2"

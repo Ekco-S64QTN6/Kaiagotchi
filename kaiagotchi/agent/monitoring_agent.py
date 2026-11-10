@@ -48,10 +48,15 @@ class MonitoringAgent:
         self.state_lock = state_lock if state_lock is not None else asyncio.Lock()
         self._fallback_captures: list[dict[str, Any]] = []
 
+        _cfg = self.config if isinstance(self.config, dict) else {}
+        _main = _cfg.get("main")
+        capture_iface = _main.get("capture_iface") if isinstance(_main, dict) else None
         self.interface = (
             interface
-            or (self.config.get("interface") if isinstance(self.config, dict) else None)
             or os.getenv("KAIAGOTCHI_INTERFACE")
+            or capture_iface
+            # Compatibility with older hand-written flat configs.
+            or _cfg.get("interface")
             or "wlan1"
         )
 
@@ -505,8 +510,8 @@ class MonitoringAgent:
         if await self._carries_default_route():
             raise RuntimeError(
                 f"refusing monitor mode on {self.interface!r}: it carries the default route "
-                "(the machine's internet). Point [main].iface at a capture-only Wi-Fi dongle, "
-                "not the connected adapter."
+                "(the machine's internet). Set [main].capture_iface to a capture-only "
+                "Wi-Fi dongle; [main].iface must remain the managed/internet adapter."
             )
 
         # NetworkManager is optional. If it is installed, require it to release

@@ -78,6 +78,9 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Resolve capture-interface selection explicitly: `[main].iface` remains the managed/internet adapter, `[main].capture_iface` selects the monitor-mode dongle, and `KAIAGOTCHI_INTERFACE` overrides the config key.
+
+
 - Make JSON state loading and atomic replacement refuse symlink/non-regular paths: loading uses no-follow descriptors and symlink destinations are replaced with owner-private `0600` files without inheriting target metadata.
 
 - Enforce the private PCAP archive boundary for direct registration, parser analysis, and bulk re-analysis; reject external and symlink paths and fail closed when the archive root itself is a symlink.
