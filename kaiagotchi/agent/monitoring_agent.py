@@ -474,7 +474,41 @@ class MonitoringAgent:
         await asyncio.get_running_loop().run_in_executor(None, self._archive_pcap_sync)
 
     # ------------------------------------------------------------------
+    async def _carries_default_route(self) -> bool:
+        """True if the capture interface is the one carrying the default route.
+
+        Putting that interface into monitor mode drops the machine's own
+        internet (a re-enumerated onboard NIC landing on the configured capture
+        name is how this happens). Fail closed only on a positive match; if the
+        route cannot be read, do not block capture.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "ip", "-o", "route", "show", "default",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _stderr = await proc.communicate()
+        except OSError:
+            return False
+        if proc.returncode != 0:
+            return False
+        for line in stdout.decode(errors="replace").splitlines():
+            fields = line.split()
+            if "dev" in fields:
+                dev = fields[fields.index("dev") + 1]
+                if dev == self.interface:
+                    return True
+        return False
+
     async def _set_monitor_mode(self):
+        # Never monitor the interface that carries the machine's own internet.
+        if await self._carries_default_route():
+            raise RuntimeError(
+                f"refusing monitor mode on {self.interface!r}: it carries the default route "
+                "(the machine's internet). Point [main].iface at a capture-only Wi-Fi dongle, "
+                "not the connected adapter."
+            )
+
         # NetworkManager is optional. If it is installed, require it to release
         # only the configured capture interface before changing its mode.
         cmds = []
