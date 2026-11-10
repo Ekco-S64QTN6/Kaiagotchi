@@ -130,6 +130,11 @@ cleanup shielded through repeated caller cancellation. If the capture child cann
 confirmed reaped after graceful and forced termination, the process handle and private
 capture files are retained for a later shutdown retry. Capture-process creation is also
 shielded long enough to retain its handle for cleanup.
+The Manager and Agent serialize concurrent shutdown callers and keep failed or
+still-running component stops retryable. MonitoringAgent reports an incomplete
+process-reap, archive, or managed-mode restore attempt through Agent to Manager.
+A later `stop()` retries only incomplete components; successful shutdown steps
+are not repeated.
 The CLI waits for the web server's blocking thread join in a worker thread, so
 that wait does not block the asyncio event loop during shutdown.
 

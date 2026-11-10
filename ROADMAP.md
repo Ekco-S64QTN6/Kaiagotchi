@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Propagate explicit incomplete shutdown results from MonitoringAgent through Agent to Manager; retry failed process reaping, archive cleanup, managed-mode restoration, and Agent/ticker/View stops without repeating successful steps.
+
 - Correct manual channel cycle indexing so the first hop selects the first configured channel and subsequent hops advance and wrap in configured order.
 
 - Preserve the default driver-managed channel scan when personality.channels is empty; apply decision-loop mood-paced channel changes only when the operator supplies an explicit channel list.

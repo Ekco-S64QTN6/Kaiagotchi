@@ -45,6 +45,9 @@ Wireless channel capability tests must use synthetic iw dev / iw phy outputs, co
 
 Channel-hop tests must cover absent/empty configuration staying driver-managed without iw/iwconfig calls, and explicit channel lists selecting the first entry on the first hop before advancing and wrapping.
 
+Manager lifecycle regressions must verify concurrent stop callers share one cleanup attempt, failed component shutdown remains visible and retryable, and timed-out in-flight stop tasks are reused rather than duplicated.
+MonitoringAgent and Agent shutdown tests must assert explicit completion results. A monitor process that cannot be reaped or an adapter that cannot be restored must remain retryable through the Agent/Manager lifecycle; legacy cleanup hooks returning `None` remain successful for compatibility.
+
 Terminal table tests must cover AccessPoint.model_dump() values (boolean privacy and ssid), nullable/non-string display fields, malformed row filtering, and snapshot sorting with no real curses terminal.
 
 InterfaceMonitor merge tests must combine synthetic source records that describe the same interface; later sources may override conflicting fields but must not erase unrelated fields, and interfaces first seen in different sources must all remain in the merged snapshot. IP-address parser tests must include veth peer display names such as veth0@if7 and confirm the address is stored under the local interface name veth0.
