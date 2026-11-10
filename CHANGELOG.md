@@ -4,6 +4,11 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- The desktop HUD renders on the GPU. `WEBKIT_DISABLE_DMABUF_RENDERER=1` (set for every launch since the window was added) forced WebKitGTK into software rendering, measured at about 7 fps for the whole dashboard on the RTX 3060 / Wayland machine; GPU rendering is now tried first and the window reopens on the software path only if it fails at startup.
+- The AP table updates in place: unchanged snapshots (nine of ten at 10 Hz) are skipped and rows are kept per BSSID, changing only the cells whose values changed. In WebKitGTK with 200 APs the dashboard went from about 27 to 57 fps; the stations table skips unchanged snapshots too.
+- Kaia's portrait renders on every display refresh up to 120 Hz. The codec's 60 fps cap landed on every second refresh of a 100 Hz display (50 fps); a frame costs under half a millisecond.
+- Packet telemetry reads the few header fields it needs straight from the capture bytes instead of dissecting every frame with scapy: about 1 µs a frame instead of 150, so a telemetry poll no longer holds the interpreter for a large part of each second. Any frame the fast path cannot read still goes through scapy, and the two agree on every frame shape tested.
+- Kaia's portrait defaults to t2. `./run_kaiagotchi.sh --face <name>` (k28, k59, k60, t1, t2, t3), `--t1` and the like, or `--random` pick another; `?face=` in the URL still works.
 - Read live packet telemetry incrementally from the byte offset of the last poll, so the cost follows new traffic rather than the capture's size (a 10 MB capture took ~26 s a poll and starved the HUD; now ~120 ms); a rotated or truncated capture resets the reader.
 - Reclaim the capture dongle on launch: terminate any earlier Kaiagotchi backend or `airodump-ng` bound to the capture interface (SIGTERM, then SIGKILL), never the launching process tree, before configuring monitor mode.
 - Show live packet telemetry and channel RSSI history on the Cyber-Deck HUD: per-type 802.11 frame counts and rates (probe request, beacon, auth, EAPOL), total frames, and the strongest RadioTap signal, read from the session capture off the event loop.
