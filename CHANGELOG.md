@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Make Manager shutdown serialize concurrent callers, report failed component stops, and retry only incomplete Agent/ticker/View cleanup.
 - Start explicitly configured manual channel cycles at the first listed channel, then advance and wrap in order.
 - Respect the default personality.channels = [] automatic scan mode instead of forcing 2.4 GHz channels 1–11; preserve mood-paced manual hopping only for explicit channel lists.
 - Harden the primary curses tables for typed AP records and malformed rows: support boolean privacy and ssid fields, normalize display values, and skip non-dictionary AP/station entries without aborting a frame.

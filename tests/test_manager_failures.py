@@ -601,3 +601,117 @@ def test_cli_splash_factory_tolerates_constructor_failure(monkeypatch):
     monkeypatch.setattr(cli, "SplashScreen", BrokenSplash)
 
     assert cli._create_splash_screen() is None
+
+
+
+@pytest.mark.asyncio
+async def test_manager_retries_failed_component_without_repeating_successful_stops(caplog):
+    class RetryAgent:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            if self.stop_calls == 1:
+                raise RuntimeError("simulated transient agent shutdown failure")
+
+    class Stopper:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+
+    agent = RetryAgent()
+    ticker = Stopper()
+    view = Stopper()
+    manager = Manager(config={}, view=view, system_state={})
+    manager.agent = agent
+    manager._ticker = ticker
+
+    with caplog.at_level("INFO", logger="kaiagotchi.core.manager"):
+        await manager.stop()
+
+    assert manager._shutdown_complete is False
+    assert "all subsystems stopped" not in caplog.text.lower()
+    assert "shutdown incomplete" in caplog.text.lower()
+
+    await manager.stop()
+    await manager.stop()
+
+    assert manager._shutdown_complete is True
+    assert agent.stop_calls == 2
+    assert ticker.stop_calls == 1
+    assert view.stop_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_manager_stop_calls_share_one_cleanup_attempt():
+    stop_started = asyncio.Event()
+    allow_stop = asyncio.Event()
+
+    class BlockingAgent:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            stop_started.set()
+            await allow_stop.wait()
+
+    agent = BlockingAgent()
+    manager = Manager(config={}, system_state={})
+    manager.agent = agent
+
+    first = asyncio.create_task(manager.stop())
+    await asyncio.wait_for(stop_started.wait(), timeout=1.0)
+    second = asyncio.create_task(manager.stop())
+    await asyncio.sleep(0)
+
+    assert not second.done()
+
+    allow_stop.set()
+    await asyncio.wait_for(asyncio.gather(first, second), timeout=2.0)
+
+    assert manager._shutdown_complete is True
+    assert agent.stop_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_timed_out_manager_stop_reuses_pending_component_task(monkeypatch):
+    monkeypatch.setattr(manager_module, "_STOP_TIMEOUT_SECONDS", 0.01)
+    stop_started = asyncio.Event()
+    allow_stop = asyncio.Event()
+
+    class BlockingAgent:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            stop_started.set()
+            await allow_stop.wait()
+
+    agent = BlockingAgent()
+    manager = Manager(config={}, system_state={})
+    manager.agent = agent
+
+    try:
+        await manager.stop()
+        await asyncio.wait_for(stop_started.wait(), timeout=1.0)
+        assert manager._shutdown_complete is False
+
+        # A second caller must wait on the existing task, not start a duplicate.
+        await manager.stop()
+        assert agent.stop_calls == 1
+        assert manager._shutdown_complete is False
+
+        allow_stop.set()
+        await manager.stop()
+        assert manager._shutdown_complete is True
+        assert agent.stop_calls == 1
+    finally:
+        allow_stop.set()
+        for task in manager._stop_tasks.values():
+            if not task.done():
+                await asyncio.gather(task, return_exceptions=True)

@@ -56,6 +56,8 @@ else:
 
 logger = logging.getLogger("kaiagotchi.core.manager")
 
+_STOP_TIMEOUT_SECONDS = 15.0
+
 
 class Manager:
     """Thin orchestrator around the :class:`Agent`.
@@ -85,6 +87,9 @@ class Manager:
         self._bootstrap_done = False
         self._started = False
         self._stopping = False
+        self._stop_lock = asyncio.Lock()
+        self._stop_tasks: dict[str, asyncio.Task[bool]] = {}
+        self._shutdown_complete = False
 
     async def bootstrap(self) -> None:
         """Prepare configuration, the shared View, SystemState, and the Agent."""
@@ -250,19 +255,23 @@ class Manager:
             raise
 
     async def stop(self) -> None:
-        """Stop the Agent, ticker, and View safely."""
-        if self._stopping:
-            logger.debug("Manager: already stopping, skipping duplicate stop")
-            return
+        """Stop the Agent, ticker, and View; retain failures for safe retry."""
+        async with self._stop_lock:
+            if self._shutdown_complete:
+                logger.debug("Manager: shutdown is already complete")
+                return
 
-        logger.info("Manager: stopping subsystems")
-        self._stopping = True
-        self._started = False
+            logger.info("Manager: stopping subsystems")
+            self._stopping = True
+            self._started = False
 
-        async def safe_stop(obj: Any, *methods: str) -> None:
-            for name in methods:
-                fn = getattr(obj, name, None)
-                if fn:
+            async def safe_stop(label: str, obj: Any, *methods: str) -> bool:
+                found_method = False
+                for name in methods:
+                    fn = getattr(obj, name, None)
+                    if not callable(fn):
+                        continue
+                    found_method = True
                     try:
                         if asyncio.iscoroutinefunction(fn):
                             await fn()
@@ -270,33 +279,103 @@ class Manager:
                             result = await asyncio.get_running_loop().run_in_executor(None, fn)
                             if inspect.isawaitable(result):
                                 await result
-                        return
+                        logger.debug("Manager: %s stopped via %s()", label, name)
+                        return True
                     except Exception:
-                        logger.debug("Manager: %s() failed", name, exc_info=True)
+                        logger.exception("Manager: %s.%s() failed", label, name)
+                # An object with no shutdown hook owns no resource Manager can stop.
+                return not found_method
 
-        stop_tasks = []
-        if self.agent:
-            stop_tasks.append(safe_stop(self.agent, "stop", "shutdown"))
-        if self._ticker:
-            stop_tasks.append(safe_stop(self._ticker, "stop"))
-        if self.view:
-            stop_tasks.append(safe_stop(self.view, "stop", "on_shutdown"))
+            components = (
+                ("agent", self.agent, ("stop", "shutdown")),
+                ("ticker", self._ticker, ("stop",)),
+                ("view", self.view, ("stop", "on_shutdown")),
+            )
+            active_tasks: dict[str, asyncio.Task[bool]] = {}
 
-        if stop_tasks:
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*stop_tasks, return_exceptions=True), timeout=15.0
+            for label, obj, methods in components:
+                if obj is None:
+                    continue
+
+                previous = self._stop_tasks.get(label)
+                if previous is not None and previous.done():
+                    try:
+                        previous_succeeded = previous.result()
+                    except asyncio.CancelledError:
+                        previous_succeeded = False
+                    except Exception:
+                        logger.exception(
+                            "Manager: previous %s shutdown task failed", label
+                        )
+                        previous_succeeded = False
+
+                    if previous_succeeded:
+                        self._stop_tasks.pop(label, None)
+                        continue
+
+                    # A failed/cancelled attempt is terminal. Replace it with a
+                    # fresh attempt, but never duplicate an in-flight stop task.
+                    self._stop_tasks.pop(label, None)
+                    previous = None
+
+                if previous is None:
+                    previous = asyncio.create_task(
+                        safe_stop(label, obj, *methods),
+                        name=f"kaiagotchi-manager-stop-{label}",
+                    )
+                    self._stop_tasks[label] = previous
+
+                active_tasks[label] = previous
+
+            # Wake run_forever callers as soon as shutdown has been requested;
+            # component cleanup may still be completing or awaiting a retry.
+            if self._run_event is not None:
+                self._run_event.set()
+
+            if active_tasks:
+                done, pending = await asyncio.wait(
+                    set(active_tasks.values()), timeout=_STOP_TIMEOUT_SECONDS
                 )
+            else:
+                done, pending = set(), set()
+
+            failed_labels: list[str] = []
+            pending_labels: list[str] = []
+            for label, task in active_tasks.items():
+                if task in pending:
+                    pending_labels.append(label)
+                    continue
+
+                try:
+                    succeeded = task.result()
+                except asyncio.CancelledError:
+                    succeeded = False
+                except Exception:
+                    logger.exception("Manager: %s shutdown task crashed", label)
+                    succeeded = False
+
+                if succeeded:
+                    self._stop_tasks.pop(label, None)
+                else:
+                    failed_labels.append(label)
+
+            incomplete = sorted(self._stop_tasks)
+            if incomplete:
+                details = []
+                if failed_labels:
+                    details.append("failed: " + ", ".join(sorted(failed_labels)))
+                if pending_labels:
+                    details.append("still running: " + ", ".join(sorted(pending_labels)))
+                logger.warning(
+                    "Manager: shutdown incomplete; retryable components: %s%s",
+                    ", ".join(incomplete),
+                    f" ({'; '.join(details)})" if details else "",
+                )
+            else:
+                self._shutdown_complete = True
                 logger.info("Manager: all subsystems stopped")
-            except TimeoutError:
-                logger.warning("Manager: some subsystems took too long to stop")
-            except Exception as e:
-                logger.error("Manager: error during subsystem shutdown: %s", e)
 
-        if self._run_event:
-            self._run_event.set()
-
-        logger.info("Manager: stopped")
+            logger.info("Manager: stop attempt finished")
 
     async def run_forever(self) -> None:
         """Run until stopped."""

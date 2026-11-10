@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make Manager shutdown serialize concurrent callers, report component-stop failures as incomplete, and retry only failed or still-running Agent/ticker/View cleanup without repeating successful stops.
+
 - Correct manual channel cycle indexing so the first hop selects the first configured channel and subsequent hops advance and wrap in configured order.
 
 - Preserve the default driver-managed channel scan when personality.channels is empty; apply decision-loop mood-paced channel changes only when the operator supplies an explicit channel list.
