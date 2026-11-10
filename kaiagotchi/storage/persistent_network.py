@@ -300,14 +300,14 @@ class PersistentNetwork:
                 if needs_record:
                     changed = True
                     LOGGER.info(f"Adding pcap record for existing file: {pcap_file.name}")
-                    stat = file_info
+                    file_stat = file_info
                     # ENHANCED: Better BSSID extraction that handles various filename formats
                     bssid = self._extract_bssid_from_filename(pcap_file.name)
 
                     record: dict[str, Any] = {
                         "bssid": bssid,
-                        "created": datetime.fromtimestamp(stat.st_mtime, tz=TZ).isoformat(),
-                        "size": stat.st_size,
+                        "created": datetime.fromtimestamp(file_stat.st_mtime, tz=TZ).isoformat(),
+                        "size": file_stat.st_size,
                         "path": str(pcap_file),
                     }
 
