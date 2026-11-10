@@ -95,9 +95,13 @@ def wait_healthy(
 
 
 def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
-    """Start the root capture backend in its own session so the whole tree can
-    be signalled on exit. ``sudo -v`` first, so any password prompt happens in
-    the terminal before the window takes over."""
+    """Start root capture in a separate process group while retaining this TTY.
+
+    ``sudo -v`` authenticates on the launcher's controlling terminal. Do not
+    start the sudo child in a new session: with tty-scoped sudo timestamps that
+    can detach it from the terminal and make the second sudo invocation unable
+    to reuse the authentication just obtained.
+    """
     subprocess.run(["sudo", "-v"], check=True)
     # Match run_kaiagotchi.sh: carry only the explicit Kaiagotchi selectors
     # through sudo. In particular, KAIAGOTCHI_INTERFACE remains an override.
@@ -106,9 +110,14 @@ def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
         for name in ("KAIAGOTCHI_INTERFACE", "KAIA_CONFIG")
         if name in os.environ
     ]
-    cmd = ["sudo", "env", *app_env, venv_python(), "-m", "kaiagotchi.cli",
+    # Authentication was just refreshed above. Never prompt from the
+    # detached backend's stdin; preserve the terminal session so sudo's
+    # terminal-scoped timestamp remains valid, but isolate its process group.
+    cmd = ["sudo", "-n", "env", *app_env, venv_python(), "-m", "kaiagotchi.cli",
            "--debug", *(extra_args or [])]
-    return subprocess.Popen(cmd, cwd=ROOT, start_new_session=True, stdin=subprocess.DEVNULL)
+    return subprocess.Popen(
+        cmd, cwd=ROOT, process_group=0, stdin=subprocess.DEVNULL
+    )
 
 
 def stop_backend(proc: subprocess.Popen) -> None:

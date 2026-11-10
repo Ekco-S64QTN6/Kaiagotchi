@@ -133,13 +133,16 @@ def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
     hud.start_backend(["--no-web"])
 
     assert commands == [(["sudo", "-v"], {"check": True})]
+
     cmd, kwargs = popen_calls[0]
-    assert cmd[:5] == [
-        "sudo", "env", "KAIAGOTCHI_INTERFACE=wlan3",
+    assert cmd[:6] == [
+        "sudo", "-n", "env", "KAIAGOTCHI_INTERFACE=wlan3",
         "KAIA_CONFIG=/etc/kaiagotchi/config.toml", "/repo/venv/bin/python3",
     ]
     assert "UNRELATED_SECRET" not in " ".join(cmd)
     assert kwargs["stdin"] is hud.subprocess.DEVNULL
+    assert kwargs["process_group"] == 0
+    assert "start_new_session" not in kwargs
 
 
 
