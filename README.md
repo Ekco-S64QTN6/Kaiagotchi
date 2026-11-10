@@ -171,6 +171,10 @@ methods are harmless because these shims never own a process. The old
 packaged defaults and example config. PCAP archives currently live under
 `kaiagotchi/storage/pcaps`. Startup reconciliation indexes only regular files
 inside that directory; symlink entries are ignored and never chmod their targets.
+PCAP registration and re-analysis APIs also accept only regular files directly
+inside that archive. External source captures must be copied into the archive via
+`add_pcap_file()`; persisted paths that escape the archive or resolve through a
+symlink are skipped.
 
 Point Kaiagotchi at a different file with `--config` or the `KAIA_CONFIG`
 environment variable.
