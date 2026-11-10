@@ -247,7 +247,7 @@ def _root_rerun_command(interface: str) -> str:
     if not any(item in ("--interface", "--capture-interface") for item in command):
         command.extend(("--capture-interface", interface))
 
-    environment = []
+    environment: list[str] = []
     for name in ("KAIA_CONFIG", "KAIAGOTCHI_INTERFACE"):
         value = os.environ.get(name)
         if value:
