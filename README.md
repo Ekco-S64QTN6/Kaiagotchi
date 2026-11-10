@@ -84,7 +84,10 @@ sudo python -m kaiagotchi.cli --debug --tui
 
 On a graphical desktop, `run_kaiagotchi.sh` opens Cyber-Deck in its own GTK
 window and starts a web-only backend; it does not start curses in the launching
-terminal. Without a graphical session, the wrapper falls back to the TUI when
+terminal. If the configured HUD port is taken it picks a free loopback port, and it
+checks that the page answering is Kaiagotchi's before opening the window. A launch
+reclaims the capture dongle from any earlier Kaiagotchi backend or `airodump-ng`
+still bound to it, so overlapping launches do not leave the dashboard loading forever. Without a graphical session, the wrapper falls back to the TUI when
 an interactive terminal is available. `--no-window` or `--tui` selects the
 terminal-only dashboard.
 
@@ -169,7 +172,7 @@ sudo $EDITOR /etc/kaiagotchi/config.toml
 Key sections:
 
 - `[main]` — instance `name` and primary/interface metadata (`iface`)
-- Capture uses `wlan1` by default, independently of `[main].iface`; set `KAIAGOTCHI_INTERFACE` to override the capture dongle name.
+- `[main].capture_iface` — the monitor-mode capture dongle (`wlan1` by default), kept separate from `[main].iface`, which stays the managed/internet adapter. `KAIAGOTCHI_INTERFACE` overrides it. Monitor mode is refused on an interface that carries the default route.
 - `[personality]` — reward smoothing and the thresholds that map reward → mood
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces

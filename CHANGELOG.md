@@ -4,6 +4,13 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Read live packet telemetry incrementally from the byte offset of the last poll, so the cost follows new traffic rather than the capture's size (a 10 MB capture took ~26 s a poll and starved the HUD; now ~120 ms); a rotated or truncated capture resets the reader.
+- Reclaim the capture dongle on launch: terminate any earlier Kaiagotchi backend or `airodump-ng` bound to the capture interface (SIGTERM, then SIGKILL), never the launching process tree, before configuring monitor mode.
+- Show live packet telemetry and channel RSSI history on the Cyber-Deck HUD: per-type 802.11 frame counts and rates (probe request, beacon, auth, EAPOL), total frames, and the strongest RadioTap signal, read from the session capture off the event loop.
+- Keep every Station Monitoring column visible in the narrow panel (fixed table layout; long MACs truncated with the full value on hover).
+- Count PWND as distinct networks with a complete 4-way handshake or a PMKID, not every analysis entry across captures.
+- Add `[main].capture_iface` for the monitor-mode dongle, separate from `[main].iface` (the managed/internet adapter); `KAIAGOTCHI_INTERFACE` overrides it, and monitor mode is refused on an interface carrying the default route.
+- Fall back to a free loopback port when the desktop HUD's port is taken, and validate the HUD's identity before opening its window; keep the desktop HUD backend in the authenticated terminal session.
 - Make launcher interface selection exclusive: desktop HUD runs a web-only backend, `--no-window`/`--tui` runs curses only, and `--headless` disables both; replace the terminal splash in desktop mode with an in-dashboard startup indicator that clears when the Agent reaches its ready state.
 - Refuse symlink/non-regular JSON state inputs during load, replace symlinked save destinations with owner-private 0600 files without following or inheriting target metadata, and apply the same no-follow checks to PersistentMood and LastSession.
 - Restrict direct PCAP registration, analysis, and re-analysis to regular files directly inside the private archive; reject external paths, symlinks, and symlinked archive roots.
