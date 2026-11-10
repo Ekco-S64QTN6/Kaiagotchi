@@ -12,6 +12,23 @@ if [ -x "venv/bin/python3" ]; then
     PYTHON_EXEC="$SCRIPT_DIR/venv/bin/python3"
 fi
 
+# On a desktop session, run the Cyber-Deck HUD in its own window (kaiagotchi-hud
+# starts the root backend itself and opens a WebKitGTK window as this user).
+# Headless, or with --no-window, fall through to the plain root backend below.
+WINDOW=1
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        --no-window|--headless) WINDOW=0 ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+if [ "${EUID:-$(id -u)}" -ne 0 ] && [ "$WINDOW" -eq 1 ] \
+        && { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${DISPLAY:-}" ]; }; then
+    exec "$SCRIPT_DIR/kaiagotchi-hud" "${ARGS[@]+"${ARGS[@]}"}"
+fi
+set -- "${ARGS[@]+"${ARGS[@]}"}"
+
 # Kaiagotchi needs elevated privileges to manage the wireless interface.
 if [ "$EUID" -ne 0 ]; then
     echo "🔐 Re-launching as root..."

@@ -1,0 +1,23 @@
+#!/bin/bash
+# Open the Kaiagotchi Cyber-Deck HUD in its own desktop window (not a browser).
+#
+# The window and this launcher run as the login user; the launcher starts the
+# capture backend with sudo. The HUD needs the system Python (GObject + WebKit2
+# GTK), which the project venv does not have — so run hud.py with /usr/bin/python3.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    echo "Run kaiagotchi-hud as your normal user, not root — it opens a window on your" >&2
+    echo "desktop session and starts the backend with sudo itself." >&2
+    exit 1
+fi
+
+PYTHON_EXEC="python3"
+[ -x /usr/bin/python3 ] && PYTHON_EXEC="/usr/bin/python3"
+
+# Run the file by path, not `-m`: that keeps the system Python from importing the
+# kaiagotchi package (and its venv-only deps). hud.py imports only app_window.
+exec "$PYTHON_EXEC" "$SCRIPT_DIR/kaiagotchi/ui/web/hud.py" "$@"

@@ -402,3 +402,42 @@ async def test_update_state_keeps_unknown_channel_unset():
 
     assert "network" not in state
     view.async_update.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_set_monitor_mode_refuses_the_default_route_interface(monkeypatch):
+    """A re-enumerated onboard NIC landing on the capture name must not be put
+    into monitor mode and drop the machine's internet (9 Nov: wlan1)."""
+    async def fake_create_subprocess_exec(*cmd, **_kwargs):
+        if cmd[:4] == ("ip", "-o", "route", "show"):
+            return FakeProcess(stdout=b"default via 192.168.1.254 dev wlan1 proto dhcp metric 600\n")
+        return FakeProcess()
+
+    monkeypatch.setattr(monitoring_module.shutil, "which", lambda _c: None)
+    monkeypatch.setattr(monitoring_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+
+    with pytest.raises(RuntimeError, match="refusing monitor mode"):
+        await monitor._set_monitor_mode()
+
+
+@pytest.mark.asyncio
+async def test_default_route_on_another_interface_does_not_block_the_dongle(monkeypatch):
+    calls = []
+
+    async def fake_create_subprocess_exec(*cmd, **_kwargs):
+        calls.append(cmd)
+        if cmd[:4] == ("ip", "-o", "route", "show"):
+            return FakeProcess(stdout=b"default via 192.168.1.254 dev wlan1 proto dhcp metric 600\n")
+        if cmd == ("iw", "dev", "wlan3", "info"):
+            return FakeProcess(stdout=b"Interface wlan3\n\ttype monitor\n")
+        return FakeProcess()
+
+    monkeypatch.setattr(monitoring_module.shutil, "which", lambda _c: None)
+    monkeypatch.setattr(monitoring_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monitor = MonitoringAgent(interface="wlan3", config={}, system_state={})
+
+    await monitor._set_monitor_mode()
+
+    assert ("iw", "dev", "wlan3", "set", "type", "monitor") in calls
+    assert all("wlan1" not in call for call in calls if call[:4] != ("ip", "-o", "route", "show"))
