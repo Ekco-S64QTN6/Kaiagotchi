@@ -28,9 +28,14 @@ class InterfaceActionManager:
         self.view: Any | None = None
 
         # Channel hopping setup
-        self._channel_list = config.get("personality", {}).get("channels", [])
-        if not self._channel_list:
-            self._channel_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        # An empty list is intentional: leave channel selection/hopping to the
+        # capture driver (airodump-ng). Only override the driver when the
+        # operator explicitly configures a non-empty list.
+        personality = config.get("personality", {})
+        configured_channels = (
+            personality.get("channels", []) if isinstance(personality, dict) else []
+        )
+        self._channel_list = list(configured_channels) if configured_channels else []
         self._channel_index = 0
 
         self.logger.info(
@@ -66,7 +71,9 @@ class InterfaceActionManager:
             return False
 
         if not self._channel_list:
-            self.logger.warning("No channels configured for hopping.")
+            self.logger.debug(
+                "Automatic channel selection is enabled; leaving channel control to airodump-ng."
+            )
             return False
 
         self._channel_index = (self._channel_index + 1) % len(self._channel_list)
