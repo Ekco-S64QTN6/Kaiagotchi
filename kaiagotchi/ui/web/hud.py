@@ -105,7 +105,7 @@ def start_backend(extra_args: list[str] | None = None) -> subprocess.Popen:
     # Explicitly use the controlling terminal for the prompt. Standard input
     # may be redirected by a desktop terminal wrapper even when /dev/tty exists.
     try:
-        with open("/dev/tty", "r", encoding="utf-8") as terminal:
+        with open("/dev/tty", encoding="utf-8") as terminal:
             subprocess.run(["sudo", "-S", "-v"], stdin=terminal, check=True)
     except OSError as exc:
         raise RuntimeError(
