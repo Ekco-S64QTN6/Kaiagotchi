@@ -677,6 +677,8 @@ class TerminalDisplay:
                     get_records = getattr(pn, "get_pcap_records", None)
                     records = get_records() if callable(get_records) else {}
                     if isinstance(records, dict):
+                        hs_nets, comp_nets, pmk_nets = set(), set(), set()
+                        counter = 0
                         for record in records.values():
                             if not isinstance(record, dict):
                                 continue
@@ -686,12 +688,17 @@ class TerminalDisplay:
                             for capture in analysis:
                                 if not isinstance(capture, dict):
                                     continue
+                                bssid = str(capture.get("bssid") or "").upper()
+                                key = bssid or ("_entry", counter)
+                                if not bssid:
+                                    counter += 1
                                 if self._is_pmkid_capture(capture):
-                                    pmk += 1
+                                    pmk_nets.add(key)
                                     continue
-                                hs += 1
+                                hs_nets.add(key)
                                 if capture.get("handshake_complete"):
-                                    comp += 1
+                                    comp_nets.add(key)
+                        hs, comp, pmk = len(hs_nets), len(comp_nets), len(pmk_nets)
         except Exception:
             _LOG.debug("Could not read persistent scoreboard snapshot", exc_info=True)
         if ssids == 0:

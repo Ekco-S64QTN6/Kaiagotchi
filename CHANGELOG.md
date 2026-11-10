@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- The terminal dashboard's scoreboard counts distinct networks, like the desktop HUD's PWND figure: a network re-observed across several capture files, or with several handshake fragments, is counted once, and only completed handshakes/PMKIDs count toward "pwned". "Total Handshakes" and "Complete WPA" previously summed raw analysis entries, so the terminal showed a larger, inflated count than the desktop window for the same captures.
 - The desktop HUD renders on the GPU. `WEBKIT_DISABLE_DMABUF_RENDERER=1` (set for every launch since the window was added) forced WebKitGTK into software rendering, measured at about 7 fps for the whole dashboard on the RTX 3060 / Wayland machine; GPU rendering is now tried first and the window reopens on the software path only if it fails at startup.
 - The AP table updates in place: unchanged snapshots (nine of ten at 10 Hz) are skipped and rows are kept per BSSID, changing only the cells whose values changed. In WebKitGTK with 200 APs the dashboard went from about 27 to 57 fps; the stations table skips unchanged snapshots too.
 - Kaia's portrait renders on every display refresh up to 120 Hz. The codec's 60 fps cap landed on every second refresh of a 100 Hz display (50 fps); a frame costs under half a millisecond.

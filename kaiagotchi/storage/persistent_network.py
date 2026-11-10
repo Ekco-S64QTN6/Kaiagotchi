@@ -1396,41 +1396,49 @@ class PersistentNetwork:
 
     @_state_locked
     def get_capture_analysis_summary(self) -> dict[str, int]:
-        """Return terminal scoreboard totals from one consistent locked snapshot."""
-        total = complete_handshakes = pmkids = 0
+        """Terminal scoreboard totals, counting distinct networks like the HUD's
+        PWND figure (get_pwned_count). A network re-observed in several PCAPs,
+        or with several handshake fragments, counts once; a capture with no
+        BSSID counts as its own network. So complete_handshakes + pmkids counts
+        the networks PWND does, and the two dashboards agree rather than the
+        terminal inflating its totals per PCAP."""
         pcaps = self._data.get("pcaps", {})
-        if not isinstance(pcaps, dict):
-            return {
-                "total": total,
-                "complete_handshakes": complete_handshakes,
-                "pmkids": pmkids,
-            }
-
-        for record in pcaps.values():
-            if not isinstance(record, dict):
-                continue
-            analysis = record.get("analysis") or []
-            if not isinstance(analysis, (list, tuple)):
-                continue
-            for capture in analysis:
-                if not isinstance(capture, dict):
+        handshake_nets: set[Any] = set()
+        complete_nets: set[Any] = set()
+        pmkid_nets: set[Any] = set()
+        if isinstance(pcaps, dict):
+            counter = 0
+            for record in pcaps.values():
+                if not isinstance(record, dict):
                     continue
-                capture_type = capture.get("type")
-                is_pmkid = bool(capture.get("pmkid")) or (
-                    isinstance(capture_type, str)
-                    and "PMKID" in capture_type.upper()
-                )
-                if is_pmkid:
-                    pmkids += 1
+                analysis = record.get("analysis") or []
+                if not isinstance(analysis, (list, tuple)):
                     continue
-                total += 1
-                if capture.get("handshake_complete"):
-                    complete_handshakes += 1
+                for capture in analysis:
+                    if not isinstance(capture, dict):
+                        continue
+                    bssid = str(capture.get("bssid") or "").upper()
+                    if bssid:
+                        key: Any = bssid
+                    else:
+                        key = ("_entry", counter)
+                        counter += 1
+                    capture_type = capture.get("type")
+                    is_pmkid = bool(capture.get("pmkid")) or (
+                        isinstance(capture_type, str)
+                        and "PMKID" in capture_type.upper()
+                    )
+                    if is_pmkid:
+                        pmkid_nets.add(key)
+                        continue
+                    handshake_nets.add(key)
+                    if capture.get("handshake_complete"):
+                        complete_nets.add(key)
 
         return {
-            "total": total,
-            "complete_handshakes": complete_handshakes,
-            "pmkids": pmkids,
+            "total": len(handshake_nets),
+            "complete_handshakes": len(complete_nets),
+            "pmkids": len(pmkid_nets),
         }
 
     @_state_locked

@@ -133,3 +133,32 @@ def test_terminal_scoreboard_counts_ssids_from_snapshot_when_store_is_missing():
     }
 
     assert display._get_scoreboard(snapshot) == (2, 0, 0, 0)
+
+
+def test_summary_counts_distinct_networks_and_matches_pwned(tmp_path):
+    """A network seen in several PCAPs, or with several fragments, counts once,
+    so complete+pmkid networks equal the HUD's PWND figure."""
+    from kaiagotchi.storage.persistent_network import PersistentNetwork
+
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._data = {
+        "pcaps": {
+            "a.pcap": {"analysis": [
+                {"bssid": "AA:AA:AA:AA:AA:AA", "type": "WPA Handshake (Partial)", "handshake_complete": False},
+            ]},
+            "b.pcap": {"analysis": [
+                {"bssid": "AA:AA:AA:AA:AA:AA", "type": "WPA Handshake (Partial)", "handshake_complete": False},
+                {"bssid": "BB:BB:BB:BB:BB:BB", "type": "WPA Handshake (Complete)", "handshake_complete": True},
+            ]},
+            "c.pcap": {"analysis": [
+                {"bssid": "BB:BB:BB:BB:BB:BB", "type": "WPA Handshake (Complete)", "handshake_complete": True},
+                {"bssid": "CC:CC:CC:CC:CC:CC", "type": "PMKID", "pmkid": "00" * 16},
+            ]},
+        }
+    }
+    summary = network.get_capture_analysis_summary()
+    # AA (partial, twice), BB (complete, twice), CC (pmkid) -> 2 handshake nets, 1 complete, 1 pmkid.
+    assert summary == {"total": 2, "complete_handshakes": 1, "pmkids": 1}
+    # The HUD's PWND figure: distinct complete-or-PMKID networks (BB, CC) = 2.
+    assert network.get_pwned_count() == 2
+    assert summary["complete_handshakes"] + summary["pmkids"] == network.get_pwned_count()
