@@ -3,6 +3,7 @@
 import logging
 import os
 import stat
+from typing import Any
 
 from .file_io import atomically_save_data, load_data
 
@@ -14,7 +15,7 @@ class LastSession:
         self.logger = logging.getLogger(__name__)
         self.session_dir = os.path.expanduser("~/.kaiagotchi")
         self.session_file = os.path.join(self.session_dir, "last_session.json")
-        self.data: dict[str, object] = {}
+        self.data: dict[str, Any] = {}
         self._storage_ready = False
 
         descriptor: int | None = None
@@ -67,10 +68,10 @@ class LastSession:
         """Get a value from the session data dictionary."""
         return self.data.get(key, default)
 
-    def set(self, key: str, value: object) -> None:
+    def set(self, key: str, value: Any) -> None:
         """Set a single key/value pair in session data."""
         self.data[key] = value
 
-    def update(self, updates: dict[str, object]) -> None:
+    def update(self, updates: dict[str, Any]) -> None:
         """Update multiple key/value pairs in session data."""
         self.data.update(updates)
