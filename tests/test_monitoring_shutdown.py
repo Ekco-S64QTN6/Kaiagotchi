@@ -1,10 +1,12 @@
 """Regression tests for monitor subprocess shutdown and reaping."""
 
 import asyncio
+import signal
 from unittest.mock import AsyncMock
 
 import pytest
 
+import kaiagotchi.agent.monitoring_agent as monitoring_module
 from kaiagotchi.agent.monitoring_agent import MonitoringAgent
 
 
@@ -537,3 +539,39 @@ async def test_concurrent_monitor_stop_callers_share_one_reap_attempt(monkeypatc
         True,
     ]
     assert process.wait_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_stop_signals_the_isolated_airodump_process_group(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    events = []
+
+    class GroupProcess(FakeCaptureProcess):
+        pid = 4242
+
+        async def wait(self):
+            self.wait_called = True
+            self.returncode = 0
+            return self.returncode
+
+    process = GroupProcess()
+    monitor._process = process
+    monkeypatch.setattr(
+        monitoring_module.os,
+        "killpg",
+        lambda pid, signum: events.append((pid, signum)),
+    )
+    monkeypatch.setattr(
+        monitor, "_restore_managed_mode", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", lambda: None)
+    monkeypatch.setattr(monitor, "_emit_capture_summary", AsyncMock())
+
+    assert await monitor.stop() is True
+
+    assert events == [(4242, signal.SIGTERM)]
+    assert process.wait_called is True
+    assert process.terminate_called is False
+    assert process.kill_called is False
+    assert monitor._process is None

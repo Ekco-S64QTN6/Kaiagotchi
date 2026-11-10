@@ -2,9 +2,12 @@
 # Configure only the dedicated Kaiagotchi capture dongle.
 set -euo pipefail
 
-INTERFACE="wlan1"
+INTERFACE="${KAIAGOTCHI_INTERFACE:-wlan1}"
 SUDO=()
 CHANGED=0
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/.."
+PYTHON_BIN="${KAIAGOTCHI_PYTHON:-$(command -v python3)}"
 
 if [[ "$EUID" -ne 0 ]]; then
     if ! command -v sudo >/dev/null 2>&1; then
@@ -35,9 +38,6 @@ restore_on_failure() {
         "${SUDO[@]}" ip link set dev "$INTERFACE" down >/dev/null 2>&1 || true
         "${SUDO[@]}" iw dev "$INTERFACE" set type managed >/dev/null 2>&1 || true
         "${SUDO[@]}" ip link set dev "$INTERFACE" up >/dev/null 2>&1 || true
-        if command -v nmcli >/dev/null 2>&1; then
-            "${SUDO[@]}" nmcli device set "$INTERFACE" managed yes >/dev/null 2>&1 || true
-        fi
     fi
     exit "$status"
 }
@@ -55,15 +55,21 @@ run_required() {
 echo "Setting up Kaiagotchi capture interface: $INTERFACE"
 echo "The primary internet interface (normally wlan0) will not be changed."
 
-# NetworkManager is optional, but if present it must successfully release the
-# capture dongle before the interface mode is changed.
-CHANGED=1
-if command -v nmcli >/dev/null 2>&1; then
-    run_required "${SUDO[@]}" nmcli device set "$INTERFACE" managed no
-else
-    echo "Warning: nmcli not found; skipping NetworkManager unmanaged setting." >&2
-fi
+# Create/repair the durable MAC-based reservation before changing the
+# kernel interface type. This is the same helper used by normal startup.
+run_required "${SUDO[@]}" "$PYTHON_BIN" -c '
+import sys
+from kaiagotchi.network.networkmanager import ensure_networkmanager_reservation
+result = ensure_networkmanager_reservation(
+    {"main": {"capture_iface": sys.argv[1]}}, sys.argv[1]
+)
+if result.get("available"):
+    print("NetworkManager reservation verified for " + sys.argv[1])
+else:
+    print("NetworkManager is not installed; skipping its reservation")
+' "$INTERFACE"
 
+CHANGED=1
 run_required "${SUDO[@]}" ip link set dev "$INTERFACE" down
 run_required "${SUDO[@]}" iw dev "$INTERFACE" set type monitor
 run_required "${SUDO[@]}" ip link set dev "$INTERFACE" up

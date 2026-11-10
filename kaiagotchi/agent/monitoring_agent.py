@@ -16,12 +16,14 @@ import csv
 import logging
 import os
 import shutil
+import signal
 import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from kaiagotchi.network.networkmanager import ensure_networkmanager_reservation
 from kaiagotchi.storage.persistent_mood import PersistentMood
 from kaiagotchi.storage.persistent_network import PersistentNetwork
 from kaiagotchi.storage.utils_time import TZ
@@ -169,6 +171,22 @@ class MonitoringAgent:
         self._managed_mode_restore_attempted = False
         self._running = True
         _LOG.info("[monitoring] Starting monitoring setup...")
+
+        # NetworkManager ownership is durable configuration, not transient
+        # run state. Repair the MAC reservation and verify every dedicated
+        # capture adapter before reclaiming processes or changing kernel mode.
+        try:
+            reservation = await asyncio.to_thread(
+                ensure_networkmanager_reservation, self.config, self.interface
+            )
+            if reservation.get("available"):
+                _LOG.info(
+                    "[monitoring] NetworkManager reservation verified for %s",
+                    ", ".join(item["name"] for item in reservation["interfaces"]),
+                )
+        except BaseException:
+            self._running = False
+            raise
 
         # Only one instance may hold the capture dongle. Terminate any stale
         # Kaiagotchi (or its airodump) still bound to this interface before
@@ -325,6 +343,27 @@ class MonitoringAgent:
                 raise cleanup_error
             return cleanup_complete
 
+    @staticmethod
+    def _signal_capture_process_group(process: Any, signum: int) -> None:
+        """Signal the isolated airodump session, falling back for legacy handles."""
+        pid = getattr(process, "pid", None)
+        if isinstance(pid, int) and pid > 0 and hasattr(os, "killpg"):
+            try:
+                os.killpg(pid, signum)
+                return
+            except ProcessLookupError:
+                raise
+            except OSError:
+                _LOG.warning(
+                    "[monitoring] Could not signal airodump process group; "
+                    "falling back to the child process",
+                    exc_info=True,
+                )
+        if signum == signal.SIGTERM:
+            process.terminate()
+        else:
+            process.kill()
+
     async def _stop_impl(self) -> bool:
         # Once capture cleanup/finalization is complete, retry only a failed
         # managed-mode restore rather than duplicating session-end side effects.
@@ -393,26 +432,26 @@ class MonitoringAgent:
                 _LOG.info("[monitoring] Terminating airodump process...")
                 if process.returncode is None:
                     try:
-                        process.terminate()
+                        self._signal_capture_process_group(process, signal.SIGTERM)
                     except ProcessLookupError:
-                        # It exited between the returncode check and terminate;
+                        # It exited between the returncode check and signal;
                         # still await it below so the child is reaped.
-                        _LOG.debug("[monitoring] airodump exited during termination")
+                        _LOG.debug("[monitoring] airodump process group already exited")
                     except Exception:
                         _LOG.warning(
-                            "[monitoring] terminate() failed; still waiting for airodump",
+                            "[monitoring] SIGTERM to airodump process group failed",
                             exc_info=True,
                         )
 
                 try:
                     await asyncio.wait_for(process.wait(), timeout=1.0)
                 except TimeoutError:
-                    _LOG.info("[monitoring] Killing airodump process...")
+                    _LOG.info("[monitoring] Killing airodump process group...")
                     if process.returncode is None:
                         try:
-                            process.kill()
+                            self._signal_capture_process_group(process, signal.SIGKILL)
                         except ProcessLookupError:
-                            _LOG.debug("[monitoring] airodump exited during kill")
+                            _LOG.debug("[monitoring] airodump process group already exited")
                     # Bound the post-kill wait too; an unresponsive child must
                     # remain available for a later stop() retry, not hold shutdown.
                     await asyncio.wait_for(process.wait(), timeout=1.0)
@@ -549,22 +588,15 @@ class MonitoringAgent:
                 "not the connected adapter."
             )
 
-        # NetworkManager is optional. If it is installed, require it to release
-        # only the configured capture interface before changing its mode.
-        cmds = []
-        if shutil.which("nmcli"):
-            cmds.append(["nmcli", "device", "set", self.interface, "managed", "no"])
-        else:
-            _LOG.debug("[monitoring] nmcli not found; skipping unmanaged setting")
-
-        # Use iw directly (also used by scripts/setup_wireless.sh) and check every
-        # exit status. Silently ignoring a failed mode change can leave capture
-        # running against a managed interface while the UI claims monitoring.
-        cmds.extend([
+        # NetworkManager ownership was verified from the persistent drop-in
+        # before this method runs. Only change the kernel wireless interface type.
+        # Use iw directly and check every exit status so capture cannot proceed
+        # while the driver still reports managed mode.
+        cmds = [
             ["ip", "link", "set", "dev", self.interface, "down"],
             ["iw", "dev", self.interface, "set", "type", "monitor"],
             ["ip", "link", "set", "dev", self.interface, "up"],
-        ])
+        ]
         for cmd in cmds:
             try:
                 proc = await asyncio.create_subprocess_exec(
@@ -606,14 +638,12 @@ class MonitoringAgent:
             )
 
     async def _restore_managed_mode(self) -> bool:
-        """Attempt every managed-mode recovery command and report full success."""
+        """Restore kernel interface type; leave the durable NM reservation intact."""
         cmds = [
             ["ip", "link", "set", "dev", self.interface, "down"],
             ["iw", "dev", self.interface, "set", "type", "managed"],
             ["ip", "link", "set", "dev", self.interface, "up"],
         ]
-        if shutil.which("nmcli"):
-            cmds.append(["nmcli", "device", "set", self.interface, "managed", "yes"])
 
         success = True
         for cmd in cmds:
@@ -715,6 +745,7 @@ class MonitoringAgent:
                     *args,
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
+                    start_new_session=True,
                 )
             )
             try:

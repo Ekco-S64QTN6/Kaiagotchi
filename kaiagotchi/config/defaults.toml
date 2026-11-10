@@ -13,6 +13,8 @@ iface = "wlan0"
 # Dedicated monitor-mode capture adapter; never point this at the internet adapter.
 # KAIAGOTCHI_INTERFACE overrides this setting for a single invocation.
 capture_iface = "wlan1"
+# Additional dedicated dongles to keep unmanaged, even when not selected for a session.
+capture_ifaces = []
 
 [log]
 # Root log level: DEBUG, INFO, WARNING, ERROR, CRITICAL.

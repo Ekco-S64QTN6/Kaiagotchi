@@ -125,14 +125,21 @@ enables the optional browser HUD. `--no-web` also disables the browser HUD.
 `--no-tui` disables curses while leaving the selected web service available.
 
 Useful flags: `--config PATH` (defaults to `/etc/kaiagotchi/config.toml`),
-`--debug`, `--manual`, `--tui`, `--no-tui`, `--no-web`, `--port`, `--host`.
+`--debug`, `--manual`, `--tui`, `--no-tui`, `--no-web`, `--port`, `--host`,
+`--capture-interface NAME` (alias: `--interface`), and repeatable
+`--reserve-interface NAME` for additional dedicated dongles.
+
+Run `sudo kaiagotchi doctor` to inspect the durable NetworkManager reservation,
+live `NM-MANAGED` state, kernel interface types, lingering capture processes,
+the uplink state, and Plasma scan-rejection journal entries.
 
 Press **`q`** (or `Ctrl-C`) to exit; the curses UI restores your terminal on the
 way out.
 
-Shutdown also attempts to terminate and reap the `airodump-ng` capture process
-and restore the capture interface to managed mode. Interface restoration is
-best-effort when the driver or system tools report an error.
+Shutdown terminates and reaps the `airodump-ng` capture process and restores
+the Linux kernel interface type to managed mode. This kernel cleanup is separate
+from NetworkManager ownership: the permanent unmanaged-device reservation is
+never removed or toggled during shutdown.
 If an adapter restoration command fails during shutdown, Kaiagotchi records that
 restoration as pending; a subsequent `stop()` retries the managed-mode commands
 without repeating completed capture archiving, persistence, or shutdown summaries.
@@ -172,12 +179,42 @@ sudo $EDITOR /etc/kaiagotchi/config.toml
 Key sections:
 
 - `[main]` — instance `name` and primary/interface metadata (`iface`)
-- `[main].capture_iface` — the monitor-mode capture dongle (`wlan1` by default), kept separate from `[main].iface`, which stays the managed/internet adapter. `KAIAGOTCHI_INTERFACE` overrides it. Monitor mode is refused on an interface that carries the default route.
+- `[main].capture_iface` — the active monitor-mode capture dongle (`wlan1` by default), kept separate from `[main].iface`, which stays the managed/internet adapter. `KAIAGOTCHI_INTERFACE` or `--capture-interface` overrides the active interface.
+- `[main].capture_ifaces` — optional list of additional dedicated capture dongles. Their MAC addresses are also reserved even when they are not selected for the current session. Use repeatable `--reserve-interface` CLI flags for one-off additions. Monitor mode is refused on an interface that carries the default route.
 - `[personality]` — reward smoothing and the thresholds that map reward → mood
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces
 - `[web]` — the browser HUD: `enabled`, `host` (loopback by default), `port`, `update_hz`, and `auth_token` (required for non-loopback binds; `KAIA_WEB_AUTH_TOKEN` takes precedence)
 
+### NetworkManager capture reservation
+
+When NetworkManager is installed, Kaiagotchi owns the durable drop-in
+`/etc/NetworkManager/conf.d/99-ignore-project-dongle.conf`. It contains MAC-based
+`unmanaged-devices` selectors for the active capture interface and every
+interface in `[main].capture_ifaces`. Startup resolves interface names through
+`/sys/class/net/*/address`, merges missing MAC selectors without discarding
+other selectors in the file, atomically writes the drop-in when needed, reloads
+NetworkManager, and verifies `GENERAL.NM-MANAGED: no` for each intended adapter
+before starting reconnaissance. A missing adapter, failed reload, or managed
+live state blocks capture rather than allowing NetworkManager to contend with
+`airodump-ng`.
+
+This file is **permanent configuration**, not a session lock. Normal shutdown,
+`Ctrl+C`, and `SIGTERM` do not delete it or call `nmcli device set`. To reserve
+more dongles, add their interface names to `main.capture_ifaces` in
+`/etc/kaiagotchi/config.toml`; the next privileged startup adds their MAC
+addresses. The uplink in `main.iface` must not appear in this list. If the
+reservation needs a privileged update, startup prints the exact `sudo` command
+to rerun. The one-time NetworkManager reload is non-disruptive to active
+connections.
+
+For a read-only snapshot of the reservation file, NetworkManager state, kernel
+interface mode, capture processes and their parent PIDs, uplink connection, and
+Plasma scan-rejection messages from the current boot, run:
+
+```bash
+sudo kaiagotchi doctor --config /etc/kaiagotchi/config.toml
+```
 The supported capture backend is the built-in passive `airodump-ng` path; a
 Bettercap backend is **not supported**. The legacy imports
 `kaiagotchi.network.integrations.bettercap.BettercapIntegration` and
