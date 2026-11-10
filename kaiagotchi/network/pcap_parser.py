@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from scapy.all import PcapReader, rdpcap
-from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp
+from scapy.layers.dot11 import Dot11, Dot11Beacon, Dot11Elt, Dot11ProbeResp, RadioTap
 from scapy.layers.eap import EAPOL, EAPOL_KEY
 from scapy.packet import Packet
 
@@ -1451,6 +1451,112 @@ def export_to_hashcat(captures: list[CaptureData], output_dir: str = ".") -> dic
         )
 
     return output_files
+
+
+# 802.11 frame categories surfaced on the Cyber-Deck HUD's packet panel. Keys
+# match the frontend's packet_breakdown contract (js/app.js).
+_FRAME_CATEGORIES = ("probe_req", "beacon", "auth", "eapol")
+
+
+@dataclass
+class FrameStats:
+    """Cumulative 802.11 frame tallies for one capture file.
+
+    Counts are cumulative over the whole file; the monitoring agent diffs two
+    reads to derive per-second rates. rx/tx is downlink/uplink inferred from the
+    802.11 DS bits (FromDS -> rx, ToDS -> tx), with a per-category default for
+    frames carrying neither bit (beacons come from the AP, probe requests from
+    the client). max_signal is the strongest RadioTap signal seen, in dBm.
+    """
+
+    total_rx: int = 0
+    total_tx: int = 0
+    breakdown: dict[str, dict[str, int]] | None = None
+    max_signal: int | None = None
+
+    def as_payload(self) -> dict[str, Any]:
+        bd = self.breakdown or {c: {"rx": 0, "tx": 0} for c in _FRAME_CATEGORIES}
+        return {
+            "total_packets": {"rx": self.total_rx, "tx": self.total_tx},
+            "packet_breakdown": bd,
+            "max_signal": self.max_signal,
+        }
+
+
+def _ds_direction(frame_control: int, default: str) -> str:
+    """'rx' (FromDS/downlink) or 'tx' (ToDS/uplink); `default` for neither bit."""
+    to_ds = bool(frame_control & 0x01)
+    from_ds = bool(frame_control & 0x02)
+    if from_ds and not to_ds:
+        return "rx"
+    if to_ds and not from_ds:
+        return "tx"
+    return default
+
+
+def count_frame_stats(filepath: str) -> FrameStats:
+    """Tally 802.11 frame types and signal from a capture, for live telemetry.
+
+    A single streaming pass, safe to call repeatedly on a file airodump is still
+    appending to: a truncated trailing record ends the read without raising, and
+    whatever was counted up to that point is returned. Never raises.
+    """
+    stats = FrameStats(breakdown={c: {"rx": 0, "tx": 0} for c in _FRAME_CATEGORIES})
+    if not validate_file(filepath):
+        return stats
+
+    # Default rx/tx side for each category's no-DS frames (management frames
+    # usually carry neither DS bit): an AP broadcasts beacons, a client sends
+    # probe requests; auth/eapol lean downlink.
+    category_default = {"beacon": "rx", "probe_req": "tx", "auth": "rx", "eapol": "rx"}
+
+    reader: PcapReader | None = None
+    try:
+        reader = PcapReader(filepath)
+        for packet in reader:
+            if not packet.haslayer(Dot11):
+                continue
+            dot11 = packet[Dot11]
+            fc = int(dot11.FCfield or 0)
+
+            category: str | None = None
+            if packet.haslayer(EAPOL):
+                category = "eapol"
+            elif dot11.type == 0:  # management
+                if dot11.subtype == 8:
+                    category = "beacon"
+                elif dot11.subtype == 4:
+                    category = "probe_req"
+                elif dot11.subtype == 11:
+                    category = "auth"
+
+            # Totals count every frame; a frame's side uses its category default
+            # when it has no DS bits, else a benign downlink default.
+            total_side = _ds_direction(fc, category_default.get(category or "", "rx"))
+            if total_side == "rx":
+                stats.total_rx += 1
+            else:
+                stats.total_tx += 1
+
+            if category is not None and stats.breakdown is not None:
+                side = _ds_direction(fc, category_default[category])
+                stats.breakdown[category][side] += 1
+
+            signal = None
+            if packet.haslayer(RadioTap):
+                signal = getattr(packet[RadioTap], "dBm_AntSignal", None)
+            if signal is None:
+                signal = getattr(packet, "dBm_AntSignal", None)
+            if isinstance(signal, int) and -120 < signal < 0:
+                if stats.max_signal is None or signal > stats.max_signal:
+                    stats.max_signal = signal
+    except Exception as exc:
+        # A capture mid-write ends in a short record; keep the partial tally.
+        parser_logger.debug("count_frame_stats stopped early on %s: %s", filepath, exc)
+    finally:
+        _close_stream_reader(reader, filepath)
+
+    return stats
 
 
 # Example usage and testing
