@@ -61,7 +61,7 @@ async def test_stop_reaps_capture_process_even_when_running_flag_is_false(
     emit_capture_summary.assert_awaited_once_with("Monitoring stopped.")
 
     # A fully stopped instance should make repeated stop() idempotent.
-    await monitor.stop()
+    assert await monitor.stop() is True
     restore_managed_mode.assert_awaited_once()
 
 
@@ -123,7 +123,7 @@ async def test_stop_bounds_unresponsive_scan_and_retries_deferred_capture_cleanu
     # completes the deferred archive/temporary-directory cleanup.
     release_scan.set()
     await loop_task
-    await monitor.stop()
+    assert await monitor.stop() is True
 
     assert monitor._loop_task is None
     assert monitor._capture_tmp_dir is None
@@ -496,3 +496,44 @@ async def test_stop_orders_reaping_restore_archive_and_persistence(monkeypatch):
     ]
     assert monitor._process is None
     assert monitor._capture_tmp_dir is None
+
+
+
+@pytest.mark.asyncio
+async def test_concurrent_monitor_stop_callers_share_one_reap_attempt(monkeypatch):
+    monitor = MonitoringAgent(interface="wlan1", config={}, system_state={})
+    wait_started = asyncio.Event()
+    allow_reap = asyncio.Event()
+
+    class BlockingProcess(FakeCaptureProcess):
+        def __init__(self):
+            super().__init__()
+            self.wait_calls = 0
+
+        async def wait(self):
+            self.wait_calls += 1
+            self.wait_called = True
+            wait_started.set()
+            await allow_reap.wait()
+            self.returncode = 0
+            return self.returncode
+
+    process = BlockingProcess()
+    monitor._process = process
+    monkeypatch.setattr(monitor, "_restore_managed_mode", AsyncMock(return_value=True))
+    monkeypatch.setattr(monitor, "_archive_pcap_sync", lambda: None)
+    monkeypatch.setattr(monitor, "_cleanup_capture_temp_dir", lambda: None)
+    monkeypatch.setattr(monitor, "_emit_capture_summary", AsyncMock())
+
+    first = asyncio.create_task(monitor.stop())
+    await asyncio.wait_for(wait_started.wait(), timeout=1.0)
+    second = asyncio.create_task(monitor.stop())
+    await asyncio.sleep(0)
+    assert not second.done()
+
+    allow_reap.set()
+    assert await asyncio.wait_for(asyncio.gather(first, second), timeout=2.0) == [
+        True,
+        True,
+    ]
+    assert process.wait_calls == 1
