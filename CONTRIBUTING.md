@@ -39,6 +39,8 @@ Plugin-discovery regressions should import a real temporary package from an exte
 
 Legacy capture helper tests must exercise missing, empty, malformed, valid-empty PCAPNG, and a valid synthetic 802.11/EAPOL PCAP; never assert a positive handshake without parser-derived complete-handshake evidence.
 
+Unsupported backend compatibility shims must fail explicitly on `start()`; do not add successful-looking no-op process lifecycle methods. Any newly supported external capture backend needs bounded startup, health/error reporting, and deterministic process termination/reaping tests before it is documented as available.
+
 Wireless channel capability tests must use synthetic iw dev / iw phy outputs, cover 2.4/5/6 GHz and disabled frequencies, and verify unavailable interfaces/commands return an empty list without a hardware dependency.
 
 Channel-hop tests must cover absent/empty configuration staying driver-managed without iw/iwconfig calls, and explicit channel lists selecting the first entry on the first hop before advancing and wrapping.

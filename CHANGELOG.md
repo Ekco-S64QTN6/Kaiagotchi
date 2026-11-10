@@ -5,6 +5,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 ## Unreleased
 
 - Make Manager shutdown serialize concurrent callers, report failed component stops, and retry only incomplete Agent/ticker/View cleanup.
+- Mark the Bettercap integration facade explicitly unsupported: retain legacy imports, fail fast from `start()`, and remove the unused `[bettercap].handshakes` config entry in favor of the existing passive airodump-ng archive path.
 - Start explicitly configured manual channel cycles at the first listed channel, then advance and wrap in order.
 - Respect the default personality.channels = [] automatic scan mode instead of forcing 2.4 GHz channels 1–11; preserve mood-paced manual hopping only for explicit channel lists.
 - Harden the primary curses tables for typed AP records and malformed rows: support boolean privacy and ssid fields, normalize display values, and skip non-dictionary AP/station entries without aborting a frame.

@@ -15,8 +15,8 @@ iface = "wlan0"
 [log]
 level = "INFO"
 
-[bettercap]
-handshakes = "/var/lib/kaiagotchi/handshakes"
+# Capture uses the built-in passive airodump-ng path; PCAP archives are stored
+# under kaiagotchi/storage/pcaps. No Bettercap backend is currently supported.
 
 # Tune the emotional loop to taste:
 # [personality]
