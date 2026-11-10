@@ -603,7 +603,6 @@ def test_cli_splash_factory_tolerates_constructor_failure(monkeypatch):
     assert cli._create_splash_screen() is None
 
 
-
 @pytest.mark.asyncio
 async def test_manager_retries_failed_component_without_repeating_successful_stops(caplog):
     class RetryAgent:
