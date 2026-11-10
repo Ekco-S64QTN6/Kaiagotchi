@@ -72,7 +72,7 @@ async def test_manager_propagates_agent_runtime_failure_and_signals_completion()
 @pytest.mark.asyncio
 async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
     class FakeView:
-        def __init__(self, _config):
+        def __init__(self, _config, **_kwargs):
             self.suppress_output = False
             self.display = None
 
@@ -144,7 +144,7 @@ async def test_cli_returns_nonzero_when_manager_runtime_fails(monkeypatch):
 @pytest.mark.asyncio
 async def test_cli_observes_manager_bootstrap_failure_before_splash_finishes(monkeypatch):
     class FakeView:
-        def __init__(self, _config):
+        def __init__(self, _config, **_kwargs):
             self.suppress_output = False
             self.display = None
 
@@ -211,7 +211,7 @@ async def test_cli_legacy_agent_is_not_cancelled_when_splash_finishes(monkeypatc
     cancelled = asyncio.Event()
 
     class FakeView:
-        def __init__(self, _config):
+        def __init__(self, _config, **_kwargs):
             self.suppress_output = False
             self.display = None
 
@@ -277,7 +277,7 @@ async def test_cli_legacy_agent_is_not_cancelled_when_splash_finishes(monkeypatc
 @pytest.mark.asyncio
 async def test_cli_legacy_agent_start_failure_is_observed_before_splash_finishes(monkeypatch):
     class FakeView:
-        def __init__(self, _config):
+        def __init__(self, _config, **_kwargs):
             self.suppress_output = False
             self.display = None
 
@@ -341,7 +341,7 @@ async def test_cli_does_not_start_legacy_agent_after_manager_bootstrap_failure(m
     legacy_agent_constructed = False
 
     class FakeView:
-        def __init__(self, _config):
+        def __init__(self, _config, **_kwargs):
             self.suppress_output = False
             self.display = None
 
