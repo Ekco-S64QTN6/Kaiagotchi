@@ -164,7 +164,7 @@ class TerminalDisplay:
                 _LOG.debug("Curses frame error", exc_info=True)
 
     def _take_snapshot(self) -> dict[str, Any]:
-        """Fetch the latest state snapshot from the registered state provider or local fallback."""
+        """Fetch a safe, detached set of rows for the terminal renderer."""
         if self._state_provider:
             try:
                 snap = self._state_provider()
@@ -175,40 +175,78 @@ class TerminalDisplay:
             with self._lock:
                 snap = dict(self._snapshot)
 
-        # Ensure _aps and _stas are present (sorted & limited)
-        if "_aps" not in snap:
-            aps = snap.get("aps_list")
-            if aps is not None:
-                def pwr(item):
-                    try:
-                        return int(item.get("power", -9999))
-                    except (ValueError, TypeError):
-                        return -9999
-                try:
-                    a = sorted(aps, key=lambda a: (pwr(a), self._parse_last_seen(a.get("last_seen", ""))), reverse=True)
-                except Exception:
-                    a = aps
-                snap["_aps"] = a[:self._max_visible_aps]
-            else:
-                with self._lock:
-                    snap["_aps"] = list(self._ap_table)
+        if not isinstance(snap, dict):
+            snap = {}
 
-        if "_stas" not in snap:
-            stas = snap.get("stations_list")
-            if stas is not None:
-                def pwr(item):
-                    try:
-                        return int(item.get("power", -9999))
-                    except (ValueError, TypeError):
-                        return -9999
-                try:
-                    s = sorted(stas, key=lambda s: (pwr(s), int(s.get("packets", 0) or 0)), reverse=True)
-                except Exception:
-                    s = stas
-                snap["_stas"] = s[:self._max_visible_stations]
-            else:
+        # Table renderers receive dictionaries only. Keep malformed entries
+        # out of sorting and drawing so one bad row cannot abort a full frame.
+        if "_aps" in snap:
+            raw_aps = snap.get("_aps")
+        else:
+            raw_aps = snap.get("aps_list")
+            if raw_aps is None:
                 with self._lock:
-                    snap["_stas"] = list(self._stations)
+                    raw_aps = list(self._ap_table)
+        aps = [item for item in raw_aps if isinstance(item, dict)] if isinstance(
+            raw_aps, (list, tuple)
+        ) else []
+
+        def ap_power(item: dict[str, Any]) -> int:
+            try:
+                return int(item.get("power", -9999))
+            except (ValueError, TypeError, OverflowError):
+                return -9999
+
+        try:
+            aps = sorted(
+                aps,
+                key=lambda item: (
+                    ap_power(item),
+                    self._parse_last_seen(item.get("last_seen", "")),
+                ),
+                reverse=True,
+            )
+        except Exception:
+            _LOG.debug("Could not sort AP snapshot rows; preserving input order", exc_info=True)
+        snap["_aps"] = aps[: self._max_visible_aps]
+
+        if "_stas" in snap:
+            raw_stations = snap.get("_stas")
+        else:
+            raw_stations = snap.get("stations_list")
+            if raw_stations is None:
+                with self._lock:
+                    raw_stations = list(self._stations)
+        stations = (
+            [item for item in raw_stations if isinstance(item, dict)]
+            if isinstance(raw_stations, (list, tuple))
+            else []
+        )
+
+        def station_power(item: dict[str, Any]) -> int:
+            try:
+                return int(item.get("power", -9999))
+            except (ValueError, TypeError, OverflowError):
+                return -9999
+
+        def station_packets(item: dict[str, Any]) -> int:
+            try:
+                return int(item.get("packets", 0) or 0)
+            except (ValueError, TypeError, OverflowError):
+                return 0
+
+        try:
+            stations = sorted(
+                stations,
+                key=lambda item: (station_power(item), station_packets(item)),
+                reverse=True,
+            )
+        except Exception:
+            _LOG.debug(
+                "Could not sort station snapshot rows; preserving input order",
+                exc_info=True,
+            )
+        snap["_stas"] = stations[: self._max_visible_stations]
 
         if "_status" not in snap:
             snap["_status"] = snap.get("status") or self._current_status
@@ -428,31 +466,57 @@ class TerminalDisplay:
         cp = curses.color_pair
         self._put(scr, y, x, f"{'BSSID':<18} {'Ch':<4} {'Pwr':<5} {'Encryption':<10} ESSID",
                   cp(_CP_YELLOW) | curses.A_BOLD)
-        for i, ap in enumerate(aps[:mr]):
-            ry = y + 1 + i
-            b = ap.get("bssid", "")
-            ch = ap.get("channel", "")
-            ps, pc = self._pwr_display(ap.get("power", "-99"))
-            enc = (ap.get("privacy") or "Open").strip()[:10]
-            essid = (ap.get("essid") or "")[:max(0, mw - 40)]
-            self._put(scr, ry, x, f"{b:<18} {ch:<4} ", cp(_CP_WHITE))
-            self._put(scr, ry, x + 23, ps, cp(pc))
-            self._put(scr, ry, x + 29, f"{enc:<10} {essid}", cp(_CP_WHITE))
+        row_index = 0
+        for ap in aps[:mr]:
+            if not isinstance(ap, dict):
+                continue
+            ry = y + 1 + row_index
+            row_index += 1
 
+            raw_bssid = ap.get("bssid")
+            bssid = "" if raw_bssid is None else str(raw_bssid)
+            raw_channel = ap.get("channel")
+            channel = "" if raw_channel is None else str(raw_channel)
+            ps, pc = self._pwr_display(ap.get("power", "-99"))
+
+            privacy = ap.get("privacy")
+            if isinstance(privacy, bool):
+                encryption = "Secured" if privacy else "Open"
+            elif privacy is None:
+                encryption = "Open"
+            else:
+                encryption = str(privacy).strip() or "Open"
+            encryption = encryption[:10]
+
+            raw_essid = ap.get("essid")
+            essid = "" if raw_essid is None else str(raw_essid)
+            essid = essid[:max(0, mw - 40)]
+
+            self._put(scr, ry, x, f"{bssid:<18} {channel:<4} ", cp(_CP_WHITE))
+            self._put(scr, ry, x + 23, ps, cp(pc))
+            self._put(scr, ry, x + 29, f"{encryption:<10} {essid}", cp(_CP_WHITE))
     def _draw_sta_rows(self, scr, y, x, mw, mr, stas):
         cp = curses.color_pair
         self._put(scr, y, x, f"{'STATION':<18} {'Pwr':<5} {'Pkts':<6} BSSID",
                   cp(_CP_CYAN) | curses.A_BOLD)
-        for i, s in enumerate(stas[:mr]):
-            ry = y + 1 + i
-            mac = s.get("station_mac", "")
-            ps, pc = self._pwr_display(s.get("power", "-99"))
-            pkts = str(s.get("packets", "0"))
-            bss = (s.get("bssid") or "unassociated")[:max(0, mw - 32)]
+        row_index = 0
+        for station in stas[:mr]:
+            if not isinstance(station, dict):
+                continue
+            ry = y + 1 + row_index
+            row_index += 1
+
+            raw_mac = station.get("station_mac")
+            mac = "" if raw_mac is None else str(raw_mac)
+            ps, pc = self._pwr_display(station.get("power", "-99"))
+            packets = str(station.get("packets", "0"))
+            raw_bssid = station.get("bssid")
+            bssid = "unassociated" if raw_bssid is None else str(raw_bssid)
+            bssid = bssid[:max(0, mw - 32)]
+
             self._put(scr, ry, x, f"{mac:<18} ", cp(_CP_WHITE))
             self._put(scr, ry, x + 19, ps, cp(pc))
-            self._put(scr, ry, x + 25, f"{pkts:<6} {bss}", cp(_CP_WHITE))
-
+            self._put(scr, ry, x + 25, f"{packets:<6} {bssid}", cp(_CP_WHITE))
     def _draw_chatter(self, scr, y0, W, max_lines, snap):
         cp = curses.color_pair
         palette = [_CP_CYAN, _CP_YELLOW, _CP_GREEN, _CP_RED, _CP_MAGENTA]
