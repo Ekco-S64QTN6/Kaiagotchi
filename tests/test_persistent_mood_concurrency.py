@@ -98,7 +98,6 @@ def test_mood_permission_helper_does_not_follow_symlink_targets(tmp_path):
     assert stat.S_IMODE(target.stat().st_mode) == 0o644
 
 
-
 def test_persistent_mood_load_replaces_symlink_without_reading_target(tmp_path):
     target = tmp_path / "external-mood-state.json"
     target.write_text(
