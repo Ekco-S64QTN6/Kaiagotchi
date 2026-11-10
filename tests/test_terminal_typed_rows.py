@@ -98,7 +98,8 @@ def test_ap_and_station_rows_render_null_and_non_string_fields_without_error(mon
 
     rendered = "\n".join(value for _y, _x, value in screen.writes)
     assert "12345" in rendered
-    assert "unassociated" not in rendered or "12345" in rendered
+    assert "unassociated" not in rendered
+    assert "0      12345" in rendered
 
 
 def test_take_snapshot_filters_malformed_ap_and_station_rows_before_sorting():
