@@ -20,6 +20,8 @@ async Python core, a headless terminal UI, and an optional browser HUD.
 | **Handshake capture** | Launches `airodump-ng` and records PCAPs; `scapy`-based parsing extracts EAPOL handshakes and PMKIDs and exports hashcat-ready material. |
 | **Emotional loop** | `RewardEngine → Epoch → Automata` maps live activity into 12 moods (happy, curious, bored, sad, frustrated, …), each with its own face and voice lines. Reward and UI code share one typed `AgentMood` enum. |
 | **Persistence** | Network history and mood/reward state survive restarts (`network_history.json`, `mood_state.json`, plus JSON/Markdown handshake summaries). |
+
+Private JSON state loads only regular files without following symlinks. Atomic saves replace symlinked destinations with owner-private `0600` files rather than inheriting permissions from external targets.
 | **Typed core** | `SystemState` and related models are validated with Pydantic v2. |
 | **Plugin API** | A small lifecycle-hook plugin system (`on_load` / `on_unload` / `on_event` / `on_state_update`). No plugins ship by default — bring your own. |
 
