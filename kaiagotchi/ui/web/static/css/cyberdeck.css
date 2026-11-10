@@ -941,3 +941,22 @@ html, body {
 @media (prefers-reduced-motion: reduce) {
   .startup-fill { animation-duration: 4s; }
 }
+
+/* Station Monitoring: keep all five columns visible in the narrow panel.
+   Auto table layout plus a full-width MAC and overflow-x:hidden was clipping the
+   TX/RX and STATUS columns. Fixed widths fit every column; the MAC truncates. */
+#stations-table { table-layout: fixed; }
+#stations-table th,
+#stations-table td { padding-left: 8px; padding-right: 8px; }
+#stations-table th:nth-child(1), #stations-table td:nth-child(1) { width: 36%; }
+#stations-table th:nth-child(2), #stations-table td:nth-child(2) { width: 13%; }
+#stations-table th:nth-child(3), #stations-table td:nth-child(3) { width: 9%; }
+#stations-table th:nth-child(4), #stations-table td:nth-child(4) { width: 18%; }
+#stations-table th:nth-child(5), #stations-table td:nth-child(5) { width: 24%; }
+#stations-table .bssid-cell { min-width: 0; }
+#stations-table .bssid-cell > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
