@@ -131,3 +131,27 @@ def test_take_snapshot_filters_malformed_ap_and_station_rows_before_sorting():
     assert [station["station_mac"] for station in snapshot["_stas"]] == [
         "11:22:33:44:55:66"
     ]
+
+
+def test_take_snapshot_filters_precomputed_ap_and_station_rows():
+    display = _display()
+    display._state_provider = None
+    display._lock = threading.Lock()
+    display._snapshot = {
+        "_aps": [None, {"bssid": "AA:BB:CC:DD:EE:FF", "power": "-40"}],
+        "_stas": ["invalid", {"station_mac": "11:22:33:44:55:66", "power": "-50"}],
+    }
+    display._ap_table = []
+    display._stations = []
+    display._max_visible_aps = 10
+    display._max_visible_stations = 10
+    display._current_status = "Monitoring signals..."
+
+    snapshot = display._take_snapshot()
+
+    assert snapshot["_aps"] == [
+        {"bssid": "AA:BB:CC:DD:EE:FF", "power": "-40"}
+    ]
+    assert snapshot["_stas"] == [
+        {"station_mac": "11:22:33:44:55:66", "power": "-50"}
+    ]
