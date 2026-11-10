@@ -607,7 +607,15 @@ class PersistentNetwork:
     # Enhanced PCAP analysis to extract ALL networks and devices
     # -------------------------
     def _analyze_pcap_into_record(self, dst_path: Path, record: dict[str, Any]) -> None:
-        """Enhanced analysis that extracts ALL BSSIDs and stations from PCAP, not just handshakes."""
+        """Analyze a regular PCAP stored directly inside the managed archive."""
+        managed_path = self._managed_pcap_path(dst_path)
+        if managed_path is None or not managed_path.is_file():
+            LOGGER.warning(
+                "Skipping analysis for PCAP outside the managed archive: %s",
+                dst_path,
+            )
+            return
+        dst_path = managed_path
         if parse_pcap_comprehensive is None:
             LOGGER.debug("pcap_parser not available; skipping analysis for %s", dst_path)
             return
@@ -744,20 +752,24 @@ class PersistentNetwork:
             return None
 
     def add_pcap_record(self, path: Path, bssid: str, size: int, timestamp: str, analyze: bool = True) -> None:
-        """Register existing PCAP file without copying - for files already in storage."""
+        """Register a regular PCAP file already inside the private archive."""
         try:
-            # Use absolute path to ensure consistency
-            abs_path = path.absolute()
-            filename = os.path.basename(str(abs_path))
-            try:
-                if abs_path.resolve().parent == Path(self.pcaps_dir).resolve():
-                    self._ensure_file_permissions(str(abs_path))
-            except OSError:
-                LOGGER.warning("Could not secure registered PCAP path: %s", abs_path)
+            managed_path = self._managed_pcap_path(path)
+            if managed_path is None or not managed_path.is_file():
+                LOGGER.warning(
+                    "Refusing to register PCAP outside the managed archive: %s",
+                    path,
+                )
+                return
+            abs_path = managed_path
+            filename = abs_path.name
+            self._ensure_file_permissions(str(abs_path))
 
-            # Check if record already exists to avoid duplicates
+            # Check if record already exists to avoid duplicates.
             if filename in self._data.get("pcaps", {}):
-                LOGGER.warning(f"PCAP record already exists for {filename}, updating instead")
+                LOGGER.warning(
+                    "PCAP record already exists for %s, updating instead", filename
+                )
 
             record: dict[str, Any] = {
                 "bssid": bssid.upper(),
@@ -766,7 +778,7 @@ class PersistentNetwork:
                 "path": str(abs_path),
             }
 
-            if analyze and parse_pcap_comprehensive is not None and abs_path.exists():
+            if analyze:
                 self._analyze_pcap_into_record(abs_path, record)
 
             with self._state_lock:
@@ -775,7 +787,7 @@ class PersistentNetwork:
             self.save()
             LOGGER.info("Registered PCAP record for %s (%s bytes)", bssid, size)
         except Exception:
-            LOGGER.exception("Failed to add PCAP record (metadata only)")
+            LOGGER.exception("Failed to add PCAP record")
 
     # -------------------------
     # NEW: Force re-analysis of all pcaps to ingest BSSIDs and stations
@@ -800,8 +812,12 @@ class PersistentNetwork:
                 ]
 
             for filename, record, original_analysis, original_path, original_created in records:
-                pcap_path = Path(record.get("path", ""))
-                if not pcap_path.exists():
+                pcap_path = self._managed_pcap_path(record.get("path"))
+                if pcap_path is None or not pcap_path.is_file():
+                    LOGGER.warning(
+                        "Skipping re-analysis for PCAP outside the managed archive: %s",
+                        original_path,
+                    )
                     continue
 
                 LOGGER.info("Re-analyzing pcap: %s", filename)
