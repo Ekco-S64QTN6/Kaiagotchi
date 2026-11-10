@@ -198,3 +198,24 @@
 
 ### Next action
 - Review the code/tests and PR, wait for Python 3.11–3.13, static-analysis, and wheel/assets checks, repair any failure, and merge only after green. Close #162 after merge and verify post-merge main CI.
+
+
+## Run 2026-11-09 18:15 CDT — primary terminal typed-row hardening
+
+**Latest merged main:** 4bc49ab1d2ba2de0868b972bfb0499a1c286c61a
+**Previous batch:** PR #163 merged veth peer-suffix normalization; issue #162 directly verified closed. Exact-head workflow 42726012732 passed all five jobs. Post-merge main workflow 42726157283 also passed all five jobs.
+**Phase 0:** 0 open PRs before this batch; 1 known stale branch fix/tui-thread-failure-shutdown-2026-11-09 (already merged via #142). New issue #164 filed for TUI typed-row compatibility.
+
+### In progress
+- Issue #164 — handle typed and malformed AP/station rows in the terminal renderer.
+- Branch fix/tui-render-typed-network-records-2026-11-09.
+- TerminalDisplay._take_snapshot() now filters non-dictionary AP/station rows before sorting/drawing and applies safe numeric coercion for sort keys; supplied _aps/_stas snapshots are filtered too.
+- _draw_ap_rows() handles bool privacy (Secured/Open), preserves string encryption labels, uses essid with a typed-model ssid fallback, and safely stringifies nullable/non-string BSSID/channel/ESSID values.
+- _draw_sta_rows() skips non-mappings and safely normalizes station MAC, packet count, and BSSID fields.
+- New tests use AccessPoint.model_dump() plus a synthetic recording screen and cover malformed rows, null/non-string values, boolean privacy, and snapshot ordering.
+- Scope is the mandatory terminal/TUI interface only. No Web HUD changes are included.
+- CHANGELOG, ROADMAP, CONTRIBUTING updated. This handoff is appended to PROGRESS.
+- Local pytest/Ruff/Mypy commands are not available through this GitHub-only connection; exact-head hosted Actions is the merge gate. No local run is claimed.
+
+### Next action
+- Review branch diff and tests, open PR #164, repair any exact-head CI issue, merge only when all five required jobs pass, close #164, and verify post-merge main CI. Then repeat Phase 0 and continue the next repository review.

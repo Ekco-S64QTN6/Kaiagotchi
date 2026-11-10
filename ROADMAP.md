@@ -76,6 +76,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Make the terminal AP/station tables compatible with the typed AccessPoint schema (boolean privacy and ssid naming) and resilient to malformed/null row values without dropping the entire curses frame.
+
 - Normalize the trailing iproute2 veth peer-index annotation when collecting IP addresses so virtual-interface addresses merge under the actual local interface name rather than creating duplicate records.
 
 - Preserve InterfaceMonitor fields when combining ifconfig, ip-address, wireless, and system-stat records; use deterministic later-source precedence only for conflicting fields on the same interface.
