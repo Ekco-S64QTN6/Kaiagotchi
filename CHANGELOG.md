@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Restrict direct PCAP registration, analysis, and re-analysis to regular files directly inside the private archive; reject external paths, symlinks, and symlinked archive roots.
 - Keep network reports usable with partial persisted state: ignore malformed BSSID/PCAP records, normalize unknown ESSIDs and metadata, and render hidden APs with missing timestamps safely.
 - Ignore symlinked PCAP/PCAPNG entries during startup archive reconciliation and apply owner-only permissions through no-follow file descriptors so external symlink targets are never chmodded or registered.
 - Propagate incomplete MonitoringAgent shutdown through Agent and Manager, keep failed cleanup retryable, and avoid repeating successful shutdown steps.
