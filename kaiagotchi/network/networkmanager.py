@@ -132,36 +132,28 @@ def _updated_reservation_text(content: str, intended_macs: Iterable[str]) -> str
 
     rendered = ";".join(entries)
     lines = content.splitlines()
-    section_ranges: list[tuple[int, int]] = []
     section = ""
-    start = -1
+    first_device_header: int | None = None
+    key_indices: list[int] = []
     for index, line in enumerate(lines):
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
-            if section == "device" and start >= 0:
-                section_ranges.append((start, index))
             section = stripped[1:-1].strip().lower()
-            if section == "device" and start < 0:
-                start = index
-    if section == "device" and start >= 0:
-        section_ranges.append((start, len(lines)))
+            if section == "device" and first_device_header is None:
+                first_device_header = index
+            continue
+        if section == "device" and "=" in stripped:
+            key = stripped.split("=", 1)[0].strip().lower()
+            if key == "unmanaged-devices":
+                key_indices.append(index)
 
-    if section_ranges:
-        first_start, _first_end = section_ranges[0]
-        key_indices: list[int] = []
-        for range_start, range_end in section_ranges:
-            for index in range(range_start + 1, range_end):
-                stripped = lines[index].strip()
-                if stripped and not stripped.startswith(("#", ";")):
-                    key = stripped.split("=", 1)[0].strip().lower()
-                    if key == "unmanaged-devices" and "=" in stripped:
-                        key_indices.append(index)
+    if first_device_header is not None:
         if key_indices:
             lines[key_indices[0]] = f"unmanaged-devices={rendered}"
             for index in reversed(key_indices[1:]):
                 del lines[index]
         else:
-            lines.insert(first_start + 1, f"unmanaged-devices={rendered}")
+            lines.insert(first_device_header + 1, f"unmanaged-devices={rendered}")
     else:
         if lines and lines[-1].strip():
             lines.append("")

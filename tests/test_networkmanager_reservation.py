@@ -69,6 +69,33 @@ def test_updated_reservation_preserves_existing_selectors_and_other_settings():
     ) in updated
 
 
+
+def test_updated_reservation_combines_duplicate_device_sections():
+    original = (
+        "[device]\n"
+        "unmanaged-devices=mac:00:11:22:33:44:55\n"
+        "managed=1\n"
+        "\n"
+        "[connection]\n"
+        "id=other\n"
+        "\n"
+        "[device]\n"
+        "unmanaged-devices=interface-name:lo\n"
+    )
+
+    updated = networkmanager._updated_reservation_text(
+        original, {"aa:bb:cc:dd:ee:01"}
+    )
+
+    assert updated.count("unmanaged-devices=") == 1
+    assert (
+        "unmanaged-devices=mac:00:11:22:33:44:55;interface-name:lo;"
+        "mac:aa:bb:cc:dd:ee:01"
+    ) in updated
+    assert "managed=1" in updated
+    assert "[connection]\nid=other" in updated
+
+
 def test_reservation_file_is_created_reloaded_and_verified_for_every_capture_adapter(
     tmp_path, monkeypatch
 ):

@@ -215,6 +215,15 @@ Plasma scan-rejection messages from the current boot, run:
 ```bash
 sudo kaiagotchi doctor --config /etc/kaiagotchi/config.toml
 ```
+
+KDE Plasma may still log `Scanning not allowed while unavailable` when its applet
+probes an explicitly unmanaged adapter. This is a desktop scan request, not
+NetworkManager reclaiming the dongle or a lingering Kaiagotchi capture. The doctor
+reports those current-boot journal entries. Kaiamon is maintained outside this
+repository, so this change does not install a Kaiamon-side filter; its collector
+should suppress this message only for interfaces that `nmcli` confirms are
+unmanaged.
+
 The supported capture backend is the built-in passive `airodump-ng` path; a
 Bettercap backend is **not supported**. The legacy imports
 `kaiagotchi.network.integrations.bettercap.BettercapIntegration` and
