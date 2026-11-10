@@ -219,3 +219,21 @@
 
 ### Next action
 - Review branch diff and tests, open PR #164, repair any exact-head CI issue, merge only when all five required jobs pass, close #164, and verify post-merge main CI. Then repeat Phase 0 and continue the next repository review.
+
+
+## Run 2026-11-09 18:30 CDT — preserve driver-managed channel scanning
+
+**Latest merged main:** ffc84ba76acae89af66c030d973cc3375cb1fee2
+**Post-#165 main CI:** run 42727072791 passed all five required jobs. Phase 0 before this batch: 0 open issues, 0 open PRs; only stale already-merged #142 branch remained.
+**New backlog:** #166 — default empty channel configuration was overwritten with a fixed 2.4 GHz list.
+
+### In progress
+- Branch fix/respect-driver-channel-selection-2026-11-09.
+- InterfaceActionManager now preserves missing/empty personality channel configuration as an empty list. In this mode, hop_channel() returns without probing/changing the interface so airodump-ng keeps its driver-managed scan selection.
+- Explicit non-empty channel lists are retained and continue to use the existing mood-paced iw / iwconfig channel changes.
+- Added hardware-independent tests for absent/empty auto mode, no host interface/process calls in auto mode, and explicit manual-list cycling.
+- README, defaults.toml, CHANGELOG, ROADMAP, CONTRIBUTING updated to state the automatic/manual contract.
+- This is a core passive-scanning behavior correction; no Web HUD change.
+
+### Next action
+- Review/open PR #166, require all five exact-head CI jobs plus GitGuardian, merge only when green, close #166, verify post-merge main CI and counters, then continue another source review.
