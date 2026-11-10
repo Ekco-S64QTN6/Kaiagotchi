@@ -116,7 +116,11 @@ class InterfaceMonitor:
                 if line.strip():
                     parts = line.split()
                     if len(parts) >= 4:
-                        iface = parts[1]
+                        # iproute2 appends the peer ifindex to veth-like
+                        # names (for example, veth0@if7). The suffix is not
+                        # part of the local netdevice name used by ifconfig and
+                        # psutil, so normalize only that exact annotation.
+                        iface = re.sub(r"@if\d+$", "", parts[1])
                         if iface not in interfaces:
                             interfaces[iface] = {'ip_addresses': []}
 

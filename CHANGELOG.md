@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Normalize iproute2 veth peer annotations such as `veth0@if7` to the local interface key `veth0`, preserving multi-address records and allowing them to merge with ifconfig/psutil data.
 - Merge InterfaceMonitor records by interface and field so later ip-address snapshots add their data without erasing status, link metadata, or counters collected from earlier sources.
 - Replace duplicate hard-coded interface-channel lists with one iw Wiphy capability query; exclude disabled frequencies, retain passive-monitoring channels, and return no guessed fallback when hardware/query information is unavailable.
 - Replace the legacy `extract_from_pcap()` fabricated-success placeholder with a compatibility adapter over `parse_pcap()`, returning actual first-capture metadata and an explicit no-capture result for missing, empty, malformed, or valid-empty captures.

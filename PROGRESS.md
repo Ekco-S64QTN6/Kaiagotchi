@@ -181,3 +181,20 @@
 
 ### Next action
 - Hostile-review this merge behavior, open a PR for #160, pass all five exact-head CI jobs, then merge and close #160 only after verification. Re-check main CI and Phase 0 afterward.
+
+
+## Run 2026-11-09 18:05 CDT — veth interface-name normalization
+
+**Latest merged main at start:** 3f3e7397f3f654ea80a063fdea86c729bc57c977
+**Post-#161 main CI:** run 42723242718 passed all five required jobs.
+**Phase 0 before this finding:** 0 open issues and 0 open PRs; stale #142 branch only.
+
+### In progress
+- Issue #162 — normalize veth peer suffixes in iproute2 interface names.
+- Branch fix/ip-addr-veth-interface-normalization-2026-11-09: _get_ip_addr_data() now removes only a trailing @if<number> annotation before using the local interface key.
+- Synthetic tests cover two IPv4 addresses on one peer-annotated veth, a separate ordinary wlan interface, and merging the veth IP data with ifconfig metadata under one local name.
+- CHANGELOG, ROADMAP, CONTRIBUTING updated.
+- Local test execution remains unavailable through the GitHub-only connection; exact-head Actions is the verification gate.
+
+### Next action
+- Review the code/tests and PR, wait for Python 3.11–3.13, static-analysis, and wheel/assets checks, repair any failure, and merge only after green. Close #162 after merge and verify post-merge main CI.
