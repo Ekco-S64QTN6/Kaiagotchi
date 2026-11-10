@@ -4,6 +4,7 @@ All notable user-facing changes to Kaiagotchi are documented here.
 
 ## Unreleased
 
+- Ignore symlinked PCAP/PCAPNG entries during startup archive reconciliation and apply owner-only permissions through no-follow file descriptors so external symlink targets are never chmodded or registered.
 - Propagate incomplete MonitoringAgent shutdown through Agent and Manager, keep failed cleanup retryable, and avoid repeating successful shutdown steps.
 - Mark the Bettercap integration facade explicitly unsupported: retain legacy imports, fail fast from `start()`, and remove the unused `[bettercap].handshakes` config entry in favor of the existing passive airodump-ng archive path.
 - Start explicitly configured manual channel cycles at the first listed channel, then advance and wrap in order.
