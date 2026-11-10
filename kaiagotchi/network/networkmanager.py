@@ -18,7 +18,12 @@ from pathlib import Path
 from typing import Any
 
 RESERVATION_PATH = Path("/etc/NetworkManager/conf.d/99-ignore-project-dongle.conf")
+#: NetworkManager reads `unmanaged-devices` from the [keyfile] section only
+#: (NetworkManager.conf(5)); a [device] section has no such key and the line
+#: would be ignored, leaving the dongle managed.
+RESERVATION_SECTION = "keyfile"
 SYS_CLASS_NET = Path("/sys/class/net")
+PROC_ROUTES = (Path("/proc/net/route"), Path("/proc/net/ipv6_route"))
 PROC_ROOT = Path("/proc")
 _MAC_RE = re.compile(r"^(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$")
 _INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,15}$")
@@ -80,8 +85,11 @@ def read_interface_mac(
     interface: str,
     *,
     sysfs_root: Path = SYS_CLASS_NET,
+    runner: Callable[..., Any] = subprocess.run,
 ) -> str:
-    """Resolve and validate an interface's sysfs MAC address."""
+    """The interface's permanent MAC, which is what NetworkManager's `mac:`
+    selector matches. The sysfs address is used when the kernel reports it as
+    the permanent one (addr_assign_type 0); otherwise `ethtool -P` is asked."""
     if not _INTERFACE_RE.fullmatch(interface):
         raise NetworkManagerReservationError(
             f"Invalid capture interface name: {interface!r}"
@@ -98,11 +106,50 @@ def read_interface_mac(
         raise NetworkManagerReservationError(
             f"Interface {interface!r} returned an invalid MAC address: {mac!r}"
         )
-    return mac
+    try:
+        assign_type = (sysfs_root / interface / "addr_assign_type").read_text(encoding="ascii").strip()
+    except OSError:
+        assign_type = "0"
+    if assign_type in ("", "0"):
+        return mac
+    # The current address was randomised or set by userspace: NetworkManager
+    # would not match it, so reserve the permanent one instead.
+    try:
+        code, stdout, _stderr = _command_output(["ethtool", "-P", interface], runner=runner)
+    except NetworkManagerReservationError:
+        code, stdout = 1, ""
+    permanent = stdout.rsplit(":", 6)[-6:] if code == 0 and stdout.count(":") >= 6 else []
+    candidate = ":".join(part.strip() for part in permanent).lower()
+    if _MAC_RE.fullmatch(candidate) and candidate != "00:00:00:00:00:00":
+        return candidate
+    raise NetworkManagerReservationError(
+        f"Interface {interface!r} is using a changed MAC address ({mac}) and its permanent "
+        "address could not be read (ethtool -P). NetworkManager matches the permanent "
+        "address, so the reservation would not take effect; install ethtool or restore "
+        "the adapter's own address."
+    )
+
+
+def interfaces_with_default_route(routes: Iterable[Path] = PROC_ROUTES) -> set[str]:
+    """Interfaces carrying an IPv4 or IPv6 default route (the machine's internet)."""
+    found: set[str] = set()
+    for path in routes:
+        try:
+            lines = path.read_text(encoding="ascii").splitlines()
+        except OSError:
+            continue
+        for line in lines:
+            parts = line.split()
+            if path.name == "route" and len(parts) > 2 and parts[1] == "00000000" and parts[0] != "Iface":
+                found.add(parts[0])
+            elif path.name == "ipv6_route" and len(parts) >= 10 and parts[0] == "0" * 32 and parts[1] == "00":
+                if parts[-1] != "lo":
+                    found.add(parts[-1])
+    return found
 
 
 def parse_unmanaged_devices(content: str) -> list[str]:
-    """Read all unmanaged-devices selectors from [device] sections."""
+    """Read all unmanaged-devices selectors from [keyfile] sections."""
     section = ""
     entries: list[str] = []
     for line in content.splitlines():
@@ -112,7 +159,7 @@ def parse_unmanaged_devices(content: str) -> list[str]:
         if stripped.startswith("[") and stripped.endswith("]"):
             section = stripped[1:-1].strip().lower()
             continue
-        if section != "device" or "=" not in line:
+        if section != RESERVATION_SECTION or "=" not in line:
             continue
         key, value = line.split("=", 1)
         if key.strip().lower() == "unmanaged-devices":
@@ -140,10 +187,10 @@ def _updated_reservation_text(content: str, intended_macs: Iterable[str]) -> str
         stripped = line.strip()
         if stripped.startswith("[") and stripped.endswith("]"):
             section = stripped[1:-1].strip().lower()
-            if section == "device" and first_device_header is None:
+            if section == RESERVATION_SECTION and first_device_header is None:
                 first_device_header = index
             continue
-        if section == "device" and "=" in stripped:
+        if section == RESERVATION_SECTION and "=" in stripped:
             key = stripped.split("=", 1)[0].strip().lower()
             if key == "unmanaged-devices":
                 key_indices.append(index)
@@ -158,7 +205,7 @@ def _updated_reservation_text(content: str, intended_macs: Iterable[str]) -> str
     else:
         if lines and lines[-1].strip():
             lines.append("")
-        lines.extend(("[device]", f"unmanaged-devices={rendered}"))
+        lines.extend((f"[{RESERVATION_SECTION}]", f"unmanaged-devices={rendered}"))
 
     return "\n".join(lines).rstrip() + "\n"
 
@@ -283,6 +330,7 @@ def ensure_networkmanager_reservation(
     sysfs_root: Path = SYS_CLASS_NET,
     runner: Callable[..., Any] = subprocess.run,
     which: Callable[[str], str | None] = shutil.which,
+    routes: Iterable[Path] = PROC_ROUTES,
 ) -> dict[str, Any]:
     """Create/repair the permanent reservation and verify live NM state.
 
@@ -298,8 +346,17 @@ def ensure_networkmanager_reservation(
         }
 
     interfaces = intended_capture_interfaces(config, active_interface)
+    # Never reserve the adapter the machine is online through: the reservation
+    # is durable, so this would take the internet away until the file is edited.
+    uplinks = sorted(set(interfaces) & interfaces_with_default_route(routes))
+    if uplinks:
+        raise NetworkManagerReservationError(
+            f"Refusing to reserve {', '.join(uplinks)}: it carries the default route "
+            "(the machine's internet). Set [main].capture_iface to a dedicated capture "
+            "dongle; [main].iface stays the managed/internet adapter."
+        )
     interface_macs = {
-        interface: read_interface_mac(interface, sysfs_root=sysfs_root)
+        interface: read_interface_mac(interface, sysfs_root=sysfs_root, runner=runner)
         for interface in interfaces
     }
     intended_macs = set(interface_macs.values())

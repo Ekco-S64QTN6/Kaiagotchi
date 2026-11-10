@@ -197,9 +197,11 @@ Key sections:
 
 When NetworkManager is installed, Kaiagotchi owns the durable drop-in
 `/etc/NetworkManager/conf.d/99-ignore-project-dongle.conf`. It contains MAC-based
-`unmanaged-devices` selectors for the active capture interface and every
-interface in `[main].capture_ifaces`. Startup resolves interface names through
-`/sys/class/net/*/address`, merges missing MAC selectors without discarding
+`unmanaged-devices` selectors in its `[keyfile]` section (the only section
+NetworkManager reads that key from) for the active capture interface and every
+interface in `[main].capture_ifaces`. Startup resolves interface names to their
+permanent MAC (`/sys/class/net/*/address`, or `ethtool -P` when the current address
+was changed), refuses any interface carrying the default route, merges missing MAC selectors without discarding
 other selectors in the file, atomically writes the drop-in when needed, reloads
 NetworkManager, and verifies `GENERAL.NM-MANAGED: no` for each intended adapter
 before starting reconnaissance. A missing adapter, failed reload, or managed
