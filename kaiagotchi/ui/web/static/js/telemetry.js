@@ -128,7 +128,7 @@ class TelemetryController {
           <td>
             <div class="bssid-cell">
               <span class="status-pip ${pipClass}"></span>
-              <span style="font-size: 11px; font-weight: 600;">${mac}</span>
+              <span title="${mac}" style="font-size: 11px; font-weight: 600;">${mac}</span>
             </div>
           </td>
           <td style="color: var(--text-mid); font-weight: 600;">${pwr}</td>
