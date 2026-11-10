@@ -1483,6 +1483,16 @@ class FrameStats:
         }
 
 
+# Default rx/tx side for each category's no-DS frames (management frames usually
+# carry neither DS bit): an AP broadcasts beacons, a client sends probe requests;
+# auth/eapol lean downlink.
+_CATEGORY_DEFAULT = {"beacon": "rx", "probe_req": "tx", "auth": "rx", "eapol": "rx"}
+
+
+def _empty_stats() -> FrameStats:
+    return FrameStats(breakdown={c: {"rx": 0, "tx": 0} for c in _FRAME_CATEGORIES})
+
+
 def _ds_direction(frame_control: int, default: str) -> str:
     """'rx' (FromDS/downlink) or 'tx' (ToDS/uplink); `default` for neither bit."""
     to_ds = bool(frame_control & 0x01)
@@ -1494,69 +1504,164 @@ def _ds_direction(frame_control: int, default: str) -> str:
     return default
 
 
-def count_frame_stats(filepath: str) -> FrameStats:
-    """Tally 802.11 frame types and signal from a capture, for live telemetry.
+def _tally_frame(packet: Packet, stats: FrameStats) -> None:
+    """Classify one 802.11 frame into `stats` (totals, category rx/tx, signal)."""
+    if not packet.haslayer(Dot11):
+        return
+    dot11 = packet[Dot11]
+    fc = int(dot11.FCfield or 0)
 
-    A single streaming pass, safe to call repeatedly on a file airodump is still
-    appending to: a truncated trailing record ends the read without raising, and
-    whatever was counted up to that point is returned. Never raises.
+    category: str | None = None
+    if packet.haslayer(EAPOL):
+        category = "eapol"
+    elif dot11.type == 0:  # management
+        if dot11.subtype == 8:
+            category = "beacon"
+        elif dot11.subtype == 4:
+            category = "probe_req"
+        elif dot11.subtype == 11:
+            category = "auth"
+
+    total_side = _ds_direction(fc, _CATEGORY_DEFAULT.get(category or "", "rx"))
+    if total_side == "rx":
+        stats.total_rx += 1
+    else:
+        stats.total_tx += 1
+
+    if category is not None and stats.breakdown is not None:
+        side = _ds_direction(fc, _CATEGORY_DEFAULT[category])
+        stats.breakdown[category][side] += 1
+
+    signal = None
+    if packet.haslayer(RadioTap):
+        signal = getattr(packet[RadioTap], "dBm_AntSignal", None)
+    if signal is None:
+        signal = getattr(packet, "dBm_AntSignal", None)
+    if isinstance(signal, int) and -120 < signal < 0 and (
+        stats.max_signal is None or signal > stats.max_signal
+    ):
+        stats.max_signal = signal
+
+
+def count_frame_stats(filepath: str) -> FrameStats:
+    """One-shot tally of 802.11 frame types and signal over a whole capture.
+
+    O(file size); for the live polling path use CaptureFrameCounter, which reads
+    only new records. Safe on a file airodump is still appending to (a truncated
+    trailing record ends the read without raising). Never raises.
     """
-    stats = FrameStats(breakdown={c: {"rx": 0, "tx": 0} for c in _FRAME_CATEGORIES})
+    stats = _empty_stats()
     if not validate_file(filepath):
         return stats
-
-    # Default rx/tx side for each category's no-DS frames (management frames
-    # usually carry neither DS bit): an AP broadcasts beacons, a client sends
-    # probe requests; auth/eapol lean downlink.
-    category_default = {"beacon": "rx", "probe_req": "tx", "auth": "rx", "eapol": "rx"}
-
     reader: PcapReader | None = None
     try:
         reader = PcapReader(filepath)
         for packet in reader:
-            if not packet.haslayer(Dot11):
-                continue
-            dot11 = packet[Dot11]
-            fc = int(dot11.FCfield or 0)
-
-            category: str | None = None
-            if packet.haslayer(EAPOL):
-                category = "eapol"
-            elif dot11.type == 0:  # management
-                if dot11.subtype == 8:
-                    category = "beacon"
-                elif dot11.subtype == 4:
-                    category = "probe_req"
-                elif dot11.subtype == 11:
-                    category = "auth"
-
-            # Totals count every frame; a frame's side uses its category default
-            # when it has no DS bits, else a benign downlink default.
-            total_side = _ds_direction(fc, category_default.get(category or "", "rx"))
-            if total_side == "rx":
-                stats.total_rx += 1
-            else:
-                stats.total_tx += 1
-
-            if category is not None and stats.breakdown is not None:
-                side = _ds_direction(fc, category_default[category])
-                stats.breakdown[category][side] += 1
-
-            signal = None
-            if packet.haslayer(RadioTap):
-                signal = getattr(packet[RadioTap], "dBm_AntSignal", None)
-            if signal is None:
-                signal = getattr(packet, "dBm_AntSignal", None)
-            if isinstance(signal, int) and -120 < signal < 0:
-                if stats.max_signal is None or signal > stats.max_signal:
-                    stats.max_signal = signal
+            _tally_frame(packet, stats)
     except Exception as exc:
         # A capture mid-write ends in a short record; keep the partial tally.
         parser_logger.debug("count_frame_stats stopped early on %s: %s", filepath, exc)
     finally:
         _close_stream_reader(reader, filepath)
-
     return stats
+
+
+# Classic pcap framing. airodump writes classic pcap (.cap); pcapng is not
+# handled incrementally (the counter then simply reports nothing).
+_PCAP_GLOBAL_HEADER = 24
+_PCAP_RECORD_HEADER = 16
+_MAX_FRAME_LEN = 262_144
+_LITTLE_ENDIAN_MAGICS = {b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"}
+_BIG_ENDIAN_MAGICS = {b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"}
+# RadioTap-prefixed 802.11 is link type 127; bare 802.11 is 105.
+_LINKTYPE_RADIOTAP = 127
+
+
+class CaptureFrameCounter:
+    """Incremental 802.11 frame tally over a capture airodump is still growing.
+
+    Re-parsing the whole PCAP every poll is O(file size) — a 10 MB capture took
+    ~26 s — which stalled the event loop and made the whole HUD chug as the file
+    grew. This reads only the records appended since the last call, so the cost
+    is bounded by new traffic. A rotated or truncated capture (new inode, or a
+    size below the last offset) resets the running tally. Never raises; returns
+    an independent cumulative snapshot each call so callers can diff for rates.
+    """
+
+    def __init__(self) -> None:
+        self._offset = 0
+        self._endian = "<"
+        self._linktype = _LINKTYPE_RADIOTAP
+        self._header_read = False
+        self._file_key: tuple[int, int] | None = None
+        self._stats = _empty_stats()
+
+    def _reset(self, file_key: tuple[int, int] | None) -> None:
+        self._offset = 0
+        self._header_read = False
+        self._file_key = file_key
+        self._stats = _empty_stats()
+
+    def _snapshot(self) -> FrameStats:
+        bd = self._stats.breakdown or {}
+        return FrameStats(
+            total_rx=self._stats.total_rx,
+            total_tx=self._stats.total_tx,
+            breakdown={cat: dict(sides) for cat, sides in bd.items()},
+            max_signal=self._stats.max_signal,
+        )
+
+    def update(self, filepath: str) -> FrameStats:
+        try:
+            st = os.stat(filepath)
+        except OSError:
+            return self._snapshot()
+        file_key = (st.st_dev, st.st_ino)
+        if file_key != self._file_key or st.st_size < self._offset:
+            self._reset(file_key)
+        try:
+            with open(filepath, "rb") as fh:
+                if not self._header_read and not self._read_global_header(fh):
+                    return self._snapshot()
+                fh.seek(self._offset)
+                self._consume_records(fh)
+        except OSError as exc:
+            parser_logger.debug("CaptureFrameCounter read failed on %s: %s", filepath, exc)
+        return self._snapshot()
+
+    def _read_global_header(self, fh) -> bool:
+        header = fh.read(_PCAP_GLOBAL_HEADER)
+        if len(header) < _PCAP_GLOBAL_HEADER:
+            return False
+        magic = header[:4]
+        if magic in _LITTLE_ENDIAN_MAGICS:
+            self._endian = "<"
+        elif magic in _BIG_ENDIAN_MAGICS:
+            self._endian = ">"
+        else:
+            return False  # not classic pcap (e.g. pcapng): no incremental read
+        self._linktype = struct.unpack(self._endian + "I", header[20:24])[0]
+        self._header_read = True
+        self._offset = _PCAP_GLOBAL_HEADER
+        return True
+
+    def _consume_records(self, fh) -> None:
+        builder = RadioTap if self._linktype == _LINKTYPE_RADIOTAP else Dot11
+        while True:
+            record_header = fh.read(_PCAP_RECORD_HEADER)
+            if len(record_header) < _PCAP_RECORD_HEADER:
+                break  # partial header: airodump is mid-write, resume next poll
+            incl_len = struct.unpack(self._endian + "I", record_header[8:12])[0]
+            if incl_len <= 0 or incl_len > _MAX_FRAME_LEN:
+                break  # a partially written length field; wait for the full record
+            data = fh.read(incl_len)
+            if len(data) < incl_len:
+                break  # partial record body: resume from this offset next poll
+            self._offset += _PCAP_RECORD_HEADER + incl_len
+            try:
+                _tally_frame(builder(data), self._stats)
+            except Exception:
+                continue  # one unparseable frame must not stop the tally
 
 
 # Example usage and testing

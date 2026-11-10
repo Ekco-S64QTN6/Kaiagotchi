@@ -101,6 +101,7 @@ class MonitoringAgent:
         # its own cadence (the CSV poll is faster than the PCAP needs re-reading).
         self._pkt_prev: Any | None = None
         self._pkt_prev_ts: float | None = None
+        self._frame_counter: Any | None = None
         self._last_frame_scan: float = 0.0
         self._frame_scan_interval: float = max(2.0, self.refresh_interval * 2)
         self._packet_breakdown: dict[str, dict[str, float]] | None = None
@@ -1157,8 +1158,12 @@ class MonitoringAgent:
             return
         self._last_frame_scan = now
         try:
-            from kaiagotchi.network.pcap_parser import count_frame_stats
-            stats = await asyncio.to_thread(count_frame_stats, str(pcap))
+            if self._frame_counter is None:
+                from kaiagotchi.network.pcap_parser import CaptureFrameCounter
+                self._frame_counter = CaptureFrameCounter()
+            # Incremental: reads only frames appended since the last poll, so the
+            # cost stays bounded as the capture grows instead of re-parsing it all.
+            stats = await asyncio.to_thread(self._frame_counter.update, str(pcap))
         except Exception:
             _LOG.debug("[monitoring] frame-stats scan failed", exc_info=True)
             return

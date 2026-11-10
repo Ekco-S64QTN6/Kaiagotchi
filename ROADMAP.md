@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Fix the HUD-wide lag from live packet telemetry: the capture PCAP was re-parsed in full every poll (O(file size) — ~26 s on a 10 MB capture), stalling the event loop and getting worse as the file grew. A CaptureFrameCounter now reads only the frames appended since the last poll, so per-poll cost stays flat (~120 ms) regardless of capture size.
+
 - Reclaim the capture dongle on launch: the backend terminates any stale Kaiagotchi instance (or its airodump) still bound to the capture interface before claiming it, so overlapping launches can no longer contend for the one monitor-mode adapter and leave a new dashboard spinning forever. Its own process tree is never signalled.
 
 - Live packet telemetry and channel RSSI history on the Cyber-Deck HUD: the monitoring agent counts 802.11 frame types (probe/beacon/auth/eapol, rx/tx by DS direction) from the capture PCAP and derives per-second rates, and the RSSI history fills from the strongest measured signal (per-frame RadioTap, else the strongest AP) so it populates while the radio hops channels.

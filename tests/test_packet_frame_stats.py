@@ -88,3 +88,70 @@ def test_truncated_trailing_record_keeps_the_partial_tally(tmp_path):
     truncated.write_bytes(data[:-8])  # cut the last record short
     stats = count_frame_stats(str(truncated))
     assert stats.breakdown["beacon"]["rx"] >= 2  # the whole records survived
+
+
+# ── CaptureFrameCounter: incremental reads over a growing capture ──────────
+from kaiagotchi.network.pcap_parser import CaptureFrameCounter  # noqa: E402
+
+
+def _beacon():
+    return RadioTap(present="dBm_AntSignal", dBm_AntSignal=-42) / Dot11(type=0, subtype=8, addr2=AP, addr3=AP) / Dot11Beacon()
+
+
+def test_counter_tallies_only_frames_appended_since_the_last_update(tmp_path):
+    p = tmp_path / "capture-01.cap"
+    wrpcap(str(p), [_beacon()] * 3)
+    c = CaptureFrameCounter()
+    first = c.update(str(p))
+    assert first.total_rx == 3
+
+    wrpcap(str(p), [_beacon()] * 2, append=True)  # two more records appended
+    second = c.update(str(p))
+    assert second.total_rx == 5  # cumulative, not re-counted from zero
+    assert second.breakdown["beacon"]["rx"] == 5
+
+
+def test_counter_returns_independent_snapshots_so_callers_can_diff(tmp_path):
+    p = tmp_path / "capture-01.cap"
+    wrpcap(str(p), [_beacon()] * 4)
+    c = CaptureFrameCounter()
+    a = c.update(str(p))
+    wrpcap(str(p), [_beacon()] * 3, append=True)
+    b = c.update(str(p))
+    assert a.total_rx == 4 and b.total_rx == 7  # `a` was not mutated by the second update
+
+
+def test_counter_resets_on_a_rotated_or_truncated_capture(tmp_path):
+    p = tmp_path / "capture-01.cap"
+    wrpcap(str(p), [_beacon()] * 10)
+    c = CaptureFrameCounter()
+    assert c.update(str(p)).total_rx == 10
+    wrpcap(str(p), [_beacon()] * 2)  # rewritten smaller -> rotation
+    assert c.update(str(p)).total_rx == 2
+
+
+def test_counter_is_incremental_not_order_n_of_the_whole_file(tmp_path):
+    import time
+    p = tmp_path / "capture-01.cap"
+    wrpcap(str(p), [_beacon()] * 3000)
+    c = CaptureFrameCounter()
+    t0 = time.perf_counter()
+    c.update(str(p))
+    full = time.perf_counter() - t0
+
+    wrpcap(str(p), [_beacon()] * 50, append=True)
+    t0 = time.perf_counter()
+    c.update(str(p))
+    incremental = time.perf_counter() - t0
+
+    # Reading 50 new records must be far cheaper than the initial 3000.
+    assert incremental < full * 0.25, f"not incremental: full={full:.3f}s incremental={incremental:.3f}s"
+
+
+def test_counter_on_a_non_pcap_file_reports_nothing_without_raising(tmp_path):
+    junk = tmp_path / "x.cap"
+    junk.write_bytes(b"\x00\x11\x22\x33 not a pcap header at all")
+    c = CaptureFrameCounter()
+    s = c.update(str(junk))
+    assert s.total_rx == 0 and s.total_tx == 0
+    assert c.update(str(tmp_path / "missing.cap")).total_rx == 0
