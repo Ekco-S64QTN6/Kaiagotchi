@@ -58,14 +58,24 @@ async def test_mode_changes_stay_pinned_to_capture_adapter(monkeypatch):
         calls.append(command)
         return FakeProcess()
 
+    reservation_calls = []
     monkeypatch.setattr(manager, "_interface_exists", exists)
     monkeypatch.setattr(manager, "get_interface_info", get_info)
-    monkeypatch.setattr(action_manager_module.shutil, "which", lambda name: "/usr/bin/nmcli" if name == "nmcli" else None)
-    monkeypatch.setattr(action_manager_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        action_manager_module,
+        "ensure_networkmanager_reservation",
+        lambda _config, interface: reservation_calls.append(interface),
+    )
+    monkeypatch.setattr(
+        action_manager_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
 
     assert await manager.set_monitor_mode("wlan0") is True
+    assert reservation_calls == ["wlan1"]
     assert ("iw", "dev", "wlan1", "set", "type", "monitor") in calls
-    assert ("nmcli", "device", "set", "wlan1", "managed", "no") in calls
+    assert not any(command[:3] == ("nmcli", "device", "set") for command in calls)
     assert all("wlan0" not in command for command in calls)
 
 
@@ -88,11 +98,15 @@ async def test_managed_mode_uses_valid_iw_syntax_and_capture_adapter(monkeypatch
 
     monkeypatch.setattr(manager, "_interface_exists", exists)
     monkeypatch.setattr(manager, "get_interface_info", get_info)
-    monkeypatch.setattr(action_manager_module.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(action_manager_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        action_manager_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
 
     assert await manager.set_managed_mode("wlan0") is True
     assert ("iw", "dev", "wlan1", "set", "type", "managed") in calls
+    assert not any(command[:3] == ("nmcli", "device", "set") for command in calls)
     assert all("wlan0" not in command for command in calls)
     assert manager._monitor_interface is None
 
@@ -111,8 +125,16 @@ async def test_mode_change_fails_when_command_returns_nonzero(monkeypatch):
         return FakeProcess()
 
     monkeypatch.setattr(manager, "_interface_exists", exists)
-    monkeypatch.setattr(action_manager_module.shutil, "which", lambda _name: None)
-    monkeypatch.setattr(action_manager_module.asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    monkeypatch.setattr(
+        action_manager_module,
+        "ensure_networkmanager_reservation",
+        lambda *_args: None,
+    )
+    monkeypatch.setattr(
+        action_manager_module.asyncio,
+        "create_subprocess_exec",
+        fake_create_subprocess_exec,
+    )
 
     assert await manager.set_monitor_mode("wlan0") is False
     assert manager._monitor_interface == "wlan1"

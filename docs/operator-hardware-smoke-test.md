@@ -42,7 +42,14 @@ CAP_IF="${KAIAGOTCHI_INTERFACE:-wlan1}"
 sudo -v
 sudo ip link show dev "$CAP_IF"
 sudo iw dev "$CAP_IF" info
+sudo kaiagotchi doctor
 ```
+
+When NetworkManager is installed, the first privileged startup creates or repairs
+Kaiagotchi's permanent MAC reservation and verifies `GENERAL.NM-MANAGED: no` for
+the capture adapter. That NetworkManager state is intentional and must remain
+unmanaged even after shutdown; only the Linux kernel interface type returns to
+`managed`.
 
 Stop here if the interface is missing, the adapter does not support monitor mode,
 the selected adapter is also your normal connection, or you cannot obtain the
@@ -71,8 +78,9 @@ KAIAGOTCHI_INTERFACE="$CAP_IF" ./run_kaiagotchi.sh --no-web
 
 Expected behavior:
 
-- Startup does not report missing commands, permission errors, or failure to switch
-  the selected adapter to monitor mode.
+- Startup verifies the permanent NetworkManager reservation and does not report
+  missing commands, permission errors, or failure to switch the selected adapter to
+  monitor mode.
 - The logs indicate that monitor mode was verified and the `airodump-ng` process
   was started.
 - The terminal dashboard remains responsive. No active packet injection is needed
@@ -96,16 +104,21 @@ CAP_IF="${KAIAGOTCHI_INTERFACE:-wlan1}"
 pgrep -af airodump-ng || true
 sudo iw dev "$CAP_IF" info
 ip -brief link show dev "$CAP_IF"
+sudo nmcli -f GENERAL.NM-MANAGED device show "$CAP_IF"
+nmcli device status
 ```
 
 A clean result means:
 
 - No `airodump-ng` process from this test remains. If the command lists a process,
   confirm its interface and owner before taking any action; other sessions may be valid.
-- The selected capture interface is back in **managed** mode and is up.
+- The selected capture interface is back in **kernel managed** mode and is up.
+- NetworkManager still reports `GENERAL.NM-MANAGED: no` for the capture adapter;
+  this durable reservation is not undone by shutdown.
+- The primary/uplink adapter remains connected and its NetworkManager state is
+  unchanged.
 - The application reports that monitoring stopped cleanly and does not report an
-  unreaped child or failed interface restoration.
-- The primary/managed adapter's state is unchanged.
+  unreaped child or failed kernel-mode restoration.
 
 Review the application log at the configured log location if the terminal output
 did not show the full shutdown result. Treat a missing success message as an
@@ -131,13 +144,13 @@ CAP_IF="${KAIAGOTCHI_INTERFACE:-wlan1}"
 sudo ip link set dev "$CAP_IF" down
 sudo iw dev "$CAP_IF" set type managed
 sudo ip link set dev "$CAP_IF" up
-if command -v nmcli >/dev/null 2>&1; then
-    sudo nmcli device set "$CAP_IF" managed yes
-fi
 sudo iw dev "$CAP_IF" info
+sudo kaiagotchi doctor
 ```
 
 Do not run this restoration sequence while a capture process could still be active.
+Do not run `nmcli device set "$CAP_IF" managed yes`: the permanent MAC reservation
+intentionally keeps NetworkManager from managing this dedicated adapter.
 If a restore command fails, stop and investigate the driver/NetworkManager error
 rather than reporting a successful smoke test.
 

@@ -17,6 +17,10 @@ def _fake_tools(tmp_path: Path) -> tuple[Path, dict[str, str]]:
 printf 'ip %s\n' "$*" >> "$COMMAND_LOG"
 exit 0
 ''',
+        "python3": r'''#!/bin/sh
+printf 'python3 %s\\n' "$*" >> "$COMMAND_LOG"
+exit 0
+''',
         "nmcli": r'''#!/bin/sh
 printf 'nmcli %s\n' "$*" >> "$COMMAND_LOG"
 exit 0
@@ -83,8 +87,10 @@ def test_setup_wireless_only_configures_wlan1_and_confirms_monitor_mode(tmp_path
     assert "Setup complete." in result.stdout
     commands = log.read_text(encoding="utf-8")
     assert "ip link show dev wlan1" in commands
+    assert "python3 -c" in commands
     assert "iw dev wlan1 set type monitor" in commands
     assert "airodump-ng wlan1" in commands
+    assert "nmcli device set" not in commands
     assert "wlan0" not in commands
 
 
