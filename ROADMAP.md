@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Keep PCAP startup reconciliation inside the private archive: ignore symlinks, avoid following them when applying file permissions, and discard stale metadata that points through a symlink.
+
 - Propagate explicit incomplete shutdown results from MonitoringAgent through Agent to Manager; retry failed process reaping, archive cleanup, managed-mode restoration, and Agent/ticker/View stops without repeating successful steps.
 
 - Correct manual channel cycle indexing so the first hop selects the first configured channel and subsequent hops advance and wrap in configured order.
