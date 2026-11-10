@@ -489,6 +489,8 @@ class TerminalDisplay:
             encryption = encryption[:10]
 
             raw_essid = ap.get("essid")
+            if raw_essid is None:
+                raw_essid = ap.get("ssid")
             essid = "" if raw_essid is None else str(raw_essid)
             essid = essid[:max(0, mw - 40)]
 
@@ -509,7 +511,8 @@ class TerminalDisplay:
             raw_mac = station.get("station_mac")
             mac = "" if raw_mac is None else str(raw_mac)
             ps, pc = self._pwr_display(station.get("power", "-99"))
-            packets = str(station.get("packets", "0"))
+            raw_packets = station.get("packets")
+            packets = "0" if raw_packets is None else str(raw_packets)
             raw_bssid = station.get("bssid")
             bssid = "unassociated" if raw_bssid is None else str(raw_bssid)
             bssid = bssid[:max(0, mw - 32)]
