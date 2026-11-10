@@ -737,3 +737,61 @@ async def test_manager_retries_explicit_incomplete_agent_stop_result():
     await manager.stop()
     assert manager._shutdown_complete is True
     assert agent.stop_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_manager_remembers_a_stop_that_finishes_between_timeout_retries(monkeypatch):
+    monkeypatch.setattr(manager_module, "_STOP_TIMEOUT_SECONDS", 0.01)
+    agent_started = asyncio.Event()
+    agent_release = asyncio.Event()
+    agent_finished = asyncio.Event()
+    ticker_started = asyncio.Event()
+    ticker_release = asyncio.Event()
+    ticker_finished = asyncio.Event()
+
+    class DelayedAgent:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            agent_started.set()
+            await agent_release.wait()
+            agent_finished.set()
+
+    class DelayedTicker:
+        def __init__(self):
+            self.stop_calls = 0
+
+        async def stop(self):
+            self.stop_calls += 1
+            ticker_started.set()
+            await ticker_release.wait()
+            ticker_finished.set()
+
+    agent = DelayedAgent()
+    ticker = DelayedTicker()
+    manager = Manager(config={}, system_state={})
+    manager.agent = agent
+    manager._ticker = ticker
+
+    # Both component tasks time out and remain alive for the next call.
+    await manager.stop()
+    await asyncio.wait_for(agent_started.wait(), timeout=1.0)
+    await asyncio.wait_for(ticker_started.wait(), timeout=1.0)
+
+    # The Agent stop completes after the first attempt returned, while the
+    # ticker is still pending. Its successful result must be remembered.
+    agent_release.set()
+    await asyncio.wait_for(agent_finished.wait(), timeout=1.0)
+    await manager.stop()
+    assert manager._shutdown_complete is False
+    assert agent.stop_calls == 1
+
+    ticker_release.set()
+    await asyncio.wait_for(ticker_finished.wait(), timeout=1.0)
+    await manager.stop()
+
+    assert manager._shutdown_complete is True
+    assert agent.stop_calls == 1
+    assert ticker.stop_calls == 1
