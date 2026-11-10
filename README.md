@@ -210,6 +210,9 @@ separate copies of the nested defaults.
 Network snapshots are recovered best-effort. If an access-point entry cannot be
 reconstructed from its value or fallback BSSID key, only that entry is skipped;
 valid interfaces and other access points remain available.
+Generated network summaries use the same best-effort approach: malformed persisted
+BSSID/PCAP records are skipped, unknown ESSIDs are displayed as hidden/unknown,
+and absent hidden-AP timestamps render blank rather than aborting the Markdown report.
 
 ### Reward state contract
 
