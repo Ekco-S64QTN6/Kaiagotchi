@@ -57,7 +57,13 @@ def _deep_merge(dst: dict[str, Any], src: dict[str, Any]) -> dict[str, Any]:
 class View:
     """Bridge between the Agent, system state, and the terminal UI."""
 
-    def __init__(self, config: dict[str, Any], display: TerminalDisplay | None = None):
+    def __init__(
+        self,
+        config: dict[str, Any],
+        display: TerminalDisplay | None = None,
+        *,
+        create_display: bool = True,
+    ):
         self._config = config or {}
         self.display: TerminalDisplay | None = display
         self._agent = None
@@ -65,6 +71,7 @@ class View:
         self._last_drawn_state: dict[str, Any] = {}
         self._update_lock = asyncio.Lock()
         self._running = False
+        self._startup_ready = False
         self._update_task: asyncio.Task | None = None
         self._chatter_task: asyncio.Task | None = None
         self._last_draw_time = 0.0
@@ -91,9 +98,11 @@ class View:
 
         self._state_lock = threading.Lock()
 
-        if not self.display:
+        if self.display is None and create_display:
             _log.warning("No display provided to View; creating fallback TerminalDisplay.")
             self.display = TerminalDisplay(self._config)
+        elif self.display is None:
+            _log.info("View initialized without a terminal display (web/headless mode).")
 
         if self.display and hasattr(self.display, "register_state_provider"):
             self.display.register_state_provider(self.get_snapshot_dict)
@@ -195,6 +204,7 @@ class View:
             # Chatter log
             normalized["chatter_log"] = list(self._chatter_lines)
             normalized["pwnd_count"] = self._handshake_count()
+            normalized["startup_ready"] = self._startup_ready
 
             # Status is the latest entry from chatter log (stripped of timestamp)
             if self._chatter_lines:
@@ -208,6 +218,11 @@ class View:
                 normalized["status"] = "Monitoring signals..."
 
             return normalized
+
+    def mark_startup_ready(self) -> None:
+        """Mark the core runtime ready for clients that display startup progress."""
+        with self._state_lock:
+            self._startup_ready = True
 
     # ------------------------------------------------------------------
     async def async_update(self, state: dict[str, Any]):
