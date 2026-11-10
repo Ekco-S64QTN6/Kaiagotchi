@@ -41,6 +41,8 @@ Legacy capture helper tests must exercise missing, empty, malformed, valid-empty
 
 PCAP archive reconciliation tests must use synthetic files and verify that symlink entries are ignored without changing permissions or contents of their targets; regular `.pcap` and `.pcapng` files, including uppercase extensions, must still be indexed.
 
+PCAP registration/re-analysis tests must verify that only regular direct children of the private archive are analyzed or registered. External paths, symlink entries, and persisted paths outside the archive must be skipped without touching their targets; the archive directory itself must be rejected when it is a symlink.
+
 Network summary-report tests must cover hidden AP records with missing/null `last_seen`, non-string optional ESSID/channel/encryption values, and malformed non-dictionary persisted records while confirming that valid neighboring entries still appear in both JSON and Markdown outputs.
 
 Unsupported backend compatibility shims must fail explicitly on `start()`; do not add successful-looking no-op process lifecycle methods. Any newly supported external capture backend needs bounded startup, health/error reporting, and deterministic process termination/reaping tests before it is documented as available.
