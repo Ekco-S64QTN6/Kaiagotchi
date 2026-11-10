@@ -1,7 +1,6 @@
 """Regression tests for LastSession's private storage boundary."""
 
 import json
-import os
 import stat
 
 from kaiagotchi.storage.last_session import LastSession
