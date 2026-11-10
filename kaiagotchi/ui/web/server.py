@@ -816,6 +816,17 @@ class WebServer:
         net = network_snapshot if isinstance(network_snapshot, dict) else {}
         channel = _to_int(snap.get("channel")) or _to_int(net.get("current_channel"))
         on_channel = [a["pwr"] for a in aps if a["ch"] == channel and a["pwr"] is not None]
+        all_power = [a["pwr"] for a in aps if a["pwr"] is not None]
+        # Prefer the agent's measured signal (per-frame RadioTap). Fall back to the
+        # strongest AP on the current channel, then to the strongest AP seen at all,
+        # so the RSSI history is populated even while the radio hops channels.
+        explicit_rssi = _dbm(snap.get("current_rssi"))
+        current_rssi = (
+            explicit_rssi if explicit_rssi is not None
+            else max(on_channel) if on_channel
+            else max(all_power) if all_power
+            else None
+        )
 
         mood = snap.get("agent_mood") or snap.get("mood") or "neutral"
         mood = str(getattr(mood, "value", mood)).lower()
@@ -832,7 +843,7 @@ class WebServer:
             "aps_total": snap.get("aps_max_seen", len(aps)),
             "pwnd_count": _to_int(snap.get("pwnd_count")) or 0,
             "current_channel": channel,
-            "current_rssi": max(on_channel) if on_channel else None,
+            "current_rssi": current_rssi,
             "packet_breakdown": breakdown if isinstance(breakdown, dict) else None,
             "packet_rate": snap.get("packet_rate"),
             "total_packets": totals if isinstance(totals, dict) else None,

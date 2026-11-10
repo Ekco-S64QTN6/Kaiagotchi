@@ -78,6 +78,8 @@ features or capture-backend changes.
 
 ## Recently completed
 
+- Live packet telemetry and channel RSSI history on the Cyber-Deck HUD: the monitoring agent counts 802.11 frame types (probe/beacon/auth/eapol, rx/tx by DS direction) from the capture PCAP and derives per-second rates, and the RSSI history fills from the strongest measured signal (per-frame RadioTap, else the strongest AP) so it populates while the radio hops channels.
+
 - Keep desktop and terminal launch modes mutually exclusive: the HUD backend does not construct or start curses, the TUI launcher disables the web server, and the web dashboard shows startup progress until the Agent runtime is ready.
 
 - Make JSON state loading and atomic replacement refuse symlink/non-regular paths: loading uses no-follow descriptors and symlink destinations are replaced with owner-private `0600` files without inheriting target metadata.

@@ -96,6 +96,18 @@ class MonitoringAgent:
             self.config.get("monitor", {}).get("csv_poll", 1.0)
         ) or 1.0
 
+        # Live packet telemetry derived from the capture PCAP: cumulative frame
+        # tallies from the previous scan, diffed to per-second rates. Scanned on
+        # its own cadence (the CSV poll is faster than the PCAP needs re-reading).
+        self._pkt_prev: Any | None = None
+        self._pkt_prev_ts: float | None = None
+        self._last_frame_scan: float = 0.0
+        self._frame_scan_interval: float = max(2.0, self.refresh_interval * 2)
+        self._packet_breakdown: dict[str, dict[str, float]] | None = None
+        self._packet_rate: float | None = None
+        self._total_packets: dict[str, int] | None = None
+        self._current_rssi: int | None = None
+
         self.persistent_network: PersistentNetwork | None = None
         self.persistent_mood: PersistentMood | None = None
         self.epoch_tracker = None  # Will be set by agent
@@ -1020,6 +1032,7 @@ class MonitoringAgent:
                     except Exception:
                         _LOG.debug("persistent_mood.apply_reward failed", exc_info=True)
 
+                await self._refresh_packet_stats()
                 await self._update_state(aps, stations)
         except asyncio.CancelledError:
             _LOG.debug("[monitoring] Scan loop cancelled normally")
@@ -1114,6 +1127,59 @@ class MonitoringAgent:
             return 0.0
 
     # ------------------------------------------------------------------
+    async def _refresh_packet_stats(self) -> None:
+        """Re-read the capture PCAP on its own cadence and derive per-second frame
+        rates, totals and the strongest signal. Throttled, run off the loop, and
+        tolerant of a capture airodump is still writing or has just rotated."""
+        now = time.monotonic()
+        if now - self._last_frame_scan < self._frame_scan_interval:
+            return
+        pcap = self._session_pcap
+        if pcap is None or not pcap.exists():
+            return
+        self._last_frame_scan = now
+        try:
+            from kaiagotchi.network.pcap_parser import count_frame_stats
+            stats = await asyncio.to_thread(count_frame_stats, str(pcap))
+        except Exception:
+            _LOG.debug("[monitoring] frame-stats scan failed", exc_info=True)
+            return
+
+        cur_total = stats.total_rx + stats.total_tx
+        self._total_packets = {"rx": stats.total_rx, "tx": stats.total_tx}
+        if stats.max_signal is not None:
+            self._current_rssi = stats.max_signal
+
+        prev, prev_ts = self._pkt_prev, self._pkt_prev_ts
+        # A rotated/archived capture restarts the counters; diff against zero.
+        if prev is not None and (prev.total_rx + prev.total_tx) > cur_total:
+            prev = None
+        if prev is not None and prev_ts is not None:
+            dt = max(1e-3, now - prev_ts)
+            breakdown: dict[str, dict[str, float]] = {}
+            for cat, cur in (stats.breakdown or {}).items():
+                was = (prev.breakdown or {}).get(cat, {"rx": 0, "tx": 0})
+                breakdown[cat] = {
+                    "rx": round(max(0, cur["rx"] - was["rx"]) / dt),
+                    "tx": round(max(0, cur["tx"] - was["tx"]) / dt),
+                }
+            self._packet_breakdown = breakdown
+            self._packet_rate = round(max(0, cur_total - (prev.total_rx + prev.total_tx)) / dt)
+        self._pkt_prev = stats
+        self._pkt_prev_ts = now
+
+    def _strongest_ap_power(self, aps: list[dict[str, Any]]) -> int | None:
+        """The strongest AP signal airodump reported this scan, in dBm."""
+        best: int | None = None
+        for ap in aps:
+            try:
+                power = int(str(ap.get("power", "")).strip())
+            except (TypeError, ValueError):
+                continue
+            if -120 < power < 0 and (best is None or power > best):
+                best = power
+        return best
+
     async def _update_state(self, aps: list[dict[str, Any]], stations: list[dict[str, Any]]):
         ap_count = len(aps)
         self._max_aps_seen = max(self._max_aps_seen, ap_count)
@@ -1133,6 +1199,12 @@ class MonitoringAgent:
                         current_channel = candidate
                 except (TypeError, ValueError):
                     pass
+
+        # Strongest signal for the RSSI history: the per-frame RadioTap value
+        # when the PCAP carried one, else the strongest AP power this scan.
+        current_rssi = self._current_rssi
+        if current_rssi is None:
+            current_rssi = self._strongest_ap_power(aps)
 
         # Get recent captures for epoch tracking
         recent_captures = self._get_recent_captures_list()
@@ -1154,7 +1226,13 @@ class MonitoringAgent:
             "aps_list": aps,
             "stations_list": stations,
             "recent_captures": recent_captures,
+            "packet_breakdown": self._packet_breakdown,
+            "packet_rate": self._packet_rate,
+            "total_packets": self._total_packets,
+            "current_rssi": current_rssi,
         }
+        if current_channel is not None:
+            new_state["channel"] = current_channel
 
         async with self.state_lock:
             if isinstance(self.system_state, dict):
@@ -1182,6 +1260,11 @@ class MonitoringAgent:
                     "stations_list": stations,
                     "mode": "MONITORING",
                     "uptime": uptime,
+                    "packet_breakdown": self._packet_breakdown,
+                    "packet_rate": self._packet_rate,
+                    "total_packets": self._total_packets,
+                    "current_rssi": current_rssi,
+                    **({"channel": current_channel} if current_channel is not None else {}),
                 })
             except Exception:
                 _LOG.debug("view.async_update failed in monitoring _update_state", exc_info=True)
