@@ -855,3 +855,89 @@ html, body {
 .tactical-table th .unit {
   text-transform: none;
 }
+
+
+/* =============================================================================
+   STARTUP OVERLAY — web-only mode has its own dashboard boot indicator
+   ============================================================================= */
+#startup-overlay[hidden] {
+  display: none !important;
+}
+
+#startup-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 34, 44, 0.96), rgba(4, 6, 12, 0.99) 72%),
+    var(--bg-void);
+}
+
+.startup-card {
+  width: min(100%, 460px);
+  padding: 34px 32px;
+  border: 1px solid var(--line-bright);
+  background: rgba(7, 12, 22, 0.94);
+  box-shadow: 0 0 34px rgba(0, 240, 255, 0.12), inset 0 0 28px rgba(0, 240, 255, 0.035);
+  text-align: center;
+}
+
+.startup-kicker {
+  margin-bottom: 18px;
+  color: var(--cyan);
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.24em;
+}
+
+.startup-title {
+  color: var(--text-bright);
+  font-family: var(--font-display);
+  font-size: 23px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.startup-detail {
+  margin-top: 12px;
+  color: var(--text-dim);
+  font-size: 10px;
+  line-height: 1.8;
+  letter-spacing: 0.08em;
+}
+
+.startup-track {
+  height: 7px;
+  margin: 28px 0 14px;
+  overflow: hidden;
+  border: 1px solid var(--line-subtle);
+  background: rgba(0, 240, 255, 0.08);
+}
+
+.startup-fill {
+  width: 34%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--cyan), var(--green), transparent);
+  box-shadow: 0 0 12px var(--cyan-glow-intense);
+  animation: startup-progress 1.5s ease-in-out infinite;
+}
+
+.startup-state {
+  color: var(--green);
+  font-family: var(--font-code);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+}
+
+@keyframes startup-progress {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(320%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-fill { animation-duration: 4s; }
+}
