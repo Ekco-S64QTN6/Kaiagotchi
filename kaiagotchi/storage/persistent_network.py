@@ -1443,6 +1443,33 @@ class PersistentNetwork:
         )
 
     @_state_locked
+    def get_pwned_count(self) -> int:
+        """Distinct networks actually captured — the 'PWND' scoreboard figure.
+
+        One network per BSSID, counted only when a complete 4-way handshake or
+        a PMKID was captured for it. Raw analysis entries overcount: a network
+        re-observed in several PCAPs appears once per PCAP, and incomplete
+        handshakes (not crackable, so not pwned) are included.
+        """
+        pwned: set[str] = set()
+        for record in self._data.get("pcaps", {}).values():
+            if not isinstance(record, dict):
+                continue
+            for capture in record.get("analysis") or []:
+                if not isinstance(capture, dict):
+                    continue
+                ctype = capture.get("type")
+                is_pmkid = bool(capture.get("pmkid")) or (
+                    isinstance(ctype, str) and "PMKID" in ctype.upper()
+                )
+                if not (is_pmkid or capture.get("handshake_complete")):
+                    continue
+                bssid = str(capture.get("bssid") or "").upper()
+                if bssid:
+                    pwned.add(bssid)
+        return len(pwned)
+
+    @_state_locked
     def get_analysis_for_bssid(self, bssid: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         try:

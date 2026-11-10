@@ -14,7 +14,7 @@ def test_handshake_count_uses_locked_count_accessor_not_private_data():
             }
         }
 
-        def get_capture_analysis_count(self):
+        def get_pwned_count(self):
             return 3
 
         def get_pcap_records(self):
@@ -49,3 +49,25 @@ def test_capture_analysis_count_accessor_reads_consistent_store_data(tmp_path):
         }
 
     assert network.get_capture_analysis_count() == 3
+
+
+def test_pwned_count_is_distinct_networks_not_raw_entries(tmp_path):
+    """PWND:6 came from counting every analysis entry. A network re-seen across
+    PCAPs, and incomplete handshakes, must not inflate the figure."""
+    network = PersistentNetwork(storage_dir=str(tmp_path))
+    network._sync_thread.join(timeout=5.0)
+
+    with network._state_lock:
+        network._data["pcaps"] = {
+            # Same BSSID captured in two PCAPs → one pwned network.
+            "a.pcap": {"analysis": [{"type": "WPA Handshake", "bssid": "AA:BB", "handshake_complete": True}]},
+            "b.pcap": {"analysis": [{"type": "WPA Handshake", "bssid": "aa:bb", "handshake_complete": True}]},
+            # A PMKID for a different network → a second pwned network.
+            "c.pcap": {"analysis": [{"type": "PMKID", "bssid": "CC:DD", "pmkid": "deadbeef"}]},
+            # An incomplete handshake is not pwned.
+            "d.pcap": {"analysis": [{"type": "WPA Handshake", "bssid": "EE:FF", "handshake_complete": False}]},
+        }
+
+    assert network.get_pwned_count() == 2
+    # The raw accessor still counts every entry (4), which is why PWND used it wrongly.
+    assert network.get_capture_analysis_count() == 4

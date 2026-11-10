@@ -157,14 +157,17 @@ class View:
 
     # ------------------------------------------------------------------
     def _handshake_count(self) -> int:
-        """Captured handshakes/PMKIDs recorded by the agent's persistent network store."""
+        """Distinct networks pwned (complete handshake or PMKID) — the PWND figure.
+
+        Uses the locked accessor so the dashboard refresh does not copy every
+        nested analysis record. The older get_capture_analysis_count counted raw
+        entries, which overcounts re-observed networks and incomplete handshakes.
+        """
         try:
             pn = getattr(self._agent, "persistent_network", None)
-            count = getattr(pn, "get_capture_analysis_count", None)
+            count = getattr(pn, "get_pwned_count", None)
             if not callable(count):
                 return 0
-            # Count under PersistentNetwork's state lock without copying every
-            # nested analysis record on each dashboard refresh.
             return int(count())
         except Exception:
             return 0
