@@ -138,6 +138,10 @@ def stop_backend(proc: subprocess.Popen) -> None:
             continue
 
 
+#: The portraits under static/assets/kaia/ (KaiaCodec.PORTRAITS); t2 is the default.
+PORTRAITS = ("k28", "k59", "k60", "t1", "t2", "t3")
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\\n\\n")[0])
     ap.add_argument("--url", default=DEFAULT_URL, help="loopback HUD URL (default %(default)s)")
@@ -146,7 +150,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-backend", action="store_true",
                     help="do not start the capture backend; attach to one already running")
     ap.add_argument("--size", default="1280x800")
+    ap.add_argument("--face", default=None,
+                    help="Kaia's portrait: k28, k59, k60, t1, t2 (default) or t3; 'random' rotates")
+    ap.add_argument("--random", dest="face", action="store_const", const="random",
+                    help="rotate through all portraits (same as --face random)")
+    for name in PORTRAITS:
+        ap.add_argument(f"--{name}", dest="face", action="store_const", const=name,
+                        help=argparse.SUPPRESS)
     args, passthrough = ap.parse_known_args(argv)
+    if args.face is not None and args.face not in (*PORTRAITS, "random"):
+        print(f"--face must be one of {', '.join(PORTRAITS)} or random", file=sys.stderr)
+        return 2
 
     if not app_window.available():
         print("This machine cannot open a WebKitGTK window: install webkit2gtk-4.1 and "
@@ -182,7 +196,10 @@ def main(argv: list[str] | None = None) -> int:
     # localhost resolving to a different address family than the probe socket.
     host = DEFAULT_HOST
     path = parsed_url.path or "/"
-    url = urlunsplit(("http", f"{host}:{port}", path, parsed_url.query, ""))
+    query = parsed_url.query
+    if args.face:
+        query = "&".join(q for q in (query, f"face={args.face}") if q)
+    url = urlunsplit(("http", f"{host}:{port}", path, query, ""))
 
     backend: subprocess.Popen | None = None
     try:

@@ -30,22 +30,22 @@ class TelemetryController {
   /**
    * Render discrete 10-bar LED signal meter with dBm readout
    */
-  renderSignalMeter(pwr) {
+  /** The class of each of the meter's ten bars for a signal in dBm. */
+  meterBars(pwr) {
     const power = parseInt(pwr, 10) || -99;
     // Map -95 dBm (0 bars) to -30 dBm (10 bars)
     const clamped = Math.max(-95, Math.min(-30, power));
     const activeCount = Math.round(((clamped - (-95)) / 65) * 10);
-
-    let barsHtml = '';
+    const out = [];
     for (let i = 1; i <= 10; i++) {
-      let activeClass = '';
-      if (i <= activeCount) {
-        if (i <= 3) activeClass = 'active-red';
-        else if (i <= 6) activeClass = 'active-yellow';
-        else activeClass = 'active-green';
-      }
-      barsHtml += `<div class="meter-bar ${activeClass}"></div>`;
+      out.push(i > activeCount ? '' : i <= 3 ? 'active-red' : i <= 6 ? 'active-yellow' : 'active-green');
     }
+    return out;
+  }
+
+  renderSignalMeter(pwr) {
+    const power = parseInt(pwr, 10) || -99;
+    const barsHtml = this.meterBars(power).map((c) => `<div class="meter-bar ${c}"></div>`).join('');
 
     return `
       <div class="signal-cell">
@@ -56,44 +56,96 @@ class TelemetryController {
   }
 
   /**
-   * Update the Access Points table
+   * Update the Access Points table.
+   *
+   * Snapshots arrive at 10 Hz but the AP list changes about once a second (each
+   * airodump CSV read), and rebuilding up to 200 rows with innerHTML on every
+   * message kept the main thread busy under the codec's frames. An unchanged
+   * snapshot is skipped; otherwise each row is kept per BSSID and only the
+   * cells whose values changed are touched. The markup is the same as before.
    */
   updateAps(apsList) {
     if (!this.apTableBody || !Array.isArray(apsList)) return;
     apsList = [...apsList].sort((a, b) => (parseInt(b.pwr, 10) || -99) - (parseInt(a.pwr, 10) || -99));
+    this.lastAps = apsList;
 
-    let html = '';
-    apsList.forEach((ap) => {
-      const bssid = esc(ap.bssid || '--');
-      const ssid = esc(ap.ssid || '<Hidden>');
-      const ch = esc(ap.ch ?? '?');
-      const enc = esc((ap.enc || '--').toUpperCase());
-      const pwr = parseInt(ap.pwr, 10) || -99;
-      const isSelected = this.selectedBssid === bssid;
-      const encClass = enc.includes('WPA3') ? 'wpa3' : '';
+    const key = (this.selectedBssid || '') + '\n' + apsList
+      .map((ap) => `${ap.bssid}|${ap.ssid}|${ap.ch}|${ap.enc}|${parseInt(ap.pwr, 10) || -99}`).join('\n');
+    if (key === this.lastApsKey) return;
+    this.lastApsKey = key;
 
-      let pipClass = 'green';
-      if (pwr < -75) pipClass = 'red';
-      else if (pwr < -55) pipClass = 'yellow';
+    if (!this.apRows) this.apRows = new Map();
+    const seen = new Set();
+    let index = 0;
+    for (const ap of apsList) {
+      const bssid = String(ap.bssid || '--');
+      if (seen.has(bssid)) continue;          // a duplicated BSSID renders once
+      seen.add(bssid);
+      let row = this.apRows.get(bssid);
+      if (!row) {
+        row = this._createApRow(bssid);
+        this.apRows.set(bssid, row);
+      }
+      this._fillApRow(row, ap);
+      const at = this.apTableBody.children[index];
+      if (at !== row.tr) this.apTableBody.insertBefore(row.tr, at || null);
+      index++;
+    }
+    for (const [bssid, row] of this.apRows) {
+      if (!seen.has(bssid)) {
+        row.tr.remove();
+        this.apRows.delete(bssid);
+      }
+    }
+  }
 
-      html += `
-        <tr class="${isSelected ? 'active-target' : ''}" data-bssid="${bssid}">
+  _createApRow(bssid) {
+    const tmpl = document.createElement('tbody');
+    tmpl.innerHTML = `
+        <tr data-bssid="${esc(bssid)}">
           <td>
             <div class="bssid-cell">
-              <span class="status-pip ${pipClass}"></span>
-              <span>${bssid}</span>
+              <span class="status-pip"></span>
+              <span>${esc(bssid)}</span>
             </div>
           </td>
-          <td style="color: var(--cyan); font-weight: 700;">${ch}</td>
-          <td>${this.renderSignalMeter(pwr)}</td>
-          <td><span class="enc-tag ${encClass}">${enc}</span></td>
-          <td class="essid-name">${ssid}</td>
-        </tr>
-      `;
-    });
+          <td style="color: var(--cyan); font-weight: 700;"></td>
+          <td>${this.renderSignalMeter(-99)}</td>
+          <td><span class="enc-tag"></span></td>
+          <td class="essid-name"></td>
+        </tr>`;
+    const tr = tmpl.firstElementChild;
+    const cells = tr.children;
+    return {
+      tr,
+      pip: tr.querySelector('.status-pip'),
+      ch: cells[1],
+      bars: Array.from(tr.querySelectorAll('.meter-bar')),
+      dbm: tr.querySelector('.dbm-val'),
+      enc: tr.querySelector('.enc-tag'),
+      ssid: cells[4],
+      v: {},
+    };
+  }
 
-    this.apTableBody.innerHTML = html;
-    this.lastAps = apsList;
+  _fillApRow(row, ap) {
+    const v = row.v;
+    const set = (k, val, apply) => { if (v[k] !== val) { v[k] = val; apply(val); } };
+    const pwr = parseInt(ap.pwr, 10) || -99;
+    const enc = String(ap.enc || '--').toUpperCase();
+    set('sel', this.selectedBssid === String(ap.bssid || '--'), (on) => { row.tr.className = on ? 'active-target' : ''; });
+    set('pip', pwr < -75 ? 'red' : pwr < -55 ? 'yellow' : 'green', (c) => { row.pip.className = `status-pip ${c}`; });
+    set('ch', String(ap.ch ?? '?'), (t) => { row.ch.textContent = t; });
+    set('pwr', pwr, (p) => {
+      const active = this.meterBars(p);
+      row.bars.forEach((bar, i) => { bar.className = `meter-bar ${active[i]}`; });
+      row.dbm.textContent = `${p} dBm`;
+    });
+    set('enc', enc, (e) => {
+      row.enc.textContent = e;
+      row.enc.className = `enc-tag ${e.includes('WPA3') ? 'wpa3' : ''}`;
+    });
+    set('ssid', String(ap.ssid || '<Hidden>'), (t) => { row.ssid.textContent = t; });
   }
 
   /**
@@ -101,6 +153,10 @@ class TelemetryController {
    */
   updateStations(stationsList) {
     if (!this.stationsTableBody || !Array.isArray(stationsList)) return;
+    const key = stationsList.slice(0, 10)
+      .map((s) => `${s.mac}|${s.pwr}|${s.ch}|${s.tx_rx}|${s.status}`).join('\n');
+    if (key === this.lastStationsKey) return;
+    this.lastStationsKey = key;
 
     let html = '';
     stationsList.slice(0, 10).forEach((sta) => {

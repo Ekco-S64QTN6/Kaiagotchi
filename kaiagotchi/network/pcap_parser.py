@@ -1575,6 +1575,103 @@ _LITTLE_ENDIAN_MAGICS = {b"\xd4\xc3\xb2\xa1", b"\x4d\x3c\xb2\xa1"}
 _BIG_ENDIAN_MAGICS = {b"\xa1\xb2\xc3\xd4", b"\xa1\xb2\x3c\x4d"}
 # RadioTap-prefixed 802.11 is link type 127; bare 802.11 is 105.
 _LINKTYPE_RADIOTAP = 127
+_LINKTYPE_IEEE802_11 = 105
+
+
+# ── The live tally without scapy ─────────────────────────────────────────────
+# Dissecting every frame with scapy costs ~150 us; live monitor mode sees several
+# hundred frames a second, so each telemetry poll held the GIL for a large share
+# of a second in the process that also runs the web server and the agent loop.
+# The tally needs only a few fixed fields, read here straight from the bytes.
+# A frame this cannot read (an unusual RadioTap layout, a truncated header) is
+# handed to scapy, so the counts stay what scapy would report.
+
+_EAPOL_SNAP = b"\xaa\xaa\x03\x00\x00\x00\x88\x8e"
+_MGMT_CATEGORY = {8: "beacon", 4: "probe_req", 11: "auth"}
+# RadioTap fields before dBm_AntSignal (bit 5): (alignment, size) for bits 0..4.
+_RT_FIELDS = ((8, 8), (1, 1), (1, 1), (2, 4), (1, 2))
+
+
+def _radiotap_split(data: bytes) -> tuple[int, int | None, bool] | None:
+    """(802.11 offset, antenna signal dBm or None, data-pad flag), or None when the
+    header is not one this reader handles."""
+    if len(data) < 8 or data[0] != 0:
+        return None
+    rt_len = int.from_bytes(data[2:4], "little")
+    if rt_len < 8 or rt_len > len(data):
+        return None
+    present = int.from_bytes(data[4:8], "little")
+    pos = 8
+    word = present
+    while word & 0x80000000:                     # extended presence bitmaps follow
+        if pos + 4 > rt_len:
+            return None
+        word = int.from_bytes(data[pos:pos + 4], "little")
+        pos += 4
+    signal: int | None = None
+    pad = False
+    for bit, (align, size) in enumerate(_RT_FIELDS):
+        if present & (1 << bit):
+            pos += (-pos) % align
+            if bit == 1 and pos < rt_len:
+                pad = bool(data[pos] & 0x20)     # Flags: header padded to 32 bits
+            pos += size
+    if present & (1 << 5):
+        if pos >= rt_len:
+            return None
+        raw = data[pos]
+        signal = raw - 256 if raw > 127 else raw
+    return rt_len, signal, pad
+
+
+def _tally_raw(data: bytes, linktype: int, stats: FrameStats) -> bool:
+    """Classify one frame from its bytes, as `_tally_frame` would. False when the
+    frame should go to scapy instead."""
+    if linktype not in (_LINKTYPE_RADIOTAP, _LINKTYPE_IEEE802_11):
+        return False
+    signal: int | None = None
+    pad = False
+    off = 0
+    if linktype == _LINKTYPE_RADIOTAP:
+        split = _radiotap_split(data)
+        if split is None:
+            return False
+        off, signal, pad = split
+    if len(data) - off < 2:
+        return False
+    fc0, flags = data[off], data[off + 1]
+    if fc0 & 0x03:                               # protocol version must be 0
+        return False
+    ftype, subtype = (fc0 >> 2) & 0x03, fc0 >> 4
+
+    category: str | None = None
+    if ftype == 0:
+        category = _MGMT_CATEGORY.get(subtype)
+    elif ftype == 2 and not flags & 0x40:
+        # Data with a body, not protected: an EAPOL frame is LLC/SNAP 88-8E.
+        hdr = 24 + (6 if flags & 0x03 == 0x03 else 0)
+        # QoS data; with the Order bit an HT Control field may follow (scapy does
+        # not skip it, real frames carry it), so the body is looked for at both.
+        offsets = [hdr + 2, hdr + 6] if subtype & 0x08 and flags & 0x80 else [hdr + (2 if subtype & 0x08 else 0)]
+        for h in offsets:
+            if pad:
+                h += (-h) % 4
+            if data[off + h:off + h + 8] == _EAPOL_SNAP:
+                category = "eapol"
+                break
+
+    total_side = _ds_direction(flags, _CATEGORY_DEFAULT.get(category or "", "rx"))
+    if total_side == "rx":
+        stats.total_rx += 1
+    else:
+        stats.total_tx += 1
+    if category is not None and stats.breakdown is not None:
+        stats.breakdown[category][_ds_direction(flags, _CATEGORY_DEFAULT[category])] += 1
+    if signal is not None and -120 < signal < 0 and (
+        stats.max_signal is None or signal > stats.max_signal
+    ):
+        stats.max_signal = signal
+    return True
 
 
 class CaptureFrameCounter:
@@ -1659,7 +1756,8 @@ class CaptureFrameCounter:
                 break  # partial record body: resume from this offset next poll
             self._offset += _PCAP_RECORD_HEADER + incl_len
             try:
-                _tally_frame(builder(data), self._stats)
+                if not _tally_raw(data, self._linktype, self._stats):
+                    _tally_frame(builder(data), self._stats)
             except Exception:
                 continue  # one unparseable frame must not stop the tally
 
