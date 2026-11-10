@@ -140,3 +140,72 @@ def test_start_backend_forwards_only_explicit_app_environment(monkeypatch):
     ]
     assert "UNRELATED_SECRET" not in " ".join(cmd)
     assert kwargs["stdin"] is hud.subprocess.DEVNULL
+
+
+
+def test_select_loopback_port_uses_preferred_port_when_free():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as reservation:
+        reservation.bind(("127.0.0.1", 0))
+        preferred = reservation.getsockname()[1]
+    assert hud.select_loopback_port(preferred) == preferred
+
+
+def test_select_loopback_port_falls_back_when_preferred_is_occupied():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as blocker:
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen()
+        occupied = blocker.getsockname()[1]
+        chosen = hud.select_loopback_port(occupied)
+        assert chosen != occupied
+        assert hud.loopback_port_available(chosen)
+
+
+def test_main_uses_an_available_port_when_default_is_occupied(monkeypatch, capsys):
+    class FakeBackend:
+        def poll(self):
+            return None
+
+    class FakeWindow:
+        def wait(self):
+            return 0
+
+        def terminate(self):
+            pass
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as blocker:
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen()
+        occupied = blocker.getsockname()[1]
+        monkeypatch.setattr(hud, "DEFAULT_PORT", occupied)
+        monkeypatch.setattr(hud, "DEFAULT_URL", f"http://127.0.0.1:{occupied}/")
+
+        backend_calls = []
+        window_calls = []
+        monkeypatch.setattr(hud.app_window, "available", lambda: True)
+        monkeypatch.setattr(
+            hud, "start_backend",
+            lambda args: backend_calls.append(args) or FakeBackend(),
+        )
+        monkeypatch.setattr(hud, "wait_healthy", lambda url, backend=None: window_calls.append(url) or True)
+        monkeypatch.setattr(hud.app_window, "launch", lambda url, size: FakeWindow())
+        monkeypatch.setattr(hud, "stop_backend", lambda proc: None)
+
+        assert hud.main([]) == 0
+
+    assert len(window_calls) == 1
+    selected_url = window_calls[0]
+    selected_port = int(selected_url.rsplit(":", 1)[1].rstrip("/"))
+    assert selected_port != occupied
+    assert backend_calls[0][-4:] == ["--host", "127.0.0.1", "--port", str(selected_port)]
+    assert f"using available loopback port {selected_port}" in capsys.readouterr().err
+
+
+def test_main_rejects_an_explicit_port_that_is_already_in_use(monkeypatch, capsys):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as blocker:
+        blocker.bind(("127.0.0.1", 0))
+        blocker.listen()
+        occupied = blocker.getsockname()[1]
+        monkeypatch.setattr(hud.app_window, "available", lambda: True)
+        monkeypatch.setattr(hud, "start_backend", lambda _args: pytest.fail("must not start backend"))
+        assert hud.main(["--port", str(occupied)]) == 1
+    assert "already in use" in capsys.readouterr().err
