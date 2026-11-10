@@ -85,7 +85,12 @@ async def test_explicit_channel_list_is_preserved_and_cycles_with_manual_hops(mo
     assert await manager.hop_channel() is True
     assert await manager.hop_channel() is True
 
+    assert await manager.hop_channel() is True
+    assert await manager.hop_channel() is True
+
     assert calls == [
+        ("iw", "dev", "wlan1", "set", "channel", "1"),
         ("iw", "dev", "wlan1", "set", "channel", "6"),
         ("iw", "dev", "wlan1", "set", "channel", "36"),
+        ("iw", "dev", "wlan1", "set", "channel", "1"),
     ]
