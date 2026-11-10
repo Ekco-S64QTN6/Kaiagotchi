@@ -1,8 +1,10 @@
 """Archive-boundary tests for PCAP registration and reanalysis."""
 
-from pathlib import Path
 import stat
+from pathlib import Path
 from types import SimpleNamespace
+
+import pytest
 
 import kaiagotchi.storage.persistent_network as persistent_network_module
 from kaiagotchi.storage.persistent_network import PersistentNetwork
@@ -134,8 +136,6 @@ def test_initialization_rejects_symlinked_private_archive_root_without_chmodding
     storage = tmp_path / "storage"
     storage.mkdir()
     (storage / "pcaps").symlink_to(external_archive, target_is_directory=True)
-
-    import pytest
 
     with pytest.raises(
         PermissionError, match="Could not secure PCAP storage directory"
