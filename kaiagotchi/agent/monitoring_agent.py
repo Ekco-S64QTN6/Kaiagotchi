@@ -169,6 +169,24 @@ class MonitoringAgent:
         self._running = True
         _LOG.info("[monitoring] Starting monitoring setup...")
 
+        # Only one instance may hold the capture dongle. Terminate any stale
+        # Kaiagotchi (or its airodump) still bound to this interface before
+        # claiming it, so overlapping launches can't leave the dongle contended
+        # and a new dashboard spinning forever. Root context (sudo) can signal
+        # the prior root backend; our own process tree is never touched.
+        try:
+            from kaiagotchi.network.interface_reclaim import reclaim_capture_interface
+            reclaimed = await asyncio.to_thread(
+                reclaim_capture_interface, self.interface, logger=_LOG
+            )
+            if reclaimed:
+                _LOG.info(
+                    "[monitoring] reclaimed %s from %d stale instance(s): %s",
+                    self.interface, len(reclaimed), reclaimed,
+                )
+        except Exception:
+            _LOG.debug("[monitoring] capture-interface reclaim failed", exc_info=True)
+
         try:
             # Setup may partially change the adapter before raising/cancelling.
             self._managed_mode_restore_pending = True
