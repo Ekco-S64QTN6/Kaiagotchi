@@ -154,8 +154,17 @@ Key sections:
 - `[personality]` — reward smoothing and the thresholds that map reward → mood
 - `[reward.weights]` — how much each signal (handshakes, discoveries, activity …) contributes
 - `[ui]` — render `fps`, pane sizes, and mood faces
-- `[bettercap] handshakes` — where captures are written
 - `[web]` — the browser HUD: `enabled`, `host` (loopback by default), `port`, `update_hz`, and `auth_token` (required for non-loopback binds; `KAIA_WEB_AUTH_TOKEN` takes precedence)
+
+The supported capture backend is the built-in passive `airodump-ng` path; a
+Bettercap backend is **not supported**. The legacy imports
+`kaiagotchi.network.integrations.bettercap.BettercapIntegration` and
+`Client` remain available for compatibility, but their `start()` methods
+raise `NotImplementedError` rather than silently succeeding. Their `stop()`
+methods are harmless because these shims never own a process. The old
+`[bettercap].handshakes` setting is unused and has been removed from the
+packaged defaults and example config. PCAP archives currently live under
+`kaiagotchi/storage/pcaps`.
 
 Point Kaiagotchi at a different file with `--config` or the `KAIA_CONFIG`
 environment variable.

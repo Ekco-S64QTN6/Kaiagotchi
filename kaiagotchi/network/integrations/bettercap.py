@@ -1,35 +1,46 @@
+"""Legacy import-compatibility shims for the unsupported Bettercap backend.
+
+Kaiagotchi currently uses its passive airodump-ng capture implementation.
+These names remain importable for older integrations, but they do not manage
+or launch a Bettercap process. Calling start() fails explicitly.
 """
-Bettercap integration module.
-Placeholder for bettercap integration functionality.
-"""
+
+from typing import Any
+
+_UNSUPPORTED_BACKEND = (
+    "The Bettercap backend is not supported by Kaiagotchi. "
+    "Use the built-in passive airodump-ng capture path instead."
+)
+
 
 class BettercapIntegration:
-    """Bettercap integration placeholder."""
+    """Legacy compatibility name; no Bettercap process lifecycle is available."""
 
-    def __init__(self, config):
+    def __init__(self, config: Any):
         self.config = config
 
-    def start(self):
-        """Start bettercap integration."""
-        pass
+    def start(self) -> None:
+        """Fail explicitly rather than claiming an unsupported backend started."""
+        raise NotImplementedError(_UNSUPPORTED_BACKEND)
 
-    def stop(self):
-        """Stop bettercap integration."""
-        pass
+    def stop(self) -> None:
+        """Remain safe to call when no Bettercap process was started."""
+        return None
 
-# Add the Client class that plugins are looking for
+
 class Client:
-    """Bettercap client for plugin compatibility."""
+    """Legacy plugin-import compatibility name for the unsupported backend."""
 
-    def __init__(self, config):
+    def __init__(self, config: Any):
         self.config = config
 
-    def start(self):
-        """Start bettercap client."""
-        pass
+    def start(self) -> None:
+        """Fail explicitly rather than claiming an unsupported client started."""
+        raise NotImplementedError(_UNSUPPORTED_BACKEND)
 
-    def stop(self):
-        """Stop bettercap client."""
-        pass
+    def stop(self) -> None:
+        """Remain safe to call when no Bettercap process was started."""
+        return None
 
-__all__ = ['BettercapIntegration', 'Client']
+
+__all__ = ["BettercapIntegration", "Client"]
